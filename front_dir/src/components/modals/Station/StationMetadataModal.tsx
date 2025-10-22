@@ -297,13 +297,9 @@ const StationMetadataModal = ({
                 },
             );
 
-            setStationInfo(
-                res.data.sort(
-                    (a, b) =>
-                        new Date(b.date_end).getTime() -
-                        new Date(a.date_end).getTime(),
-                )[0],
-            );
+            const lastStationInfo = res.data[res.data.length - 1];
+
+            setStationInfo(lastStationInfo);
         } catch (err) {
             console.error(err);
         }
