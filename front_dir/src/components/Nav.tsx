@@ -128,7 +128,7 @@ const Nav = () => {
                 </div>
                 <div className="navbar-center">
                     <Link to={"/"} className="text-2xl ml-6">
-                        Parallel.GAMIT
+                        GeoDE
                     </Link>
                 </div>
                 <div className="navbar-end flex flex-row items-center justify-center gap-2">

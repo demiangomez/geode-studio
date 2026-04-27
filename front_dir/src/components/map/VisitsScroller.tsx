@@ -1,10 +1,9 @@
 import { Scroller } from "@componentsReact";
 import { StationVisitsData, StationMetadataServiceData } from "@types";
 import { getRandomColor, possibleColors } from "@utils";
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 
-interface RoutesScrollerProps {
-    map?: L.Map | null;
+interface VisitsScrollerProps {
     visits: StationVisitsData[];
     changeKml: VisitsStates[];
     changeMeta: boolean;
@@ -21,8 +20,7 @@ interface VisitsStates {
     color: string;
 }
 
-const RoutesScroller = ({
-    map,
+const VisitsScroller = ({
     visits,
     changeKml,
     changeMeta,
@@ -31,7 +29,7 @@ const RoutesScroller = ({
     stationMeta,
     showScroller,
     setShowScroller,
-}: RoutesScrollerProps) => {
+}: VisitsScrollerProps) => {
     const getColor = (visit: StationVisitsData) => {
         const visitColor = changeKml.find(
             (visitBool) => visitBool.visitId === visit.id,
@@ -51,10 +49,6 @@ const RoutesScroller = ({
         return finalNumber;
     };
 
-    //--------------------------------------------------------useState--------------------------------------------------------
-
-    const [isAllSelected, setIsAllSelected] = useState<boolean>(false);
-
     //--------------------------------------------------------UseEffect--------------------------------------------------------
     useEffect(() => {
         if (changeKml.length === 0) {
@@ -67,33 +61,19 @@ const RoutesScroller = ({
                         checked: false,
                         color: getRandomColor(adjustIndex(index)),
                     };
+
                     newChangeKml.push(newKml);
                 });
 
                 setChangeKml(newChangeKml);
             }
         }
-    }, [showScroller, changeKml.length, setChangeKml, visits]);
-
-    useEffect(() => {
-        if (
-            changeKml.length > 0 &&
-            changeKml.every((visitBool) => visitBool.checked) &&
-            (stationMeta.navigation_filename ? changeMeta : true) //Si hay un file el changeMeta dice si esta checkeado, si no hay no lo considera
-        ) {
-            setIsAllSelected(true);
-        }
-
-        if (visits.length === 0) {
-            setIsAllSelected(changeMeta);
-        }
-    }, [changeKml, changeMeta]);
+    }, [showScroller]);
 
     //--------------------------------------------------------Return--------------------------------------------------------
     return (
         <>
             <Scroller
-                map={map}
                 buttonCondition={
                     (Array.isArray(visits) &&
                         visits.length > 0 &&
@@ -106,13 +86,20 @@ const RoutesScroller = ({
                 setShowScroller={setShowScroller}
                 fromMain={false}
             >
-                <div className="form-control">
+                <div className="form-control text-sm">
                     <label className="label cursor-pointer truncate">
                         <span className="font-bold mr-4">Select All</span>
                         <input
                             type="checkbox"
                             className="checkbox checkbox-sm"
-                            checked={isAllSelected}
+                            checked={
+                                (changeKml.length > 0 &&
+                                    changeKml.every(
+                                        (visitBool) => visitBool.checked,
+                                    ) &&
+                                    changeMeta) ||
+                                (changeKml.length === 0 && changeMeta)
+                            }
                             onChange={(e) => {
                                 if (changeKml.length !== 0) {
                                     setChangeMeta(e.target.checked);
@@ -147,7 +134,7 @@ const RoutesScroller = ({
                     </label>
                 </div>
                 {stationMeta?.navigation_actual_file && (
-                    <div className="form-control">
+                    <div className="form-control text-sm">
                         <label
                             className="cursor-pointer"
                             style={{
@@ -186,7 +173,10 @@ const RoutesScroller = ({
                 {visits.map(
                     (visit, index) =>
                         visit.navigation_actual_file && (
-                            <div className="form-control" key={visit.id}>
+                            <div
+                                className="form-control text-sm"
+                                key={visit.id}
+                            >
                                 <label className="label cursor-pointer">
                                     <div
                                         style={{
@@ -267,4 +257,4 @@ const RoutesScroller = ({
     );
 };
 
-export default React.memo(RoutesScroller);
+export default React.memo(VisitsScroller);

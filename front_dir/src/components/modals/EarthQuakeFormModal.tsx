@@ -2,13 +2,12 @@ import React, { useEffect, useState } from "react";
 import { Modal, MapModal } from "@componentsReact";
 import { showModal, findLimits } from "@utils";
 import { EarthQuakeFormState } from "@types";
-import { LatLngExpression } from "leaflet";
 
 interface EarthQuakeModalProps {
     formstate: EarthQuakeFormState;
     handleEarthquakes: () => void;
     setInitialCenter?: React.Dispatch<
-        React.SetStateAction<LatLngExpression | undefined>
+        React.SetStateAction<[number, number] | undefined>
     >;
     setFormState: React.Dispatch<React.SetStateAction<EarthQuakeFormState>>;
     setShowEarthQuakesList: React.Dispatch<React.SetStateAction<boolean>>;
@@ -19,7 +18,7 @@ interface EarthQuakeModalProps {
         >
     >;
     setPosToFly: React.Dispatch<
-        React.SetStateAction<LatLngExpression | undefined>
+        React.SetStateAction<[number, number] | undefined>
     >;
 }
 
@@ -160,37 +159,37 @@ const EarthQuakeFormModal = ({
     };
 
     const handleDrawPolygon = (e: any) => {
-            const latlngs = e.layer.getLatLngs();
-            const coordinates = latlngs[0].map((latlng: any) => [
-                latlng.lat,
-                latlng.lng,
-            ]);
-            const completedCoordinates = coordinates.concat([coordinates[0]]);
-            const limits = findLimits(coordinates);
-    
-            setFormState((prev) => ({
-                ...prev,
+        const latlngs = e.layer.getLatLngs();
+        const coordinates = latlngs[0].map((latlng: any) => [
+            latlng.lat,
+            latlng.lng,
+        ]);
+        const completedCoordinates = coordinates.concat([coordinates[0]]);
+        const limits = findLimits(coordinates);
+
+        setFormState((prev) => ({
+            ...prev,
+            max_latitude: limits.max_latitude.toString(),
+            min_latitude: limits.min_latitude.toString(),
+            max_longitude: limits.max_longitude.toString(),
+            min_longitude: limits.min_longitude.toString(),
+            polygon_coordinates: completedCoordinates,
+        }));
+
+        localStorage.setItem(
+            "earthQuakeFilters",
+            JSON.stringify({
+                ...formstate,
                 max_latitude: limits.max_latitude.toString(),
                 min_latitude: limits.min_latitude.toString(),
                 max_longitude: limits.max_longitude.toString(),
                 min_longitude: limits.min_longitude.toString(),
                 polygon_coordinates: completedCoordinates,
-            }));
-    
-            localStorage.setItem(
-                "earthQuakeFilters",
-                JSON.stringify({
-                    ...formstate,
-                    max_latitude: limits.max_latitude.toString(),
-                    min_latitude: limits.min_latitude.toString(),
-                    max_longitude: limits.max_longitude.toString(),
-                    min_longitude: limits.min_longitude.toString(),
-                    polygon_coordinates: completedCoordinates,
-                }),
-            );
-    
-            setShowMapModal(() => ({ type: "edit", show: false, title: "" }));
-        };
+            }),
+        );
+
+        setShowMapModal(() => ({ type: "edit", show: false, title: "" }));
+    };
 
     //---------------------------------------------------------useState-------------------------------------------------------------
 

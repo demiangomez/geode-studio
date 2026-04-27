@@ -22,7 +22,7 @@ export { default as SourcesServers } from "../pages/SourcesServers/Sources";
 
 export { default as StationTimeSeriesDetailModal } from "./modals/Station/StationTimeSeriesDetailModal";
 
-export { default as MapStationCreate } from "./map/StationCreateMap";
+export { default as MapStationCreate } from "./map/StationCreateMapOL";
 
 export { default as VisitsCampaignModal } from "./modals/Campaign/VisitsCampaingModal";
 
@@ -34,9 +34,9 @@ export { default as ColorPicker } from "./ColorPicker";
 
 export { default as DropLeft } from "./DropLeft";
 
-export { default as NativePopup } from "./map/NativePopup";
-
 export { default as VisitThumbNail } from "../pages/Station/VisitThumbNail";
+
+export { default as VisitsScroller } from "./map/VisitsScroller";
 
 export { default as Toast } from "./Message";
 
@@ -238,24 +238,22 @@ export { default as EarthQuakeFormModal } from "./modals/EarthQuakeFormModal";
 
 // MAP
 
-export { default as Map } from "./map/Map";
-
-export { default as MapStation } from "./map/MapStation";
-
 export { default as PopupChildren } from "./map/PopupChildren";
 
-export { default as MapVector } from "./map/MapVector";
+export { default as MapOL } from "./map/ol/MapOL";
 
-export { default as MapVisit } from "./map/MapVisit";
+export { default as MapStationOL } from "./map/ol/MapStationOL";
 
-export { default as RoutesScroller } from "./map/RoutesScroller";
+export { default as MapVisitOL } from "./map/ol/MapVisitOL";
 
 export { default as MainScroller } from "./map/MainScroller";
 
-export { default as MapModal } from "./map/MapModal";
+export { default as MapModal } from "./map/MapModalOL";
 
 export { default as QuillText } from "./map/QuillText";
 
 export { default as MergePeopleModal } from "./modals/MergePeopleModal";
 
-export { default as StationCreateMap } from "./map/StationCreateMap";
+export { default as StationCreateMap } from "./map/StationCreateMapOL";
+
+export { default as Popup } from "./map/Popup";

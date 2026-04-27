@@ -115,7 +115,8 @@ const Login = () => {
                                 ? message.msg
                                 : message.errors.errors?.[0].code === "blank"
                                   ? "Fields may not be blank."
-                                  : message.errors.errors?.[0].detail?? message.msg
+                                  : (message.errors.errors?.[0].detail ??
+                                    message.msg)
                         }
                     />
                 )}
@@ -157,7 +158,7 @@ const Login = () => {
                 {/* <div className="self-center mb-6 text-xl font-bold sm:text-2xl ">
                     Login
                 </div> */}
-                <img src={osupng} alt="parallel_gamit" />
+                <img src={osupng} alt="GeoDE" />
                 <div className="mt-8">
                     <form action="#" autoComplete="off" onSubmit={handleLogin}>
                         <div className="flex flex-col mb-2">

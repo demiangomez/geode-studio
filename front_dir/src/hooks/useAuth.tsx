@@ -23,6 +23,7 @@ interface AuthContextProps {
     refresh: boolean | null;
     userPhoto: string | null;
     user: UsersData | null;
+    clusteringDistance: number | undefined;
     login: (token: string | null, nav?: boolean, lastPath?: string) => void;
     logout: (href: boolean) => void;
     getRole: (role: string) => void;
@@ -45,6 +46,7 @@ const AuthContext = createContext<AuthContextProps>({
     refreshToken: null,
     user: null,
     userPhoto: null,
+    clusteringDistance: undefined,
     login: () => {},
     logout: () => {},
     getRole: () => {},
@@ -169,6 +171,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
     };
 
+    const parsedDistance = user?.clustering_distance ? Number(user.clustering_distance) : undefined;
+
     useEffect(() => {
         const interval = setInterval(() => {
             const tokenTest = localStorage.getItem("gpsToken");
@@ -217,6 +221,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             login,
             logout,
             user,
+            clusteringDistance: parsedDistance,
             userPhoto,
             refreshToken,
             loginRefresh,

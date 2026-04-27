@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { LatLngExpression } from "leaflet";
 import { ChevronLeftIcon } from "@heroicons/react/24/outline";
 import { isStationFiltered, showModal } from "@utils";
 import { useAuth, useApi, useEscape, useLocalStorage } from "@hooks";
@@ -10,7 +9,7 @@ import {
     getStationsService,
 } from "@services";
 import {
-    Map,
+    MapOL,
     MapSkeleton,
     SearchInput,
     Sidebar,
@@ -31,6 +30,8 @@ import {
     EarthquakeData,
     EarthQuakeParams,
 } from "@types";
+
+const EMPTY_EARTHQUAKES: EarthquakeData[] = [];
 
 const MainPage = () => {
     //---------------------------------------------------------UseAuth-------------------------------------------------------------
@@ -81,7 +82,7 @@ const MainPage = () => {
         EarthquakeData | undefined
     >(undefined);
 
-    const [posToFly, setPosToFly] = useState<LatLngExpression | undefined>(
+    const [posToFly, setPosToFly] = useState<[number, number] | undefined>(
         undefined,
     );
 
@@ -100,7 +101,7 @@ const MainPage = () => {
     >(undefined);
 
     const [initialCenter, setInitialCenter] = useState<
-        LatLngExpression | undefined
+        [number, number] | undefined
     >(undefined);
 
     const [formstate, setFormState] = useState<EarthQuakeFormState>({
@@ -117,10 +118,6 @@ const MainPage = () => {
         max_longitude: "",
         polygon_coordinates: [[]],
     });
-
-    const [markersByBounds, setMarkersByBounds] = useState<
-        StationData[] | EarthquakeData[] | undefined
-    >(undefined);
 
     const [mapState, setMapState] = useState<boolean>(
         mapStateStorage === "true" ? true : false,
@@ -218,11 +215,11 @@ const MainPage = () => {
 
                             if (hasEqualParams) {
                                 setInitialCenter([
-                                    locationState?.lat,
                                     locationState?.lon,
+                                    locationState?.lat,
                                 ]);
                             } else {
-                                setInitialCenter([s.lat, s.lon]);
+                                setInitialCenter([s.lon, s.lat]);
                             }
                         }
                     });
@@ -268,8 +265,6 @@ const MainPage = () => {
         abortAffectedStationsRef.current = abortController;
 
         try {
-            setEarthQuakeAffectedStations(undefined);
-
             if (earthQuakeAffectedParams) {
                 const result =
                     await getAffectedStationsService<StationsAffectedServiceData>(
@@ -462,6 +457,7 @@ const MainPage = () => {
                 localStorage.getItem("earthquakeChosen") ?? "{}",
             );
             setEarthQuakeAffectedParams(earthquake.api_id);
+            setEarthQuakeAffectedStations(undefined);
 
             setChosenEarthquake(earthquake);
             setToggleEarthquakeMask(storedEarthquakeChosen.ui_toggle_mask);
@@ -603,10 +599,7 @@ const MainPage = () => {
             setStations(initialStations);
             setInitialCenter(
                 initialCenter
-                    ? [
-                          (initialCenter as [number, number])[0],
-                          (initialCenter as [number, number])[1],
-                      ]
+                    ? [initialCenter[0], initialCenter[1]]
                     : undefined,
             );
         }
@@ -637,7 +630,7 @@ const MainPage = () => {
     useEffect(() => {
         const stateCoordinates =
             locationState !== null && Object.values(locationState).length > 0
-                ? ([locationState?.lat, locationState?.lon] as LatLngExpression)
+                ? ([locationState?.lon, locationState?.lat] as [number, number])
                 : undefined;
 
         if (stateCoordinates) {
@@ -680,6 +673,7 @@ const MainPage = () => {
     //---------------------------------------------------------UseEscape-------------------------------------------------------------
 
     useEscape(exitEarthquakes);
+
     //---------------------------------------------------------Return-------------------------------------------------------------
 
     return (
@@ -723,7 +717,7 @@ const MainPage = () => {
                         forceSyncMapScroller={forceSyncScrollerMap}
                         spinner={earthquakeSpinner}
                         scrollerCondition={showEarthQuakesList}
-                        earthquakes={earthquakes || []}
+                        earthquakes={earthquakes ?? EMPTY_EARTHQUAKES}
                         earthquakeChosen={chosenEarthquake}
                         handleEarthquakeState={handleEarthquakeState}
                         handleEarthquakeClose={handleEarthquakeClose}
@@ -797,27 +791,25 @@ const MainPage = () => {
                                 setShowEarthquakeList={setShowEarthQuakesList}
                             />
                         )}
-                        <Map
+                        <MapOL
                             initialCenter={initialCenter}
                             topoMap={topoMapState}
                             posToFly={posToFly}
                             handleEarthquakeState={handleEarthquakeState}
                             mapState={mapState}
                             mainParams={params}
-                            markersByBounds={markersByBounds}
                             filters={filters}
                             filterState={filterState}
                             forceSyncScrollerMap={forceSyncScrollerMap}
-                            earthquakes={earthquakes ? earthquakes : []}
+                            earthquakes={earthquakes ?? EMPTY_EARTHQUAKES}
                             earthQuakeChosen={chosenEarthquake}
-                            earthquakesFiltered={earthQuakeFiltered || []}
+                            earthquakesFiltered={earthQuakeFiltered}
                             earthquakeAffectedStations={
                                 earthQuakeAffectedStations
                             }
                             setShowScroller={setShowScroller}
                             stations={stations ? stations : initialStations}
                             showEarthquakeList={showEarthQuakesList}
-                            setMarkersByBounds={setMarkersByBounds}
                             setEarthquakesFiltered={setEarthQuakeFiltered}
                             setForceSyncScrollerMap={setForceSyncScrollerMap}
                             toggleStateEarthquakeMask={

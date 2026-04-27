@@ -101,7 +101,7 @@ const Photo = ({ phArray, loader, reFetch }: Props) => {
     };
 
     return (
-        <>
+        <div className="w-6/12">
             <CardContainer
                 title={"Photos"}
                 height={true}
@@ -259,7 +259,7 @@ const Photo = ({ phArray, loader, reFetch }: Props) => {
                     }}
                 />
             )}
-        </>
+        </div>
     );
 };
 

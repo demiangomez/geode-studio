@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { MapSkeleton, MapStation, Photo } from "@componentsReact";
+import { MapSkeleton, MapStationOL, Photo } from "@componentsReact";
 
 import { findFlagUrlByIso3Code } from "country-flags-svg-v2";
 
@@ -120,18 +120,18 @@ const StationMain = () => {
             <div className="flex flex-col items-center justify-center space-y-4 px-2 pb-4">
                 <div className="flex w-full space-x-2 relative">
                     {mapFlicker && (
-                        <div className="absolute z-[100] pt-6 ml-2 w-6/12 h-full xl:w-[40vw] lg:w-[30vw] md:w-[30vw] sm:w-[20vw]">
+                        <div className="absolute z-[100000000] pt-6 w-6/12 h-[55vh]">
                             <MapSkeleton
                                 styles={{
                                     backgroundColor: "rgb(202, 202, 202)",
                                     paddingBottom: "0.7rem",
                                 }}
-                                height="100%"
+                                height="55vh"
                             />
                         </div>
                     )}
 
-                    <MapStation
+                    <MapStationOL
                         station={definitiveStation}
                         base64Data={
                             changeMeta ||
@@ -141,7 +141,7 @@ const StationMain = () => {
                         }
                         loadPdf={loadPdf}
                         loadedPdfData={loadedPdfData}
-                        routesScrollerProps={routesScrollerProps}
+                        visitScrollerProps={routesScrollerProps}
                         setStationLocationScreen={setStationLocationScreen}
                         setStationLocationDetailScreen={
                             setStationLocationDetailScreen

@@ -702,9 +702,10 @@ export async function getStationDetailsService<T>(
 export async function getStationMetaService<T>(
     api: AxiosInstance,
     id: number,
+    signal?: AbortSignal,
 ): Promise<T> {
     try {
-        const response = await api.get(`api/station-meta/${id}`);
+        const response = await api.get(`api/station-meta/${id}`, { signal });
         return response.data as Promise<T>;
     } catch (error) {
         return Promise.reject(error);
@@ -1545,11 +1546,13 @@ export async function getCountryService<T>(
 export async function getRinexService<T>(
     api: AxiosInstance,
     params?: GetParams,
+    signal?: AbortSignal,
 ): Promise<T> {
     try {
         const paramsArr = params ? transformParams(params) : "";
         const response = await api.get(
             `api/rinex${paramsArr.length > 0 ? `?${paramsArr}` : ""}`,
+            { signal },
         );
         return response.data as Promise<T>;
     } catch (error) {

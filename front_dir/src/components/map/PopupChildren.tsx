@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 
-import useApi from "@hooks/useApi";
-import { useAuth } from "@hooks/useAuth";
+import { useAuth, useApi } from "@hooks";
 import { getRinexService, getStationMetaService } from "@services";
 
 import {
@@ -14,6 +13,7 @@ import {
 } from "@types";
 
 import { formattedDates, generateErrorMessages, woTz } from "@utils";
+import axios from "axios";
 
 interface PopupChildrenProps {
     station: StationData | undefined;
@@ -71,42 +71,55 @@ const PopupChildren = ({
 
     const [loading, setLoading] = useState(false);
 
-    const getRinex = async () => {
+    const getRinex = async (signal: AbortSignal) => {
         try {
             setLoading(true);
-            const firstRes = await getRinexService<RinexServiceData>(api, {
-                network_code: station?.network_code,
-                station_code: station?.station_code,
-                limit: 1,
-                offset: 0,
-            });
+            const firstRes = await getRinexService<RinexServiceData>(
+                api,
+                {
+                    network_code: station?.network_code,
+                    station_code: station?.station_code,
+                    limit: 1,
+                    offset: 0,
+                },
+                signal,
+            );
             const totalRecords = firstRes.total_count;
-            const lastRes = await getRinexService<RinexServiceData>(api, {
-                network_code: station?.network_code,
-                station_code: station?.station_code,
-                limit: 1,
-                offset: totalRecords - 1,
-            });
+            const lastRes = await getRinexService<RinexServiceData>(
+                api,
+                {
+                    network_code: station?.network_code,
+                    station_code: station?.station_code,
+                    limit: 1,
+                    offset: totalRecords - 1,
+                },
+                signal,
+            );
             setFirstRinex(firstRes.data[0]);
             setLastRinex(lastRes.data[0]);
         } catch (err) {
-            console.error(err);
+            if (!axios.isCancel(err)) {
+                console.error("Error fetching rinex: ", err);
+            }
         } finally {
             setLoading(false);
         }
     };
 
-    const getStationMeta = async () => {
+    const getStationMeta = async (signal: AbortSignal) => {
         try {
             const res = await getStationMetaService<StationMetadataServiceData>(
                 api,
                 Number(station?.api_id),
+                signal,
             );
             if (res) {
                 setStationMetaByMain(res);
             }
         } catch (err) {
-            console.error(err);
+            if (!axios.isCancel(err)) {
+                console.error("Error fetching station meta: ", err);
+            }
         }
     };
 
@@ -133,8 +146,12 @@ const PopupChildren = ({
 
     useEffect(() => {
         if (fromMain) {
-            getRinex();
-            getStationMeta();
+            const abortController = new AbortController();
+            getRinex(abortController.signal);
+            getStationMeta(abortController.signal);
+            return () => {
+                abortController.abort();
+            };
         }
     }, [fromMain]);
 
@@ -142,7 +159,7 @@ const PopupChildren = ({
 
     return (
         <div
-            className={`flex flex-col self-start space-y-2 max-h-82 overflow-y-auto pr-2 md:w-[400px] lg:w-[450px] `}
+            className={`flex flex-col self-start space-y-2 max-h-82 overflow-y-auto pr-4 md:w-[400px] lg:w-[450px] `}
         >
             <span className="w-full bg-green-400 px-4 py-1 text-center font-bold self-center">
                 {fromMain
@@ -284,7 +301,7 @@ const PopupChildren = ({
                 {fromMain && loading ? (
                     <span className="loading loading-dots loading-lg mx-auto"></span>
                 ) : fromMain !== undefined && !loading ? (
-                    <div className="flex text-sm flex-col gap-4 justify-center items-start grow pl-4 mb-4">
+                    <div className="flex text-sm flex-col gap-4 justify-center items-start pl-4 mb-4">
                         {firstRinex ? (
                             <div className="flex flex-col justify-center items-start">
                                 <h2 className="text-md font-semibold pt-2 text-gray-500">
@@ -400,7 +417,7 @@ const PopupChildren = ({
             {fromMain && (
                 <Link
                     to={`/${network_code}/${station_code}`}
-                    className=" text-center"
+                    className="text-center link"
                     state={{ ...station, mainParams: mainParams }}
                     reloadDocument={reload}
                 >

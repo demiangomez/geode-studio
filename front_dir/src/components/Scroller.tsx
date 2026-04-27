@@ -1,5 +1,4 @@
 interface ScrollerProps {
-    map?: L.Map | null;
     children: React.ReactNode;
     fromMain: boolean;
     scrollerName: string;
@@ -11,7 +10,6 @@ interface ScrollerProps {
 }
 
 const Scroller = ({
-    map,
     children,
     fromMain,
     showScroller,
@@ -39,19 +37,6 @@ const Scroller = ({
                 <div
                     id="controller"
                     className="z-[1000000000] absolute top-12 right-2"
-                    // Disable map dragging and zooming when hovering over the scroller
-                    onMouseEnter={() => {
-                        if (!fromMain) {
-                            map?.dragging.disable();
-                            map?.scrollWheelZoom.disable();
-                        }
-                    }}
-                    onMouseLeave={() => {
-                        if (!fromMain) {
-                            map?.dragging.enable();
-                            map?.scrollWheelZoom.enable();
-                        }
-                    }}
                 >
                     <div
                         className={

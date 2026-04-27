@@ -57,14 +57,6 @@ export interface GetParams {
     campaign?: number;
 }
 
-export interface MyMapContainerProps {
-    center: LatLngExpression;
-    zoom: number;
-    scrollWheelZoom: boolean;
-    style?: React.CSSProperties;
-    minZoom?: number;
-}
-
 export interface TokenPayload {
     token_type: string;
     user_id: number;

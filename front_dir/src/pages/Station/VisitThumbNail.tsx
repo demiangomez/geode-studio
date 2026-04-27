@@ -1,6 +1,6 @@
 // import { useLocation, useOutletContext } from "react-router-dom";
 // import { useEffect, useState } from "react";
-import { MapVisit, Spinner } from "@componentsReact";
+import { MapVisitOL, Spinner } from "@componentsReact";
 
 import {
     StationCampaignsData,
@@ -193,7 +193,7 @@ const VisitThumbNail = ({
                 )}
                 {visit.navigation_filename && (
                     <div className="w-full h-60 overflow-hidden rounded-lg">
-                        <MapVisit
+                        <MapVisitOL
                             base64Data={visit.navigation_actual_file ?? ""}
                             station={station}
                             statuses={statuses}
