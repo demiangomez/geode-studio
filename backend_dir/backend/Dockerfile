@@ -22,8 +22,9 @@ RUN groupadd -g ${GROUP_ID_TO_SAVE_FILES} dummy-user && \
     useradd -u ${USER_ID_TO_SAVE_FILES} -g dummy-user -m dummy-user
 
 # Install Python dependencies
-RUN pip install --upgrade pip && \
-    pip install wheel setuptools --upgrade
+RUN pip install --upgrade pip
+# && \
+#    pip install wheel setuptools --upgrade
 
 WORKDIR /code
 

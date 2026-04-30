@@ -44,3 +44,5 @@ celery==5.4.0
 redis==5.0.8
 pgamit
 country_converter==1.3
+
+setuptools==70.0.0
