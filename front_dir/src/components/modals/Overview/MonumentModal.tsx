@@ -46,10 +46,18 @@ const MonumentModal = ({
 
     const [loading, setLoading] = useState<boolean>(false);
     const [msg, setMsg] = useState<
-        { status: number; msg: string; errors?: Errors } | undefined
+        | {
+              status: number;
+              msg: string;
+              errors?: Errors;
+              scope?: "form" | "action";
+          }
+        | undefined
     >(undefined);
 
     const [checks, setChecks] = useState<{ photo: boolean }>({ photo: false });
+
+    const isSuccess = apiOkStatuses.includes(Number(msg?.status));
 
     const { formState, dispatch } = useFormReducer({
         id: "",
@@ -88,11 +96,13 @@ const MonumentModal = ({
                     status: res.statusCode,
                     msg: res.response.type,
                     errors: res.response,
+                    scope: "form",
                 });
             } else {
                 setMsg({
                     status: res.statusCode,
                     msg: "Monument added successfully",
+                    scope: "form",
                 });
             }
         } catch (err) {
@@ -128,11 +138,13 @@ const MonumentModal = ({
                     status: res.statusCode,
                     msg: res.response.type,
                     errors: res.response,
+                    scope: "form",
                 });
             } else {
                 setMsg({
                     status: res.statusCode,
                     msg: "Monument edited successfully",
+                    scope: "form",
                 });
             }
         } catch (err) {
@@ -154,12 +166,14 @@ const MonumentModal = ({
                 setMsg({
                     status: res.statusCode,
                     msg: res.msg,
+                    scope: "action",
                 });
             } else {
                 setMsg({
                     status: res.statusCode,
                     msg: res.response.type,
                     errors: res.response,
+                    scope: "action",
                 });
             }
         } catch (err) {
@@ -171,6 +185,7 @@ const MonumentModal = ({
 
     const handleCloseModal = () => {
         setMonument(undefined);
+        setStateModal(undefined);
         reFetch();
     };
 
@@ -334,7 +349,7 @@ const MonumentModal = ({
                         </div>
                     )}
                 </div>
-                <Alert msg={msg} />
+                {msg?.scope !== "action" && <Alert msg={msg} />}
                 {loading && (
                     <div className="w-full text-center">
                         <span className="loading loading-spinner loading-lg self-center"></span>
@@ -345,17 +360,15 @@ const MonumentModal = ({
                         <button
                             className="btn btn-error w-5/12"
                             type="button"
-                            disabled={
-                                apiOkStatuses.includes(Number(msg?.status)) ||
-                                loading
-                            }
-                            onClick={() =>
+                            disabled={isSuccess || loading}
+                            onClick={() => {
+                                setMsg(undefined);
                                 setModals({
                                     show: true,
                                     title: "ConfirmDelete",
                                     type: "edit",
-                                })
-                            }
+                                });
+                            }}
                         >
                             Remove
                         </button>
@@ -363,10 +376,7 @@ const MonumentModal = ({
                     <button
                         type="submit"
                         className="btn btn-success w-5/12"
-                        disabled={
-                            apiOkStatuses.includes(Number(msg?.status)) ||
-                            loading
-                        }
+                        disabled={isSuccess || loading}
                     >
                         Submit
                     </button>
@@ -378,12 +388,8 @@ const MonumentModal = ({
                     loading={loading}
                     confirmRemove={() => delMonument()}
                     closeModal={() => {
-                        setModals({
-                            show: false,
-                            title: "",
-                            type: "edit",
-                        });
-                        setMsg(undefined);
+                        setModals(undefined);
+                        if (isSuccess) handleCloseModal();
                     }}
                 />
             )}

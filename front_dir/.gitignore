@@ -26,7 +26,18 @@ dist-ssr
 # KML TESTS
 src/assets/kml
 
+# cesium for development
+public/cesium-assets/
+
 .env
 .prettierrc
 srv/nginxdev.conf
 srv/nginx.conf
+
+# Local AI tooling (no versionar)
+.codegraph/
+.claude/
+.gemini/
+.mcp.json
+stats.json
+stats.html

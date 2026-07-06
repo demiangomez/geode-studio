@@ -1,15 +1,29 @@
 import { useEffect, useState } from "react";
 import { Alert, ConfirmDeleteModal, Modal } from "@componentsReact";
-import { delStationRolesService, patchStationRolesService, postStationRolesService} from "@services";
+import {
+    delStationRolesService,
+    patchStationRolesService,
+    postStationRolesService,
+} from "@services";
 import { useApi, useAuth, useFormReducer } from "@hooks";
 import { apiOkStatuses, showModal } from "@utils";
-import { Errors, ErrorResponse, ExtendedStationStatus, StationStatus} from "@types";
+import {
+    Errors,
+    ErrorResponse,
+    ExtendedStationStatus,
+    StationStatus,
+} from "@types";
 
 interface StationRoleModalProps {
     Role: StationStatus | undefined;
     modalType: string;
     reFetch: () => void;
-    setStateModal: React.Dispatch<React.SetStateAction< { show: boolean; title: string; type: "add" | "edit" | "none" } | undefined>>;
+    setStateModal: React.Dispatch<
+        React.SetStateAction<
+            | { show: boolean; title: string; type: "add" | "edit" | "none" }
+            | undefined
+        >
+    >;
     setRole: React.Dispatch<React.SetStateAction<StationStatus | undefined>>;
 }
 
@@ -25,13 +39,21 @@ const StationRoleModal = ({
 
     const [loading, setLoading] = useState<boolean>(false);
     const [msg, setMsg] = useState<
-        { status: number; msg: string; errors?: Errors } | undefined
+        | {
+              status: number;
+              msg: string;
+              errors?: Errors;
+              scope?: "form" | "action";
+          }
+        | undefined
     >(undefined);
 
     const [modals, setModals] = useState<
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
         | undefined
     >(undefined);
+
+    const isSuccess = apiOkStatuses.includes(Number(msg?.status));
 
     const { formState, dispatch } = useFormReducer({
         id: "",
@@ -61,11 +83,13 @@ const StationRoleModal = ({
                     status: res.statusCode,
                     msg: res.response.type,
                     errors: res.response,
+                    scope: "form",
                 });
             } else {
                 setMsg({
                     status: res.statusCode,
                     msg: "Station Role added successfully",
+                    scope: "form",
                 });
             }
         } catch (err) {
@@ -89,11 +113,13 @@ const StationRoleModal = ({
                     status: res.statusCode,
                     msg: res.response.type,
                     errors: res.response,
+                    scope: "form",
                 });
             } else {
                 setMsg({
                     status: res.statusCode,
                     msg: "Station Role edited successfully",
+                    scope: "form",
                 });
             }
         } catch (err) {
@@ -115,12 +141,14 @@ const StationRoleModal = ({
                 setMsg({
                     status: res.statusCode,
                     msg: res.msg,
+                    scope: "action",
                 });
             } else {
                 setMsg({
                     status: res.statusCode,
                     msg: res.response.type,
                     errors: res.response,
+                    scope: "action",
                 });
             }
         } catch (err) {
@@ -229,7 +257,7 @@ const StationRoleModal = ({
                         );
                     })}
                 </div>
-                <Alert msg={msg} />
+                {msg?.scope !== "action" && <Alert msg={msg} />}
                 {loading && (
                     <div className="w-full text-center">
                         <span className="loading loading-spinner loading-lg self-center"></span>
@@ -240,17 +268,15 @@ const StationRoleModal = ({
                         <button
                             className="btn btn-error w-5/12"
                             type="button"
-                            disabled={
-                                apiOkStatuses.includes(Number(msg?.status)) ||
-                                loading
-                            }
-                            onClick={() =>
+                            disabled={isSuccess || loading}
+                            onClick={() => {
+                                setMsg(undefined);
                                 setModals({
                                     show: true,
                                     title: "ConfirmDelete",
                                     type: "edit",
-                                })
-                            }
+                                });
+                            }}
                         >
                             Remove
                         </button>
@@ -258,10 +284,7 @@ const StationRoleModal = ({
                     <button
                         type="submit"
                         className="btn btn-success w-5/12"
-                        disabled={
-                            apiOkStatuses.includes(Number(msg?.status)) ||
-                            loading
-                        }
+                        disabled={isSuccess || loading}
                     >
                         Submit
                     </button>
@@ -273,12 +296,8 @@ const StationRoleModal = ({
                     loading={loading}
                     confirmRemove={() => delRole()}
                     closeModal={() => {
-                        setModals({
-                            show: false,
-                            title: "",
-                            type: "edit",
-                        });
-                        setMsg(undefined);
+                        setModals(undefined);
+                        if (isSuccess) handleCloseModal();
                     }}
                 />
             )}

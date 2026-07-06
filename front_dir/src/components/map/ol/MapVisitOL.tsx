@@ -18,6 +18,7 @@ import {
     iconClass,
     getCachedColoredIcon,
     getIconScale,
+    getLastZoom,
 } from "@olUtils";
 
 import { StationData } from "@types";
@@ -173,9 +174,7 @@ const MapVisitOL: React.FC<MapVisitOLProps> = ({
                     coord[0],
                     coord[1] + offsetY,
                 ];
-                const currentZoom =
-                    currentView.getZoom() ??
-                    parseInt(localStorage.getItem("lastZoomLevel") ?? "8");
+                const currentZoom = currentView.getZoom() ?? getLastZoom();
                 popupOverlay.current?.setPosition(coord);
                 currentView.animate({
                     center: offsetCenter,

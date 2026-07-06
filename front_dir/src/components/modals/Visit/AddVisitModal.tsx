@@ -10,7 +10,7 @@ import {
     StationPeopleModal,
 } from "@componentsReact";
 
-import { useApi, useAuth, useFormReducer } from "@hooks";
+import { useApi, useAuth, useClickOutside, useFormReducer } from "@hooks";
 import {
     ErrorResponse,
     Errors,
@@ -84,6 +84,9 @@ const AddVisitModal = ({
     const [showMenu, setShowMenu] = useState<
         { type: string; show: boolean } | undefined
     >(undefined);
+
+    const openMenuRef = useRef<HTMLDivElement>(null);
+    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
 
     const [fileType, setFileType] = useState<string | undefined>(undefined);
 
@@ -476,7 +479,15 @@ const AddVisitModal = ({
                             );
 
                             return (
-                                <div className="flex flex-col" key={index}>
+                                <div
+                                    className="flex flex-col"
+                                    key={index}
+                                    ref={
+                                        showMenu?.show && showMenu.type === key
+                                            ? openMenuRef
+                                            : undefined
+                                    }
+                                >
                                     {errorBadge && (
                                         <div className="badge badge-error gap-2 self-end -mb-2 z-[1]">
                                             {errorBadge.code.toUpperCase()}

@@ -42,11 +42,15 @@ const StationTypesModal = ({
 
     const [loading, setLoading] = useState<boolean>(false);
     const [msg, setMsg] = useState<
-        { status: number; msg: string; errors?: Errors } | undefined
+        | {
+              status: number;
+              msg: string;
+              errors?: Errors;
+              scope?: "form" | "action";
+          }
+        | undefined
     >(undefined);
-    const [deleteMsg, setDeleteMsg] = useState<
-        { status: number; msg: string; errors?: Errors } | undefined
-    >(undefined);
+    const isSuccess = apiOkStatuses.includes(Number(msg?.status));
 
     const [modals, setModals] = useState<
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
@@ -57,12 +61,12 @@ const StationTypesModal = ({
         id: string;
         name: string;
         search_icon_on_assets_folder: string;
-        actual_image: string | File;
+        image: string | File;
     }>({
         id: "",
         name: "",
         search_icon_on_assets_folder: "",
-        actual_image: "",
+        image: "",
     });
 
     function base64ToFile(
@@ -103,7 +107,7 @@ const StationTypesModal = ({
             const formData = new FormData();
 
             formData.append("name", formState.name);
-            formData.append("icon", formState.actual_image);
+            formData.append("icon", formState.image);
 
             const res = await postStationTypesService<
                 ExtendedStationStatus | ErrorResponse
@@ -113,11 +117,13 @@ const StationTypesModal = ({
                     status: res.statusCode,
                     msg: res.response.type,
                     errors: res.response,
+                    scope: "form",
                 });
             } else {
                 setMsg({
                     status: res.statusCode,
                     msg: "Station Type added successfully",
+                    scope: "form",
                 });
             }
         } catch (err) {
@@ -133,15 +139,14 @@ const StationTypesModal = ({
 
             const formData = new FormData();
 
-            const imageBase64 =
-                (StationType?.actual_image as string) ?? undefined;
+            const imageBase64 = (StationType?.image as string) ?? undefined;
 
             const imageFile =
-                typeof formState.actual_image === "string"
+                typeof formState.image === "string"
                     ? imageBase64
                         ? base64ToFile(imageBase64, "image.jpg", "image/jpeg")
-                        : formState.actual_image
-                    : formState.actual_image;
+                        : formState.image
+                    : formState.image;
 
             formData.append("name", formState.name);
             formData.append("icon", imageFile);
@@ -154,11 +159,13 @@ const StationTypesModal = ({
                     status: res.statusCode,
                     msg: res.response.type,
                     errors: res.response,
+                    scope: "form",
                 });
             } else {
                 setMsg({
                     status: res.statusCode,
                     msg: "Station Type edited successfully",
+                    scope: "form",
                 });
             }
         } catch (err) {
@@ -177,15 +184,17 @@ const StationTypesModal = ({
                 Number(StationType?.id),
             );
             if ("status" in res && res.status === "success") {
-                setDeleteMsg({
+                setMsg({
                     status: res.statusCode,
                     msg: res.msg,
+                    scope: "action",
                 });
             } else {
-                setDeleteMsg({
+                setMsg({
                     status: res.statusCode,
                     msg: res.response.type,
                     errors: res.response,
+                    scope: "action",
                 });
             }
         } catch (err) {
@@ -246,7 +255,7 @@ const StationTypesModal = ({
                         );
                         const optionalFields: string[] = [];
                         if (
-                            key !== "actual_image" &&
+                            key !== "image" &&
                             key !== "search_icon_on_assets_folder"
                         ) {
                             return (
@@ -306,27 +315,24 @@ const StationTypesModal = ({
                                     </label>
                                 </div>
                             );
-                        } else if (key === "actual_image" && formState[key]) {
+                        } else if (key === "image" && formState[key]) {
                             const base64Str = "data:image/png;base64,";
                             return (
                                 <div
                                     key={key + index}
                                     className="flex items-center gap-2 w-full"
                                 >
-                                    {formState.actual_image instanceof File ? (
+                                    {formState.image instanceof File ? (
                                         <img
                                             src={URL.createObjectURL(
-                                                formState.actual_image,
+                                                formState.image,
                                             )}
                                             alt=""
                                             className="w-full h-32 object-contain"
                                         />
                                     ) : (
                                         <img
-                                            src={
-                                                base64Str +
-                                                formState.actual_image
-                                            }
+                                            src={base64Str + formState.image}
                                             alt=""
                                             className="w-full h-32 object-contain"
                                         />
@@ -339,7 +345,7 @@ const StationTypesModal = ({
                         <div className="flex items-center gap-2">
                             <input
                                 type="file"
-                                name="actual_image"
+                                name="image"
                                 accept=".png,.jpg,.jpeg"
                                 onChange={(e) => {
                                     if (
@@ -349,7 +355,7 @@ const StationTypesModal = ({
                                         dispatch({
                                             type: "change_value",
                                             payload: {
-                                                inputName: "actual_image",
+                                                inputName: "image",
                                                 inputValue: e.target.files[0],
                                             },
                                         });
@@ -360,7 +366,7 @@ const StationTypesModal = ({
                         </div>
                     }
                 </div>
-                <Alert msg={msg} />
+                {msg?.scope !== "action" && <Alert msg={msg} />}
                 {loading && (
                     <div className="w-full text-center">
                         <span className="loading loading-spinner loading-lg self-center"></span>
@@ -371,20 +377,15 @@ const StationTypesModal = ({
                         <button
                             className="btn btn-error w-5/12"
                             type="button"
-                            disabled={
-                                apiOkStatuses.includes(
-                                    Number(deleteMsg?.status),
-                                ) ||
-                                apiOkStatuses.includes(Number(msg?.status)) ||
-                                loading
-                            }
-                            onClick={() =>
+                            disabled={isSuccess || loading}
+                            onClick={() => {
+                                setMsg(undefined);
                                 setModals({
                                     show: true,
                                     title: "ConfirmDelete",
                                     type: "edit",
-                                })
-                            }
+                                });
+                            }}
                         >
                             Remove
                         </button>
@@ -392,11 +393,7 @@ const StationTypesModal = ({
                     <button
                         type="submit"
                         className="btn btn-success w-5/12"
-                        disabled={
-                            apiOkStatuses.includes(Number(deleteMsg?.status)) ||
-                            apiOkStatuses.includes(Number(msg?.status)) ||
-                            loading
-                        }
+                        disabled={isSuccess || loading}
                     >
                         Submit
                     </button>
@@ -404,16 +401,12 @@ const StationTypesModal = ({
             </form>
             {modals && modals?.title === "ConfirmDelete" && (
                 <ConfirmDeleteModal
-                    msg={deleteMsg}
+                    msg={msg}
                     loading={loading}
                     confirmRemove={() => delStatus()}
                     closeModal={() => {
-                        setModals({
-                            show: false,
-                            title: "",
-                            type: "edit",
-                        });
-                        setMsg(undefined);
+                        setModals(undefined);
+                        if (isSuccess) handleCloseModal();
                     }}
                 />
             )}

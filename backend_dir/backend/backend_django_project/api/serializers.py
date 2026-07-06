@@ -13,7 +13,7 @@ import decimal
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 import country_converter as coco
-from pgamit.Utils import ecef2lla, lla2ecef
+from geode.Utils import ecef2lla, lla2ecef
 
 
 def validate_file_size(value):
@@ -43,6 +43,19 @@ class DummySerializer(serializers.Serializer):
         Used to bypass DRF Spectacular's error when a serializer is not defined for a model
     """
     pass
+
+
+class StationRefSerializer(serializers.Serializer):
+    """A single station reference (network_code + station_code). Casing is kept as-is
+    because geode looks up the station with the exact DB casing."""
+    network_code = serializers.CharField()
+    station_code = serializers.CharField()
+
+
+class BulkDownloadTimeSeriesRequestSerializer(serializers.Serializer):
+    """Body for POST /api/time-series/bulk-download. The front sends the final list of
+    stations (earthquakes/layers/filters are already resolved on the front)."""
+    stations = StationRefSerializer(many=True, allow_empty=False)
 
 
 class MonumentTypeSerializer(serializers.ModelSerializer):
@@ -1010,6 +1023,18 @@ class AntennaSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Antennas
         fields = '__all__'
+
+
+class DistinctAntennaCodeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Antennas
+        fields = ['antenna_code']
+
+
+class DistinctRadomeCodeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Antennas
+        fields = ['radome_code']
 
 
 class AprCoordsSerializer(serializers.ModelSerializer):

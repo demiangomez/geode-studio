@@ -1,11 +1,7 @@
-import { useMemo, useState } from "react";
-import { Spinner } from "@componentsReact";
-
-import { ClipboardDocumentIcon } from "@heroicons/react/24/outline";
+import { useMemo } from "react";
+import { Spinner, CopyButton } from "@componentsReact";
 
 import { formatValue, isValidDate } from "@utils";
-
-import { usePopup } from "@hooks";
 
 import { StationEvents } from "@types";
 
@@ -24,21 +20,6 @@ const EventsTable = ({
     events,
     onClickFunction,
 }: Props) => {
-    const { showPopup, show } = usePopup(2000);
-
-    const [copiedEventId, setCopiedEventId] = useState<string | null>(null);
-
-    const copyText = async (event: StationEvents) => {
-        try {
-            await navigator.clipboard.writeText(event.description ?? "");
-            setCopiedEventId(event.event_id);
-            show();
-        } catch (error) {
-            alert("Failed to copy text");
-            console.error(error);
-        }
-    };
-
     const memoizedBody = useMemo(() => {
         return body?.map(
             (row) => row.slice(1).map((data) => formatValue(data)), // Remove the first element of the row bcs it's the id
@@ -118,23 +99,12 @@ const EventsTable = ({
                                                 {data}{" "}
                                             </span>
                                             {isDescription && (
-                                                <div
-                                                    className={` ${showPopup && copiedEventId === event?.event_id ? "tooltip tooltip-open ml-3" : "inline-block ml-3"}`}
-                                                    data-tip="Copied !"
-                                                >
-                                                    <div className="w-full flex items-center justify-start">
-                                                        <ClipboardDocumentIcon
-                                                            className="size-6 xl:flex rounded-md transition-all duration-75 btn-ghost hover:scale-125"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-
-                                                                copyText(
-                                                                    event as StationEvents,
-                                                                );
-                                                            }}
-                                                        />
-                                                    </div>
-                                                </div>
+                                                <span onClick={(e) => e.stopPropagation()} className="ml-3">
+                                                    <CopyButton
+                                                        text={event?.description ?? ""}
+                                                        iconClassName="size-6"
+                                                    />
+                                                </span>
                                             )}
                                         </td>
                                     );

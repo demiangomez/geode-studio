@@ -1,0 +1,9 @@
+.git
+node_modules
+dist
+cesium-assets
+public/cesium-assets
+stats.json
+.claude
+.agents
+.gemini

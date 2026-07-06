@@ -1,8 +1,18 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Spinner, Toast } from "@componentsReact";
+import React, {
+    useState,
+    useEffect,
+    useCallback,
+    useRef,
+    useMemo,
+} from "react";
+import { CopyButton, Spinner, Toast } from "@componentsReact";
 
-import { useAuth, useApi, usePopup } from "@hooks";
-import { ArrowDownTrayIcon, ClipboardIcon } from "@heroicons/react/24/outline";
+import { useAuth, useApi } from "@hooks";
+import {
+    ArrowDownTrayIcon,
+    InformationCircleIcon,
+    XMarkIcon,
+} from "@heroicons/react/24/outline";
 
 import { formattedDates } from "@utils";
 import { removeEarthquakesAffectedStationsCache } from "@services";
@@ -13,23 +23,22 @@ import {
     ErrorResponse,
 } from "@types";
 
+import { useMapStore } from "@store";
+
 interface EarthQuakeScrollerProps {
-    forceSyncMapScroller: number;
     earthquakes: EarthquakeData[];
     earthquakeChosen: EarthquakeData | undefined;
-    handleEarthquakeState: (earthquake: EarthquakeData) => void;
+    handleEarthquakeState: (
+        earthquake: EarthquakeData,
+        isMulti?: boolean,
+    ) => void;
     handleEarthquakeClose: () => void;
     scrollerCondition: boolean;
     spinner: boolean;
     earthquakeAffectedStations: StationsAffectedServiceData | undefined;
-    setToggleEarthquakeMask: React.Dispatch<React.SetStateAction<boolean>>;
-    setToggleCoseismicVector: React.Dispatch<React.SetStateAction<boolean>>;
-    vectorMagnitude: number;
-    setVectorMagnitude: React.Dispatch<React.SetStateAction<number>>;
 }
 
 const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
-    forceSyncMapScroller,
     earthquakes,
     earthquakeChosen,
     handleEarthquakeState,
@@ -37,114 +46,98 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
     spinner,
     scrollerCondition,
     earthquakeAffectedStations,
-    setToggleEarthquakeMask,
-    setToggleCoseismicVector,
-    vectorMagnitude,
-    setVectorMagnitude,
 }) => {
+    const forceSyncMapScroller = useMapStore((s) => s.forceSyncScrollerMap);
+    const setToggleEarthquakeMask = useMapStore(
+        (s) => s.setToggleEarthquakeMask,
+    );
+    const setToggleCoseismicVector = useMapStore(
+        (s) => s.setToggleCoseismicVector,
+    );
+    const selectedEarthquakes = useMapStore((s) => s.selectedEarthquakes);
+    const setSelectedEarthquakes = useMapStore((s) => s.setSelectedEarthquakes);
+    const setChosenEarthquake = useMapStore((s) => s.setChosenEarthquake);
+    const multiSelectMode = useMapStore((s) => s.multiSelectMode);
+    const setMultiSelectMode = useMapStore((s) => s.setMultiSelectMode);
+    const setTemporalFilter = useMapStore((s) => s.setTemporalFilter);
+
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
-    const disableDisplacements =
-        earthquakeAffectedStations?.coseismic_displacements &&
-        earthquakeAffectedStations?.coseismic_displacements.length === 0;
+
     //---------------------------------------------------------UseState-------------------------------------------------------------
-    const [forceRenderContainer, setForceRenderContainer] = useState(0);
+    const [currentSort, setCurrentSort] = useState<string>("none");
 
-    const [toggleState, setToggleState] = useState<boolean>(true);
-
-    const [toggleVector, setToggleVector] = useState<boolean>(false);
-
-    const [sortedEarthquakes, setSortedEarthquakes] = useState<
-        EarthquakeData[]
-    >([]);
-
-    const [toastVisible, setToastVisible] = useState(false);
-    const [toastMessage, setToastMessage] = useState("");
-    const [toastError, setToastError] = useState(false);
+    const [toast, setToast] = useState({
+        visible: false,
+        message: "",
+        error: false,
+    });
 
     const toastTimerRef = useRef<number | null>(null);
 
-    const { show, showPopup } = usePopup(2000);
-
-    const [copyId, setCopyId] = useState<string | null>(null);
-
     //---------------------------------------------------------Funciones-------------------------------------------------------------
-    const isStateTrue = (earthquake: EarthquakeData) => {
-        if (earthquakeChosen?.api_id === earthquake.api_id) {
-            return true;
+
+    const selectedIds = useMemo(
+        () => new Set(selectedEarthquakes.map((eq) => eq.api_id)),
+        [selectedEarthquakes],
+    );
+
+    const selectedMap = useMemo(
+        () => new Map(selectedEarthquakes.map((eq) => [eq.api_id, eq])),
+        [selectedEarthquakes],
+    );
+
+    const isStateTrue = useCallback(
+        (earthquake: EarthquakeData) => {
+            return selectedIds.has(earthquake.api_id);
+        },
+        [selectedIds],
+    );
+
+    const handleToggleChange = (
+        e: React.ChangeEvent<HTMLInputElement>,
+        eq?: EarthquakeData,
+    ) => {
+        if (!eq) return;
+        const isChecked = e.target.checked;
+
+        const updatedList = selectedEarthquakes.map((item) =>
+            item.api_id === eq.api_id
+                ? { ...item, ui_toggle_mask: isChecked }
+                : item,
+        );
+        setSelectedEarthquakes(updatedList);
+
+        // If this is also the chosen one, sync it too
+        if (earthquakeChosen?.api_id === eq.api_id) {
+            setToggleEarthquakeMask(isChecked);
+            setChosenEarthquake({
+                ...earthquakeChosen,
+                ui_toggle_mask: isChecked,
+            });
         }
-        return false;
     };
 
-    const handleToggleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleToggleVector = (
+        e: React.ChangeEvent<HTMLInputElement>,
+        eq?: EarthquakeData,
+    ) => {
+        if (!eq) return;
         const isChecked = e.target.checked;
-        setToggleState(isChecked);
-        setToggleEarthquakeMask(isChecked);
 
-        try {
-            const stored = localStorage.getItem("earthquakeChosen");
-            const parsed = stored ? JSON.parse(stored) : null;
-            if (
-                parsed &&
-                earthquakeChosen &&
-                parsed.api_id === earthquakeChosen.api_id
-            ) {
-                const merged = { ...parsed, ui_toggle_mask: isChecked };
-                localStorage.setItem(
-                    "earthquakeChosen",
-                    JSON.stringify(merged),
-                );
-            } else if (earthquakeChosen) {
-                const merged = {
-                    ...earthquakeChosen,
-                    ui_toggle_mask: isChecked,
-                };
-                localStorage.setItem(
-                    "earthquakeChosen",
-                    JSON.stringify(merged),
-                );
-            }
-        } catch (err) {
-            console.error(
-                "Failed to persist earthquakeChosen toggle mask",
-                err,
-            );
-        }
-    };
+        const updatedList = selectedEarthquakes.map((item) =>
+            item.api_id === eq.api_id
+                ? { ...item, ui_toggle_vector: isChecked }
+                : item,
+        );
+        setSelectedEarthquakes(updatedList);
 
-    const handleToggleVector = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const isChecked = e.target.checked;
-        setToggleVector(isChecked);
-        setToggleCoseismicVector(isChecked);
-
-        try {
-            const stored = localStorage.getItem("earthquakeChosen");
-            const parsed = stored ? JSON.parse(stored) : null;
-            if (
-                parsed &&
-                earthquakeChosen &&
-                parsed.api_id === earthquakeChosen.api_id
-            ) {
-                const merged = { ...parsed, ui_toggle_vector: isChecked };
-                localStorage.setItem(
-                    "earthquakeChosen",
-                    JSON.stringify(merged),
-                );
-            } else if (earthquakeChosen) {
-                const merged = {
-                    ...earthquakeChosen,
-                    ui_toggle_vector: isChecked,
-                };
-                localStorage.setItem(
-                    "earthquakeChosen",
-                    JSON.stringify(merged),
-                );
-            }
-        } catch (err) {
-            console.error(
-                "Failed to persist earthquakeChosen toggle vector",
-                err,
-            );
+        if (earthquakeChosen?.api_id === eq.api_id) {
+            setToggleCoseismicVector(isChecked);
+            setChosenEarthquake({
+                ...earthquakeChosen,
+                ui_toggle_vector: isChecked,
+            });
         }
     };
 
@@ -187,65 +180,53 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                     api,
                 );
             if (res?.statusCode === 201) {
-                setToastMessage("Earthquake cache cleared successfully.");
+                setToast({
+                    visible: true,
+                    message: "Earthquake cache cleared successfully.",
+                    error: false,
+                });
             }
-            setToastError(false);
-            setToastVisible(true);
-
-            if (toastTimerRef.current)
-                window.clearTimeout(toastTimerRef.current);
-            toastTimerRef.current = window.setTimeout(() => {
-                setToastVisible(false);
-                toastTimerRef.current = null;
-            }, 1500);
         } catch (error) {
-            setToastMessage("Failed to clear earthquake cache.");
-            setToastError(true);
-            setToastVisible(true);
-
-            if (toastTimerRef.current)
-                window.clearTimeout(toastTimerRef.current);
-            toastTimerRef.current = window.setTimeout(() => {
-                setToastVisible(false);
-                toastTimerRef.current = null;
-            }, 3000);
-
-            console.error(error);
+            setToast({
+                visible: true,
+                message: "Failed to clear earthquake cache.",
+                error: true,
+            });
         }
     };
 
     //---------------------------------------------------------UseCallback-------------------------------------------------------------
-    const sortEarthquakes = useCallback(
-        (sortBy: string) => {
-            const newSorted = [...earthquakes];
-            if (sortBy === "date-") {
-                newSorted.sort(
-                    (a, b) =>
-                        new Date(a.date).getTime() - new Date(b.date).getTime(),
-                );
-            } else if (sortBy === "date+") {
-                newSorted.sort(
-                    (a, b) =>
-                        new Date(b.date).getTime() - new Date(a.date).getTime(),
-                );
-            } else if (sortBy === "mag+") {
-                newSorted.sort((a, b) => b.mag - a.mag);
-            } else if (sortBy === "depth+") {
-                newSorted.sort((a, b) => b.depth - a.depth);
-            }
-            setSortedEarthquakes(newSorted);
-        },
-        [earthquakes],
-    );
+    const sortedList = useMemo(() => {
+        if (!earthquakes) return [];
+
+        const newSorted = [...earthquakes];
+
+        if (currentSort === "date-") {
+            newSorted.sort(
+                (a, b) =>
+                    new Date(a.date).getTime() - new Date(b.date).getTime(),
+            );
+        } else if (currentSort === "date+") {
+            newSorted.sort(
+                (a, b) =>
+                    new Date(b.date).getTime() - new Date(a.date).getTime(),
+            );
+        } else if (currentSort === "mag+") {
+            newSorted.sort((a, b) => b.mag - a.mag);
+        } else if (currentSort === "depth+") {
+            newSorted.sort((a, b) => b.depth - a.depth);
+        }
+
+        return newSorted.sort((a, b) => {
+            const aState = selectedIds.has(a.api_id);
+            const bState = selectedIds.has(b.api_id);
+            if (aState && !bState) return -1;
+            if (!aState && bState) return 1;
+            return 0;
+        });
+    }, [earthquakes, currentSort, selectedIds]);
 
     //---------------------------------------------------------UseEffect-------------------------------------------------------------
-    useEffect(() => {
-        setForceRenderContainer((prev) => prev + 1);
-    }, [earthquakeChosen, sortedEarthquakes]);
-
-    useEffect(() => {
-        setSortedEarthquakes(earthquakes);
-    }, [earthquakes]);
 
     useEffect(() => {
         return () => {
@@ -272,31 +253,41 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                     typeof parsed.ui_toggle_vector === "boolean"
                         ? parsed.ui_toggle_vector
                         : false;
-                setVectorMagnitude(vectorMagnitude);
-                setToggleState(mask);
-                setToggleVector(vector);
-                setToggleEarthquakeMask(mask);
-                setToggleCoseismicVector(vector);
+
+                // Sync the individual toggle in selectedEarthquakes if present
+                setSelectedEarthquakes(
+                    selectedEarthquakes.map((eq) =>
+                        eq.api_id === earthquakeChosen.api_id
+                            ? {
+                                ...eq,
+                                ui_toggle_mask: mask,
+                                ui_toggle_vector: vector,
+                            }
+                            : eq,
+                    ),
+                );
+
+                useMapStore.setState({
+                    toggleStateEarthquakeMask: mask,
+                    toggleCoseismicVector: vector,
+                });
             } else {
-                setVectorMagnitude(vectorMagnitude);
-                setToggleState(true);
-                setToggleVector(false);
-                setToggleEarthquakeMask(true);
-                setToggleCoseismicVector(false);
+                useMapStore.setState({
+                    toggleStateEarthquakeMask: true,
+                    toggleCoseismicVector: false,
+                });
             }
         } catch (err) {
             console.error("Failed to restore earthquakeChosen toggles", err);
         }
     }, [earthquakeChosen]);
 
-    //---------------------------------------------------------Return-------------------------------------------------------------
-
     return (
         <>
             {scrollerCondition ? (
                 <div
                     id="controller"
-                    className="z-[100000] max-h-[92vh] w-[20vw] scrollbar-thin overflow-y-auto  overflow-x-hidden absolute top-0 left-0"
+                    className="z-[100002] max-h-[92vh] w-[20vw] scrollbar-thin overflow-y-auto  overflow-x-hidden absolute top-0 left-0"
                 >
                     <div className="overflow-y-auto min-h-[92vh] max-h-full h-auto bg-white rounded-md border-t border-l border-b border-gray-400 overflow-x-hidden">
                         {spinner ? (
@@ -305,111 +296,237 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                             </div>
                         ) : (
                             <div className="flex justify-end mr-2">
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    strokeWidth={1.5}
-                                    stroke="currentColor"
+                                <XMarkIcon
                                     className="size-6 cursor-pointer mt-2 mr-1 hover:bg-gray-200 hover:rounded-full hover:shadow-md"
                                     onClick={() => {
                                         handleEarthquakeClose();
                                     }}
-                                >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        d="M6 18 18 6M6 6l12 12"
-                                    />
-                                </svg>
+                                />
                             </div>
                         )}
                         {!spinner && (
-                            <div className="flex justify-between mb-3 mr-3 ml-3">
-                                <div className="">
-                                    <div className="font-bold text-xl">
-                                        <h2>Search results</h2>
+                            <div className="p-4 border-b border-gray-100 bg-gray-50/50">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h2 className="font-bold text-lg text-gray-800">
+                                            Earthquakes
+                                        </h2>
+                                        <p className="text-xs text-gray-500">
+                                            {earthquakes.length} results found
+                                        </p>
                                     </div>
-                                    <div className="">
-                                        {earthquakes.length + " earthquakes."}
+                                    <div className="flex flex-col items-end gap-1">
+                                        <button
+                                            onClick={deleteCacheEarthquakes}
+                                            className="text-[10px] text-gray-400 hover:underline hover:text-red-500 transition-all uppercase tracking-wider font-bold"
+                                        >
+                                            Clear Cache
+                                        </button>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <div className="group relative">
+                                                <InformationCircleIcon className="size-3 text-gray-400 cursor-help" />
+                                                <div className="absolute right-0 bottom-full mb-2 hidden group-hover:block w-48 p-2 bg-gray-800 text-white text-[10px] rounded shadow-xl z-[100003]">
+                                                    You can also use CTRL +
+                                                    Click to select multiple
+                                                    earthquakes.
+                                                </div>
+                                            </div>
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase">
+                                                Multi
+                                            </span>
+                                            <input
+                                                type="checkbox"
+                                                checked={multiSelectMode}
+                                                onChange={() => {
+                                                    const nextMode =
+                                                        !multiSelectMode;
+                                                    setMultiSelectMode(
+                                                        nextMode,
+                                                    );
+                                                    if (
+                                                        !nextMode &&
+                                                        selectedEarthquakes.length >
+                                                        1
+                                                    ) {
+                                                        const lastOne =
+                                                            selectedEarthquakes[
+                                                            selectedEarthquakes.length -
+                                                            1
+                                                            ];
+                                                        setSelectedEarthquakes([
+                                                            lastOne,
+                                                        ]);
+                                                    }
+                                                }}
+                                                onClick={(e) =>
+                                                    e.stopPropagation()
+                                                }
+                                                style={{
+                                                    borderRadius: "50px",
+                                                }}
+                                                className="toggle toggle-md"
+                                            />
+                                        </div>
                                     </div>
-                                    <div
-                                        className="cursor-pointer underline hover:text-black"
-                                        onClick={() => {
-                                            deleteCacheEarthquakes();
-                                        }}
-                                    >
-                                        {"Clear cache"}
+                                </div>
+
+                                <div className="flex flex-col gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1">
+                                            <select
+                                                value={currentSort}
+                                                className="w-full text-xs border border-gray-200 bg-white rounded-lg p-2 focus:ring-1 focus:ring-[#ED8936] focus:border-[#ED8936] outline-none transition-all shadow-sm"
+                                                onChange={(e) =>
+                                                    setCurrentSort(
+                                                        e.target.value,
+                                                    )
+                                                }
+                                            >
+                                                <option value="none">
+                                                    Sort by...
+                                                </option>
+                                                <option value="date+">
+                                                    Newest First
+                                                </option>
+                                                <option value="date-">
+                                                    Oldest First
+                                                </option>
+                                                <option value="mag+">
+                                                    Highest Magnitude
+                                                </option>
+                                                <option value="depth+">
+                                                    Deepest
+                                                </option>
+                                            </select>
+                                        </div>
                                     </div>
-                                    {toastVisible && (
-                                        <Toast
-                                            msg={toastMessage}
-                                            error={toastError}
-                                        />
+
+                                    {multiSelectMode && (
+                                        <div className="flex gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedEarthquakes(
+                                                        earthquakes.map(
+                                                            (eq) => ({
+                                                                ...eq,
+                                                                ui_toggle_mask:
+                                                                    true,
+                                                            }),
+                                                        ),
+                                                    );
+                                                    if (
+                                                        earthquakes.length > 0
+                                                    ) {
+                                                        setChosenEarthquake(
+                                                            earthquakes[0],
+                                                        );
+                                                        setToggleEarthquakeMask(
+                                                            true,
+                                                        );
+                                                    }
+                                                }}
+                                                className="flex-1 text-[10px] font-bold uppercase tracking-tight bg-white border border-gray-200 py-1.5 px-2 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm text-gray-600"
+                                            >
+                                                Select All
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedEarthquakes([]);
+                                                    setChosenEarthquake(
+                                                        undefined,
+                                                    );
+                                                    setToggleEarthquakeMask(
+                                                        false,
+                                                    );
+                                                    setToggleCoseismicVector(
+                                                        false,
+                                                    );
+                                                    setTemporalFilter({
+                                                        enabled: false,
+                                                        dateStart: null,
+                                                        dateEnd: null,
+                                                        hiddenPoints: false,
+                                                        exactDate: false,
+                                                    });
+                                                }}
+                                                className="flex-1 text-[10px] font-bold uppercase tracking-tight bg-white border border-gray-200 py-1.5 px-2 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm text-gray-600"
+                                            >
+                                                Clear All
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
-                                <div className="flex justify-center items-start flex-col">
-                                    <div>
-                                        <span>Sort by</span>
-                                    </div>
-                                    <div>
-                                        <select
-                                            className="border bg-white border-gray-400 rounded-md p-1"
-                                            onChange={(e) =>
-                                                sortEarthquakes(e.target.value)
-                                            }
-                                        >
-                                            <option value="none">
-                                                Select an option
-                                            </option>
-                                            <option value="date+">
-                                                Newest
-                                            </option>
-                                            <option value="date-">
-                                                Oldest
-                                            </option>
-                                            <option value="mag+">
-                                                Magnitude
-                                            </option>
-                                            <option value="depth+">
-                                                Depth
-                                            </option>
-                                        </select>
-                                    </div>
-                                </div>
+
+                                {toast.visible && (
+                                    <Toast
+                                        msg={toast.message}
+                                        error={toast.error}
+                                        duration={toast.error ? 3000 : 1500}
+                                        onClose={() =>
+                                            setToast({
+                                                visible: false,
+                                                message: "",
+                                                error: false,
+                                            })
+                                        }
+                                    />
+                                )}
                             </div>
                         )}
                         {!spinner &&
-                            sortedEarthquakes
-                                ?.sort((a, b) => {
-                                    const aState = isStateTrue(a);
-                                    const bState = isStateTrue(b);
-                                    if (aState && !bState) return -1;
-                                    if (!aState && bState) return 1;
-                                    return 0;
-                                })
-                                .map((earthquake) => (
+                            sortedList.map((earthquake) => {
+                                const isSelected = isStateTrue(earthquake);
+                                const selectedEq = selectedMap.get(
+                                    earthquake.api_id,
+                                );
+
+                                const itemToggle = isSelected
+                                    ? (selectedEq?.ui_toggle_mask ?? true)
+                                    : true;
+                                const itemVector = isSelected
+                                    ? (selectedEq?.ui_toggle_vector ?? false)
+                                    : false;
+                                const eqData =
+                                    earthquakeAffectedStations
+                                        ?.individual_data?.[
+                                    earthquake.api_id.toString()
+                                    ];
+                                const disableDisplacements =
+                                    eqData?.coseismic_displacements &&
+                                    eqData?.coseismic_displacements.length ===
+                                    0;
+
+                                return (
                                     <div
                                         key={
-                                            forceRenderContainer +
                                             earthquake.api_id +
                                             forceSyncMapScroller
                                         }
-                                        onClick={() => {
-                                            handleEarthquakeState(earthquake);
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (e.ctrlKey || e.metaKey) {
+                                                e.preventDefault();
+                                            }
+
+                                            handleEarthquakeState(
+                                                earthquake,
+                                                e.ctrlKey ||
+                                                e.metaKey ||
+                                                multiSelectMode,
+                                            );
                                         }}
                                         className={
-                                            isStateTrue(earthquake)
+                                            isSelected
                                                 ? "label cursor-pointer border border-gray-950 bg-slate-400 flex items-center justify-start flex-row p-2"
                                                 : "label cursor-pointer border border-gray-400 flex items-center justify-start flex-row p-2"
                                         }
                                         id={earthquake.api_id.toString()}
                                     >
-                                        <div className="flex items-start gap-4 m-2 mr-6">
+                                        <div className="flex items-start gap-4 m-2 mr-6 w-full">
                                             <div>
                                                 {earthquake.mag.toFixed(1)}
                                             </div>
-                                            <div className="flex flex-col">
+                                            <div className="flex flex-col w-full px-4">
                                                 <span className="font-bold mr-2 break-words">
                                                     {earthquake.location}
                                                 </span>
@@ -427,7 +544,7 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                 <div>
                                                     <span>{earthquake.id}</span>
                                                 </div>
-                                                {isStateTrue(earthquake) ? (
+                                                {isSelected ? (
                                                     <div className="mt-4">
                                                         <div>
                                                             <div className="flex items-center justify-between">
@@ -442,10 +559,15 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                                             "50px",
                                                                     }}
                                                                     checked={
-                                                                        toggleState
+                                                                        itemToggle
                                                                     }
-                                                                    onChange={
-                                                                        handleToggleChange
+                                                                    onChange={(
+                                                                        e,
+                                                                    ) =>
+                                                                        handleToggleChange(
+                                                                            e,
+                                                                            earthquake,
+                                                                        )
                                                                     }
                                                                     onClick={(
                                                                         e,
@@ -455,17 +577,14 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                                 />
                                                             </div>
                                                             <div className="text-xs text-gray-600 mb-2 text-right">
-                                                                {toggleState
+                                                                {itemToggle
                                                                     ? "Coseismic + Postseismic"
                                                                     : "Coseismic only"}
                                                             </div>
                                                             <div className="grid grid-cols-2 gap-4">
-                                                                {toggleState ? (
+                                                                {itemToggle ? (
                                                                     <>
                                                                         <div className="flex flex-col items-center justify-center">
-                                                                            {/* <span className="font-semibold text-sm">
-                                                                                Postseismic
-                                                                            </span> */}
                                                                             <button
                                                                                 className="btn btn-ghost btn-circle"
                                                                                 title="Download Postseismic KML"
@@ -474,8 +593,8 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                                                 ) => {
                                                                                     e.stopPropagation();
                                                                                     downloadFile(
-                                                                                        earthquakeAffectedStations?.kml_including_postseismic,
-                                                                                        `${earthquakeChosen?.id}.kml`,
+                                                                                        eqData?.kml_including_postseismic,
+                                                                                        `${earthquake.id}.kml`,
                                                                                         "kml",
                                                                                     );
                                                                                 }}
@@ -486,9 +605,6 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                                     </>
                                                                 ) : (
                                                                     <div className="flex flex-col items-center justify-center">
-                                                                        {/* <span className="font-semibold text-sm">
-                                                                            Coseismic
-                                                                        </span> */}
                                                                         <button
                                                                             className="btn btn-ghost btn-circle"
                                                                             title="Download Coseismic KML"
@@ -497,8 +613,8 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                                             ) => {
                                                                                 e.stopPropagation();
                                                                                 downloadFile(
-                                                                                    earthquakeAffectedStations?.kml_without_postseismic,
-                                                                                    `${earthquakeChosen?.id}.kml`,
+                                                                                    eqData?.kml_without_postseismic,
+                                                                                    `${earthquake.id}.kml`,
                                                                                     "kml",
                                                                                 );
                                                                             }}
@@ -528,10 +644,15 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                                                 "50px",
                                                                         }}
                                                                         checked={
-                                                                            toggleVector
+                                                                            itemVector
                                                                         }
-                                                                        onChange={
-                                                                            handleToggleVector
+                                                                        onChange={(
+                                                                            e,
+                                                                        ) =>
+                                                                            handleToggleVector(
+                                                                                e,
+                                                                                earthquake,
+                                                                            )
                                                                         }
                                                                         onClick={(
                                                                             e,
@@ -548,13 +669,8 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                             </div>
 
                                                             {/* Coseismic Section */}
-                                                            {toggleState ? (
-                                                                <div className="mt-3">
-                                                                    {/* <div className="text-sm font-semibold text-gray-700 ml-4 mb-2">
-                                                                        Coseismic
-                                                                        +
-                                                                        Postseismic
-                                                                    </div> */}
+                                                            {itemToggle ? (
+                                                                <div className="mt-2">
                                                                     <div className="grid grid-cols-2 gap-4 justify-items-center">
                                                                         <button
                                                                             className="btn btn-ghost btn-circle"
@@ -564,46 +680,25 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                                             ) => {
                                                                                 e.stopPropagation();
                                                                                 downloadFile(
-                                                                                    earthquakeAffectedStations?.csv_including_postseismic,
-                                                                                    `${earthquakeChosen?.id}.csv`,
+                                                                                    eqData?.csv_including_postseismic,
+                                                                                    `${earthquake.id}.csv`,
                                                                                     "csv",
                                                                                 );
                                                                             }}
                                                                         >
                                                                             <ArrowDownTrayIcon className="size-6" />
                                                                         </button>
-                                                                        <button
-                                                                            className={` ${showPopup && copyId === "postseismic" ? "tooltip tooltip-open" : ""} mr-2`}
-                                                                            title="Copy Coseismic + Postseismic CSV"
-                                                                            data-tip="Copied!"
-                                                                        >
-                                                                            <ClipboardIcon
-                                                                                className="size-6 cursor-pointer rounded-md transition-all duration-75 btn-ghost"
-                                                                                onClick={(
-                                                                                    e,
-                                                                                ) => {
-                                                                                    e.stopPropagation();
-                                                                                    if (
-                                                                                        earthquakeAffectedStations?.csv_including_postseismic
-                                                                                    )
-                                                                                        navigator.clipboard.writeText(
-                                                                                            earthquakeAffectedStations.csv_including_postseismic,
-                                                                                        );
-                                                                                    setCopyId(
-                                                                                        "postseismic",
-                                                                                    );
-                                                                                    show();
-                                                                                }}
+                                                                        < span className='mt-0 p-0 self-center' onClick={(e) => e.stopPropagation()}>
+                                                                            <CopyButton
+                                                                                text={eqData?.csv_including_postseismic ?? ""}
+                                                                                iconClassName="size-6"
                                                                             />
-                                                                        </button>
+                                                                        </span >
                                                                     </div>
                                                                 </div>
                                                             ) : (
-                                                                // Show only Coseismic if toggleState is false
+                                                                // Show only Coseismic if itemToggle is false
                                                                 <div className="mt-2">
-                                                                    {/* <div className="text-sm font-semibold text-gray-700 ml-4 mb-2">
-                                                                        Coseismic
-                                                                    </div> */}
                                                                     <div className="grid grid-cols-2 gap-4 justify-items-center">
                                                                         <button
                                                                             className="btn btn-ghost btn-circle"
@@ -613,38 +708,20 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                                             ) => {
                                                                                 e.stopPropagation();
                                                                                 downloadFile(
-                                                                                    earthquakeAffectedStations?.csv_without_postseismic,
-                                                                                    `${earthquakeChosen?.id}.csv`,
+                                                                                    eqData?.csv_without_postseismic,
+                                                                                    `${earthquake.id}.csv`,
                                                                                     "csv",
                                                                                 );
                                                                             }}
                                                                         >
                                                                             <ArrowDownTrayIcon className="size-6" />
                                                                         </button>
-                                                                        <button
-                                                                            className={` ${showPopup && copyId === "coseismic" ? "tooltip tooltip-open" : ""} mr-2`}
-                                                                            title="Copy Coseismic CSV"
-                                                                            data-tip="Copied!"
-                                                                        >
-                                                                            <ClipboardIcon
-                                                                                className="size-6 cursor-pointer rounded-md transition-all duration-75 btn-ghost"
-                                                                                onClick={(
-                                                                                    e,
-                                                                                ) => {
-                                                                                    e.stopPropagation();
-                                                                                    if (
-                                                                                        earthquakeAffectedStations?.csv_without_postseismic
-                                                                                    )
-                                                                                        navigator.clipboard.writeText(
-                                                                                            earthquakeAffectedStations.csv_without_postseismic,
-                                                                                        );
-                                                                                    setCopyId(
-                                                                                        "coseismic",
-                                                                                    );
-                                                                                    show();
-                                                                                }}
+                                                                        < span className='mt-0 p-0 self-center' onClick={(e) => e.stopPropagation()}>
+                                                                            <CopyButton
+                                                                                text={eqData?.csv_without_postseismic ?? ""}
+                                                                                iconClassName="size-6"
                                                                             />
-                                                                        </button>
+                                                                        </span >
                                                                     </div>
                                                                 </div>
                                                             )}
@@ -654,7 +731,8 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                             </div>
                                         </div>
                                     </div>
-                                ))}
+                                );
+                            })}
                     </div>
                 </div>
             ) : null}

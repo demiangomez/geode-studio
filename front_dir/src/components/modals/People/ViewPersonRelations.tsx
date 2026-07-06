@@ -129,7 +129,7 @@ const ViewPersonRelations = ({ Person, reFetch, setStateModal }: Props) => {
                                     )}
                             </h3>
                             {relation.relations.role_person_station &&
-                            relation.relations.role_person_station.length >
+                                relation.relations.role_person_station.length >
                                 0 ? (
                                 <div>
                                     <div className="overflow-x-auto">
@@ -214,7 +214,7 @@ const ViewPersonRelations = ({ Person, reFetch, setStateModal }: Props) => {
                                     )}
                             </h3>
                             {relation.relations.visits &&
-                            relation.relations.visits.length > 0 ? (
+                                relation.relations.visits.length > 0 ? (
                                 <div>
                                     <div className="overflow-x-auto">
                                         <table className="table table-zebra table-bordered w-full border border-base-300">
@@ -260,7 +260,7 @@ const ViewPersonRelations = ({ Person, reFetch, setStateModal }: Props) => {
                                     </div>
                                     {relation.relations &&
                                         relation.relations?.visits.length >
-                                            4 && (
+                                        4 && (
                                             <Pagination
                                                 pages={Math.ceil(
                                                     relation.relations.visits

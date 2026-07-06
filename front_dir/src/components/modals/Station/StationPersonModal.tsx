@@ -7,7 +7,7 @@ import {
     MenuContent,
     Modal,
 } from "@componentsReact";
-import { useApi, useAuth, useFormReducer } from "@hooks";
+import { useApi, useAuth, useClickOutside, useFormReducer } from "@hooks";
 import { apiOkStatuses, showModal } from "@utils";
 import {
     ErrorResponse,
@@ -71,6 +71,9 @@ const StationPersonModal = ({
     const [showMenu, setShowMenu] = useState<
         { type: string; show: boolean } | undefined
     >(undefined);
+
+    const openMenuRef = useRef<HTMLDivElement>(null);
+    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
 
     const { formState, dispatch } = useFormReducer({
         role: "",
@@ -243,7 +246,15 @@ const StationPersonModal = ({
 
                         // const optionalFields: string[] = ["photo", "user"];
                         return (
-                            <div className="flex flex-col" key={key + index}>
+                            <div
+                                className="flex flex-col"
+                                key={key + index}
+                                ref={
+                                    showMenu?.show && showMenu.type === key
+                                        ? openMenuRef
+                                        : undefined
+                                }
+                            >
                                 {key !== "station" && (
                                     <>
                                         <label

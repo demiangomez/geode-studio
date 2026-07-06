@@ -17,8 +17,6 @@ import {
     getStationCampaignsService,
     getStationVisitsImagesService,
     getStationVisitsService,
-    getStationStatusService,
-    getStationTypesService,
 } from "@services";
 
 import {
@@ -31,13 +29,10 @@ import {
     StationVisitsFilesData,
     StationVisitsFilesServiceData,
     StationVisitsServiceData,
-    StationStatusServiceData,
-    StationStatusData,
-    StationTypeData,
-    StationTypeServiceData,
 } from "@types";
 
 import { showModal } from "@utils";
+import { useMetadata } from "@hooks/queries";
 
 interface OutletContext {
     station: StationData;
@@ -82,11 +77,6 @@ const Visits = () => {
         undefined,
     );
 
-    const [types, setTypes] = useState<{ image: string; name: string }[]>([]);
-    const [statuses, setStatuses] = useState<{ name: string; color: string }[]>(
-        [],
-    );
-
     const [visitToDel, setVisitToDel] = useState<number | undefined>(undefined);
 
     const [campaigns, setCampaigns] = useState<
@@ -100,6 +90,8 @@ const Visits = () => {
     const [visit, setVisit] = useState<StationVisitsData | undefined>(
         undefined,
     );
+
+    const { statuses, types } = useMetadata(api, { enabled: !!station });
 
     const getVisits = async () => {
         try {
@@ -169,42 +161,6 @@ const Visits = () => {
         }
     };
 
-    const getStationStatuses = async () => {
-        try {
-            const res =
-                await getStationStatusService<StationStatusServiceData>(api);
-            if (res) {
-                const statuses = res.data.map((status: StationStatusData) => {
-                    return {
-                        color: status.color_name,
-                        name: status.name,
-                    };
-                });
-                setStatuses(statuses);
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    const getStationTypes = async () => {
-        try {
-            const res =
-                await getStationTypesService<StationTypeServiceData>(api);
-            if (res) {
-                const types = res.data.map((type: StationTypeData) => {
-                    return {
-                        image: type.actual_image as string,
-                        name: type.name,
-                    };
-                });
-                setTypes(types);
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
     const delVisit = async () => {
         try {
             setLoading(true);
@@ -238,8 +194,6 @@ const Visits = () => {
             getVisits();
             getVisitsImages();
             getCampaigns();
-            getStationStatuses();
-            getStationTypes();
         }
     }, [station]); // eslint-disable-line
 
@@ -303,17 +257,17 @@ const Visits = () => {
                                         <VisitThumbNail
                                             key={vis.id}
                                             station={station}
+                                            statuses={statuses ?? []}
+                                            types={types ?? []}
                                             visit={vis}
-                                            setModals={setModals}
-                                            setVisitToDel={setVisitToDel}
-                                            setVisit={setVisit}
+                                            visitImages={visitImages}
                                             campaigns={campaigns}
                                             loadingVisitImages={
                                                 loadingVisitImages
                                             }
-                                            visitImages={visitImages}
-                                            statuses={statuses}
-                                            types={types}
+                                            setModals={setModals}
+                                            setVisitToDel={setVisitToDel}
+                                            setVisit={setVisit}
                                         />
                                     );
                                 })}

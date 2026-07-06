@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 import {
     Menu,
@@ -8,7 +8,7 @@ import {
     ImageUploadCircle,
 } from "@componentsReact";
 
-import { useApi, useAuth, useFormReducer } from "@hooks";
+import { useApi, useAuth, useClickOutside, useFormReducer } from "@hooks";
 
 import { PencilSquareIcon } from "@heroicons/react/24/outline";
 
@@ -76,6 +76,9 @@ const PeopleSettingsForm = ({ person, getData }: Props) => {
     const [showMenu, setShowMenu] = useState<
         { type: string; show: boolean } | undefined
     >(undefined);
+
+    const openMenuRef = useRef<HTMLDivElement>(null);
+    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
 
     const getUsers = async () => {
         try {
@@ -273,7 +276,14 @@ const PeopleSettingsForm = ({ person, getData }: Props) => {
                         setImage={setImagen}
                         setHasImage={setHasImage}
                     />
-                    <div className="w-full grid grid-cols-2 gap-2">
+                    <div
+                        className="w-full grid grid-cols-2 gap-2"
+                        ref={
+                            showMenu?.show && showMenu.type === "user_name"
+                                ? openMenuRef
+                                : undefined
+                        }
+                    >
                         {Object.keys(formState).map((key) => {
                             const notShow = ["id", "photo_actual_file", "user"];
 

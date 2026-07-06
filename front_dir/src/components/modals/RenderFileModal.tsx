@@ -1,4 +1,4 @@
-import { Modal } from "@componentsReact";
+import Modal from "@components/modals/Modal";
 import { pdfjs } from "react-pdf";
 import { Document, Page } from "react-pdf";
 

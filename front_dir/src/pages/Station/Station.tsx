@@ -8,14 +8,12 @@ import {
 
 import React, { useEffect, useMemo, useState } from "react";
 
-import {
-    Sidebar,
-    StationButtons,
-    Skeleton,
-    Breadcrumb,
-    Toast,
-    StationCommentsModal,
-} from "@componentsReact";
+import Sidebar from "@components/Sidebar";
+import StationButtons from "@components/station/StationButtons";
+import Skeleton from "@components/skeleton/Skeleton";
+import Breadcrumb from "@components/Breadcrumb";
+import Toast from "@components/Message";
+import StationCommentsModal from "@components/modals/Station/StationCommentsModal";
 import { router } from "App";
 
 import { useAuth, useApi } from "@hooks";
@@ -90,18 +88,6 @@ const Station = () => {
     const [loading, setLoading] = useState<boolean>(true);
     const [reLoading, setReLoading] = useState<boolean>(false);
     const [photoLoading, setPhotoLoading] = useState<boolean>(true);
-
-    const [stationLocationScreen, setStationLocationScreen] =
-        useState<string>("");
-
-    const [stationLocationDetailScreen, setStationLocationDetailScreen] =
-        useState<string>("");
-
-    const [loadPdf, setLoadPdf] = useState<boolean>(false);
-    const [loadedMap, setLoadedMap] = useState<boolean | undefined>(undefined);
-    const [loadedPdfData, setLoadedPdfData] = useState<boolean | undefined>(
-        undefined,
-    );
 
     const [kmzFile, setKmzFile] = useState<string | undefined>(undefined);
 
@@ -267,7 +253,6 @@ const Station = () => {
         getStation();
         setVisits(undefined);
         setStationMeta(undefined);
-        setLoadedMap(undefined);
     };
 
     const closeToast = () => {
@@ -306,17 +291,6 @@ const Station = () => {
         }
         // eslint-disable-next-line
     }, [station, isMainLocation]);
-
-    useEffect(() => {
-        if (station) {
-            // if (location.pathname === `/${nc}/${sc}`) {
-            //     getVisits();
-            // }
-            setLoadPdf(false);
-            setLoadedPdfData(undefined);
-            setLoadedMap(undefined);
-        }
-    }, [location, station]);
 
     useEffect(() => {
         // This effect is used to handle the case when te user
@@ -433,7 +407,7 @@ const Station = () => {
                             setVisits,
                         }}
                     />
-                    <div className="w-full flex flex-col pt-20">
+                    <div className="w-full min-w-0 flex flex-col pt-20">
                         <div className="flex relative self-center gap-2">
                             <h1 className="text-6xl font-bold text-center flex items-center justify-center">
                                 {stationTitle}
@@ -442,8 +416,6 @@ const Station = () => {
                                 <StationButtons
                                     functions={{
                                         setMessage,
-                                        setLoadPdf,
-                                        setLoadedPdfData,
                                         getButtonClasses,
                                         getKmzBalloon,
                                         getReStation,
@@ -453,13 +425,7 @@ const Station = () => {
                                         station,
                                         reLoading,
                                         reStation,
-                                        stationMeta,
-                                        visits,
-                                        loadPdf,
-                                        loadedMap,
                                         errorMessages,
-                                        stationLocationScreen,
-                                        stationLocationDetailScreen,
                                     }}
                                 />
                             )}
@@ -482,16 +448,9 @@ const Station = () => {
                                 stationMeta,
                                 images,
                                 photoLoading,
-                                loadPdf,
-                                loadedMap,
-                                loadedPdfData,
                                 visits,
                                 getStationImages,
                                 getReStation,
-                                setStationLocationScreen,
-                                setStationLocationDetailScreen,
-                                setLoadPdf,
-                                setLoadedMap,
                             }}
                         />
                     </div>{" "}

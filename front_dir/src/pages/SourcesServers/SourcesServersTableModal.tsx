@@ -7,7 +7,7 @@ import {
     Modal,
     Spinner,
 } from "@components/index";
-import { useFormReducer } from "@hooks/index";
+import { useClickOutside, useFormReducer } from "@hooks/index";
 import {
     deleteSourcesServersService,
     postSourcesServersService,
@@ -22,7 +22,7 @@ import {
 import { showModal } from "@utils/index";
 import { SOURCES_SERVERS_STATE } from "@utils/reducerFormStates";
 import { AxiosInstance } from "axios";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface SourcesServersTableModalProps {
     handleClose: () => void;
@@ -59,6 +59,9 @@ const SourcesServersTableModal = ({
     const [showMenu, setShowMenu] = useState<
         { show: boolean; type: string } | undefined
     >({ show: false, type: "" });
+
+    const openMenuRef = useRef<HTMLDivElement>(null);
+    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
 
     const errorBadge = msg?.errors?.errors?.map((e) => e.attr);
 
@@ -215,7 +218,15 @@ const SourcesServersTableModal = ({
                 </h2>
                 <div className="flex flex-col gap-3 w-full">
                     {camps.map((camp) => (
-                        <div key={camp} className="w-full">
+                        <div
+                            key={camp}
+                            className="w-full"
+                            ref={
+                                showMenu?.show && showMenu.type === camp
+                                    ? openMenuRef
+                                    : undefined
+                            }
+                        >
                             <label
                                 className={`w-full input input-bordered flex items-center gap-2 ${
                                     errorBadge?.includes(camp)

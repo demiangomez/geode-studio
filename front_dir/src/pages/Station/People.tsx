@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+
 import { useOutletContext } from "react-router-dom";
 
 import {
@@ -8,6 +9,7 @@ import {
     TableCard,
     ConfirmDeleteModal,
     StationPeopleModal,
+    ViewPersonDetailModal,
 } from "@componentsReact";
 
 import {
@@ -58,7 +60,12 @@ const People = () => {
     >(undefined);
 
     const [peopleType, setPeopleType] = useState<PeopleType[]>([]);
-    const [person, setPerson] = useState<PeopleType | undefined>(undefined);
+
+    const selectedPersonDetail = useMemo<PeopleType | undefined>(() => {
+        if (!rolePersonStation) return undefined;
+        return peopleType.find((p) => p.id === rolePersonStation.person);
+    }, [rolePersonStation, peopleType]);
+
 
     const [roles, setRoles] = useState<StationStatus[] | undefined>(undefined);
 
@@ -159,8 +166,19 @@ const People = () => {
         "Position",
     ];
 
+    const sortedRolePersonStations = useMemo(() => {
+        if (!rolePersonStations) return [];
+        return [...rolePersonStations].sort((a, b) => {
+            const aPerson = peopleType?.find((p) => p.id === a.person);
+            const bPerson = peopleType?.find((p) => p.id === b.person);
+            const aValue = aPerson?.last_name || "";
+            const bValue = bPerson?.last_name || "";
+            return aValue.localeCompare(bValue);
+        });
+    }, [rolePersonStations, peopleType]);
+
     const body = useMemo(() => {
-        const b = rolePersonStations?.map((rp) =>
+        const b = sortedRolePersonStations?.map((rp) =>
             Object.values({
                 // id: monument.id,
                 role: roles?.find((r) => r.id === rp.role)?.name,
@@ -177,23 +195,14 @@ const People = () => {
         );
 
         if (!b) return [];
-        return b?.sort((a, b) => {
-            const aValue = a[2] || "";
-            const bValue = b[2] || "";
+        return b;
+    }, [sortedRolePersonStations, peopleType, roles]);
 
-            if (aValue < bValue) {
-                return -1;
-            }
-            if (aValue > bValue) {
-                return 1;
-            }
-            return 0;
-        });
-    }, [rolePersonStations, peopleType, roles]);
 
     useEffect(() => {
         modals?.show && showModal(modals.title);
     }, [modals]);
+
 
     return (
         <div className="">
@@ -225,12 +234,20 @@ const People = () => {
                                     type: "edit",
                                 })
                             }
+                            viewRegister={true}
+                            onViewClickFunction={() =>
+                                setModals({
+                                    show: true,
+                                    title: "ViewPersonDetail",
+                                    type: "none",
+                                })
+                            }
                             setState={setRolePersonStation}
-                            state={rolePersonStations}
+                            state={sortedRolePersonStations}
                             dataFetchUrl="api/people"
                         />
                         {modals?.show &&
-                        modals.title === "EditStationPerson" ? (
+                            modals.title === "EditStationPerson" ? (
                             <StationPersonModal
                                 people={peopleType}
                                 roles={roles}
@@ -242,10 +259,9 @@ const People = () => {
                             />
                         ) : modals?.title === "EditPerson" ? (
                             <StationPeopleModal
-                                Person={person}
+                                Person={undefined}
                                 modalType={modals.type}
                                 setStateModal={setModals}
-                                setPerson={setPerson}
                                 reFetch={reFetch}
                                 people={peopleType}
                             />
@@ -267,6 +283,13 @@ const People = () => {
                                 }}
                             />
                         )}
+                        {modals?.show &&
+                            modals.title === "ViewPersonDetail" && (
+                                <ViewPersonDetailModal
+                                    Person={selectedPersonDetail}
+                                    setStateModal={setModals}
+                                />
+                            )}
                     </TableCard>
                 </CardContainer>
             </div>

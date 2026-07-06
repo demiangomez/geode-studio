@@ -5,10 +5,7 @@ import { EarthQuakeFormState } from "@types";
 
 interface EarthQuakeModalProps {
     formstate: EarthQuakeFormState;
-    handleEarthquakes: () => void;
-    setInitialCenter?: React.Dispatch<
-        React.SetStateAction<[number, number] | undefined>
-    >;
+    handleEarthquakes: (form: EarthQuakeFormState) => void;
     setFormState: React.Dispatch<React.SetStateAction<EarthQuakeFormState>>;
     setShowEarthQuakesList: React.Dispatch<React.SetStateAction<boolean>>;
     setShowEarthquakeModal: React.Dispatch<
@@ -29,10 +26,19 @@ const EarthQuakeFormModal = ({
     handleEarthquakes,
     setFormState,
     setPosToFly,
-    setInitialCenter,
     setShowEarthquakeModal,
     setShowEarthQuakesList,
 }: EarthQuakeModalProps) => {
+    //---------------------------------------------------------useState-------------------------------------------------------------
+
+    const [localFormState, setLocalFormState] =
+        useState<EarthQuakeFormState>(formstate);
+
+    const [showMapModal, setShowMapModal] = useState<
+        | { show: boolean; title: string; type: "add" | "edit" | "none" }
+        | undefined
+    >(undefined);
+
     //---------------------------------------------------------Constantes-------------------------------------------------------------
 
     const initialState: EarthQuakeFormState = {
@@ -63,14 +69,11 @@ const EarthQuakeFormModal = ({
     ];
 
     //---------------------------------------------------------Funciones-------------------------------------------------------------
-    const getLocalStorageFilters = () => {
-        return JSON.parse(localStorage.getItem("earthQuakeFilters") ?? "{}");
-    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
 
-        setFormState((prev) => ({
+        setLocalFormState((prev) => ({
             ...prev,
             [name]:
                 name === "date_start"
@@ -79,46 +82,14 @@ const EarthQuakeFormModal = ({
                       ? value + "T23:59:59"
                       : value,
         }));
-
-        localStorage.setItem(
-            "earthQuakeFilters",
-            JSON.stringify({
-                ...formstate,
-                [name]:
-                    name === "date_start"
-                        ? value + "T00:00:00"
-                        : name === "date_end"
-                          ? value + "T23:59:59"
-                          : value,
-            }),
-        );
     };
 
     const handleClenFilters = () => {
-        setFormState(initialState);
-        localStorage.setItem("earthQuakeFilters", JSON.stringify(initialState));
-    };
-
-    const isEmptyForm = (form: EarthQuakeFormState) => {
-        if (
-            form.id === "" &&
-            form.min_magnitude === "" &&
-            form.max_magnitude === "" &&
-            form.min_depth === "" &&
-            form.max_depth === "" &&
-            form.min_latitude === "" &&
-            form.max_latitude === "" &&
-            form.min_longitude === "" &&
-            form.max_longitude === "" &&
-            form.date_start === undefined &&
-            form.date_end === undefined
-        )
-            return true;
+        setLocalFormState(initialState);
     };
 
     const handleSubmitForm = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        setInitialCenter && setInitialCenter(undefined);
 
         setShowEarthquakeModal(() => ({
             type: "edit",
@@ -126,14 +97,8 @@ const EarthQuakeFormModal = ({
             show: false,
         }));
 
-        if (isEmptyForm(formstate)) {
-            localStorage.setItem(
-                "earthQuakeFilters",
-                JSON.stringify(initialState),
-            );
-        }
-
-        handleEarthquakes();
+        setFormState(localFormState);
+        handleEarthquakes(localFormState);
         setPosToFly(undefined);
         setShowEarthQuakesList(true);
     };
@@ -167,7 +132,7 @@ const EarthQuakeFormModal = ({
         const completedCoordinates = coordinates.concat([coordinates[0]]);
         const limits = findLimits(coordinates);
 
-        setFormState((prev) => ({
+        setLocalFormState((prev) => ({
             ...prev,
             max_latitude: limits.max_latitude.toString(),
             min_latitude: limits.min_latitude.toString(),
@@ -176,37 +141,10 @@ const EarthQuakeFormModal = ({
             polygon_coordinates: completedCoordinates,
         }));
 
-        localStorage.setItem(
-            "earthQuakeFilters",
-            JSON.stringify({
-                ...formstate,
-                max_latitude: limits.max_latitude.toString(),
-                min_latitude: limits.min_latitude.toString(),
-                max_longitude: limits.max_longitude.toString(),
-                min_longitude: limits.min_longitude.toString(),
-                polygon_coordinates: completedCoordinates,
-            }),
-        );
-
         setShowMapModal(() => ({ type: "edit", show: false, title: "" }));
     };
 
-    //---------------------------------------------------------useState-------------------------------------------------------------
-
-    const [showMapModal, setShowMapModal] = useState<
-        | { show: boolean; title: string; type: "add" | "edit" | "none" }
-        | undefined
-    >(undefined);
-
     //---------------------------------------------------------useEffect-------------------------------------------------------------
-
-    useEffect(() => {
-        const localStorageFilters = getLocalStorageFilters();
-        setFormState((prev) => ({
-            ...prev,
-            ...localStorageFilters,
-        }));
-    }, [setFormState]);
 
     useEffect(() => {
         showMapModal?.show && showModal(showMapModal.title);
@@ -234,7 +172,7 @@ const EarthQuakeFormModal = ({
                         <input
                             type="text"
                             name={formEntries[0]}
-                            value={formstate.id ?? ""}
+                            value={localFormState.id ?? ""}
                             className="input input-bordered"
                             onChange={(e) => handleChange(e)}
                         />
@@ -249,8 +187,9 @@ const EarthQuakeFormModal = ({
                                 <input
                                     type="date"
                                     value={
-                                        formstate.date_start?.split("T")[0] ??
-                                        ""
+                                        localFormState.date_start?.split(
+                                            "T",
+                                        )[0] ?? ""
                                     }
                                     name="date_start"
                                     id="date_start"
@@ -270,7 +209,9 @@ const EarthQuakeFormModal = ({
                                 <input
                                     type="date"
                                     value={
-                                        formstate.date_end?.split("T")[0] ?? ""
+                                        localFormState.date_end?.split(
+                                            "T",
+                                        )[0] ?? ""
                                     }
                                     name="date_end"
                                     id="date_end"
@@ -310,7 +251,7 @@ const EarthQuakeFormModal = ({
                                                             name={entry}
                                                             id={entry}
                                                             value={
-                                                                formstate[
+                                                                localFormState[
                                                                     entry as keyof EarthQuakeFormStateKeys
                                                                 ] ?? ""
                                                             }

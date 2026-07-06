@@ -1,29 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 
-import { Alert, Menu, MenuButton, MenuContent } from "@componentsReact";
+import {
+    Alert,
+    Menu,
+    MenuButton,
+    MenuContent,
+    MapModal,
+} from "@componentsReact";
 
 import { METADATA_STATE } from "@utils/reducerFormStates";
 
 import { FormReducerAction } from "@hooks/useFormReducer";
 
-import { useApi, useAuth } from "@hooks";
+import { useApi, useAuth, useClickOutside } from "@hooks";
 
-import { getNetworksService, postCreateStationService } from "@services";
+import { postCreateStationService } from "@services";
 
-import { Errors, NetworkServiceData, NetworkData } from "@types";
+import { Errors } from "@types";
 
 import { showModal } from "@utils";
-
-import { MapModal } from "@components/index";
-
-// interface CoordinatesData{
-//     lat: string,
-//     lon: string,
-//     height: string,
-//     auto_x: string,
-//     auto_y: string,
-//     auto_z: string,
-// }
+import { useMetadata } from "@hooks/queries";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface StationMetadataProps {
     coordinatesType: "ecef" | "latlon" | "map" | undefined;
@@ -37,10 +34,10 @@ interface StationMetadataProps {
     setMsg: React.Dispatch<
         React.SetStateAction<
             | {
-                  status: number;
-                  msg: string;
-                  errors?: Errors;
-              }
+                status: number;
+                msg: string;
+                errors?: Errors;
+            }
             | undefined
         >
     >;
@@ -65,6 +62,9 @@ const AddStationManual = ({
 
     const api = useApi(token, logout);
 
+    const { networks } = useMetadata(api);
+    const queryClient = useQueryClient();
+
     const generalFields = [
         "Station Code",
         "Network Code",
@@ -74,6 +74,9 @@ const AddStationManual = ({
 
     const inputRefNetworkCode = useRef<HTMLInputElement>(null);
 
+    const openMenuRef = useRef<HTMLDivElement>(null);
+    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+
     const [createLoading, setCreateLoading] = useState<boolean>(false);
 
     const [showMapModal, setShowMapModal] = useState<
@@ -82,8 +85,6 @@ const AddStationManual = ({
     >(undefined);
 
     // const [currentCoordinates, setCurrentCoordinates] = useState<CoordinatesData | undefined>(undefined)
-
-    const [networks, setNetworks] = useState<NetworkData[] | undefined>([]);
 
     const handleDrawPolygon = (e: any) => {
         const layer = e.layer;
@@ -162,6 +163,7 @@ const AddStationManual = ({
             params.network_code =
                 formState.stationMeta.network_code.toLowerCase();
             const res = await postCreateStationService<any>(api, params);
+
             if ("status" in res) {
                 setMsg({
                     status: res.statusCode,
@@ -169,6 +171,7 @@ const AddStationManual = ({
                     errors: res.response,
                 });
             } else {
+                queryClient.invalidateQueries({ queryKey: ["stations"] });
                 setMsg({
                     status: res.statusCode,
                     msg: "Station created successfully",
@@ -181,17 +184,8 @@ const AddStationManual = ({
         }
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = () => {
         createStation();
-    };
-
-    const getNetworks = async () => {
-        try {
-            const res = await getNetworksService<NetworkServiceData>(api);
-            setNetworks(res.data);
-        } catch (e) {
-            console.error(e);
-        }
     };
 
     function lla2ecef(llaArr: number[]): { x: number; y: number; z: number } {
@@ -267,10 +261,6 @@ const AddStationManual = ({
             }
         }
     }, [showMenu]);
-
-    useEffect(() => {
-        getNetworks();
-    }, []);
 
     useEffect(() => {
         if (
@@ -381,7 +371,7 @@ const AddStationManual = ({
                                                             className="text-sm font-bold flex items-center"
                                                             title={
                                                                 generalFields[
-                                                                    idx
+                                                                idx
                                                                 ]
                                                             }
                                                         >
@@ -390,38 +380,47 @@ const AddStationManual = ({
                                                                 className={`size-3  rounded-full ml-3`}
                                                                 title={
                                                                     generalFields[
-                                                                        idx
+                                                                    idx
                                                                     ]
                                                                 }
                                                             ></div>
                                                         </div>
-                                                        <div className="flex flex-col space-y-1 relative">
+                                                        <div
+                                                            className="flex flex-col space-y-1 relative"
+                                                            ref={
+                                                                showMenu?.show &&
+                                                                showMenu.type ===
+                                                                    key
+                                                                    ? openMenuRef
+                                                                    : undefined
+                                                            }
+                                                        >
                                                             <label
                                                                 className={`input input-bordered flex items-center  ${errorBadge || (key === "max_dist" && maxDistErrorBadge) ? "input-error" : ""}  `}
                                                                 title={
                                                                     errorBadge
                                                                         ? errorBadge.detail
                                                                         : key ===
-                                                                                "max_dist" &&
+                                                                            "max_dist" &&
                                                                             maxDistErrorBadge
-                                                                          ? maxDistErrorBadge.detail
-                                                                          : ""
+                                                                            ? maxDistErrorBadge.detail
+                                                                            : ""
                                                                 }
                                                             >
                                                                 {key ===
                                                                     "network_code" && (
-                                                                    <MenuButton
-                                                                        setShowMenu={
-                                                                            setShowMenu
-                                                                        }
-                                                                        showMenu={
-                                                                            showMenu
-                                                                        }
-                                                                        typeKey={
-                                                                            key
-                                                                        }
-                                                                    />
-                                                                )}
+                                                                        <MenuButton
+                                                                            setShowMenu={
+                                                                                setShowMenu
+                                                                            }
+                                                                            showMenu={
+                                                                                showMenu
+                                                                            }
+                                                                            typeKey={
+                                                                                key
+                                                                            }
+                                                                        />
+                                                                    )}
                                                                 <input
                                                                     className={
                                                                         "w-full "
@@ -430,14 +429,14 @@ const AddStationManual = ({
                                                                     type="text"
                                                                     ref={
                                                                         key ===
-                                                                        "network_code"
+                                                                            "network_code"
                                                                             ? inputRefNetworkCode
                                                                             : null
                                                                     }
                                                                     value={
                                                                         formState
                                                                             .stationMeta[
-                                                                            key as keyof typeof formState.stationMeta
+                                                                        key as keyof typeof formState.stationMeta
                                                                         ] ?? ""
                                                                     }
                                                                     name={
@@ -476,8 +475,8 @@ const AddStationManual = ({
                                                                         }
                                                                     </span>
                                                                 ) : key ===
-                                                                      "max_dist" &&
-                                                                  maxDistErrorBadge ? (
+                                                                    "max_dist" &&
+                                                                    maxDistErrorBadge ? (
                                                                     <span className="badge badge-error self-start -mt-2">
                                                                         {
                                                                             maxDistErrorBadge.code
@@ -487,18 +486,15 @@ const AddStationManual = ({
                                                             </label>
                                                             {showMenu?.show &&
                                                                 showMenu.type ===
-                                                                    key &&
+                                                                key &&
                                                                 key ===
-                                                                    "network_code" && (
+                                                                "network_code" && (
                                                                     <div className="absolute w-full z-10 top-full">
                                                                         <Menu
-                                                                            absolute={
-                                                                                false
-                                                                            }
                                                                         >
                                                                             {networks &&
                                                                                 (filtredNC.length ===
-                                                                                0
+                                                                                    0
                                                                                     ? networks
                                                                                     : filtredNC
                                                                                 ).map(
@@ -596,7 +592,7 @@ const AddStationManual = ({
                                                         className="input input-bordered w-full"
                                                         value={
                                                             formState.station[
-                                                                key as keyof typeof formState.station
+                                                            key as keyof typeof formState.station
                                                             ]
                                                         }
                                                         name={"station." + key}
@@ -630,7 +626,7 @@ const AddStationManual = ({
                                                     name={"station." + key}
                                                     value={
                                                         formState.station[
-                                                            key as keyof typeof formState.station
+                                                        key as keyof typeof formState.station
                                                         ]
                                                     }
                                                     onChange={(e) =>

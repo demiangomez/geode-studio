@@ -1,5 +1,5 @@
 // ------------------------------------------React------------------------------------------
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // ------------------------------------------Componentes de React------------------------------------------
 import {
@@ -12,7 +12,7 @@ import {
 } from "@componentsReact";
 
 // ------------------------------------------Hooks------------------------------------------
-import { useApi, useAuth, useFormReducer } from "@hooks";
+import { useApi, useAuth, useClickOutside, useFormReducer } from "@hooks";
 
 // ------------------------------------------Services------------------------------------------
 import {
@@ -73,6 +73,9 @@ const AddCampaignModal = ({
     const [showMenu, setShowMenu] = useState<
         { show: boolean; type: string } | undefined
     >({ show: false, type: "" });
+
+    const openMenuRef = useRef<HTMLDivElement>(null);
+    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
 
     const [modals, setModals] = useState<
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
@@ -307,7 +310,15 @@ const AddCampaignModal = ({
                         const inputsToDatePicker = ["start_date", "end_date"];
                         if (key === "default_people") {
                             return (
-                                <div key={key} className="">
+                                <div
+                                    key={key}
+                                    className=""
+                                    ref={
+                                        showMenu?.show && showMenu.type === key
+                                            ? openMenuRef
+                                            : undefined
+                                    }
+                                >
                                     <div className="flex flex-col space-y-1">
                                         <label
                                             className={

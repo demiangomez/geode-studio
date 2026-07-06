@@ -4,17 +4,18 @@ export const STATION_INFO_STATE = {
     station_code: "",
     receiver_code: "",
     receiver_serial: "",
+    receiver_vers: "",
     receiver_firmware: "",
     antenna_code: "",
+    radome_code: "",
     antenna_serial: "",
-    antenna_height: "",
+    height_code: "",
     antenna_north: "",
     antenna_east: "",
-    height_code: "",
-    radome_code: "",
+    antenna_height: "",
+    antenna_azimuth: "",
     date_start: "",
     date_end: "",
-    receiver_vers: "",
     comments: "",
 };
 
@@ -156,6 +157,13 @@ export const SERIES_FILTERS_STATE = {
     no_model: false,
     remove_jumps: false,
     remove_polynomial: false,
+    remove_periodic: false,
+    remove_stochastic: false,
+    least_squares_strategy: "ROBUST_LEAST_SQUARES",
+    covariance_model: "ARMA",
+    fit_window_start: "",
+    fit_window_end: "",
+    default_relaxations: [] as number[],
 };
 
 export const SERIES_JUMP_DATA = {

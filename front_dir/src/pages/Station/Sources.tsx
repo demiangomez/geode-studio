@@ -36,10 +36,10 @@ const Sources = () => {
 
     const [modals, setModals] = useState<
         | {
-              show: boolean;
-              title: string;
-              type: "add" | "edit" | "none";
-          }
+            show: boolean;
+            title: string;
+            type: "add" | "edit" | "none";
+        }
         | undefined
     >(undefined);
 
@@ -169,7 +169,7 @@ const Sources = () => {
                         : "* " + getDefaultFormat(sourceStation.server_id);
                 const path =
                     typeof sourceStation.path === "string" &&
-                    sourceStation.path !== ""
+                        sourceStation.path !== ""
                         ? sourceStation.path
                         : "* " + getDefaultPath(sourceStation.server_id);
                 const auxNewData = [
@@ -195,7 +195,7 @@ const Sources = () => {
     return (
         <div className="">
             <h1 className="text-2xl font-base text-center">RINEX SOURCES</h1>
-            <div className="flex flex-grow w-full justify-center pr-2 space-x-2 px-8 pb-4">
+            <div className="flex w-full justify-center pr-2 space-x-2 px-2">
                 <CardContainer title={""} height={false} addButton={false}>
                     <TableCard
                         title={"Sources"}

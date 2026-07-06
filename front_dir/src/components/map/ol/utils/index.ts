@@ -11,7 +11,6 @@ export {
     clusterStyle,
     createClusterHoverStyle,
     clusterStyleFn,
-    earthquakeStyle,
     earthquakeSelectedStyle,
     EMPTY_STYLE,
     CLUSTER_MAX_ZOOM,
@@ -30,3 +29,9 @@ export {
 export { createKmlLayer, parseKmlFromBase64 } from "./kmlUtils";
 
 export type { KmlLayerOptions } from "./kmlUtils";
+
+export {
+    getLastZoom,
+    getLastCenterLonLat,
+    saveLastView,
+} from "./mapViewUtils";

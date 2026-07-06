@@ -4,7 +4,7 @@ import {
     CardContainer,
     ConfirmDeleteModal,
     ImageModal,
-    SquareSkeleton,
+    PhotoSkeleton,
     StationPhotoModal,
 } from "@componentsReact";
 
@@ -110,10 +110,7 @@ const Photo = ({ phArray, loader, reFetch }: Props) => {
                 editFunction={station ? editFunction : undefined}
             >
                 {loader ? (
-                    <>
-                        <SquareSkeleton mainSize="300px" />
-                        <SquareSkeleton mainSize="300px" />
-                    </>
+                    <PhotoSkeleton />
                 ) : phArray.length !== 0 ? (
                     <div className="grid grid-cols-2 w-full gap-6 overflow-auto pr-2">
                         {phArray.map((s: Photo, idx) => {

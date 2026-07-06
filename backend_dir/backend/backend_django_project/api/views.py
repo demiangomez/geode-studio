@@ -18,10 +18,11 @@ import datetime
 from . import utils
 import rest_framework.exceptions
 from rest_framework.parsers import MultiPartParser
-from django.http import Http404, HttpResponseServerError
+from django.http import Http404, HttpResponseServerError, FileResponse
 from rest_framework.views import APIView
 from django.conf import settings
 import os.path
+import tempfile
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import status
@@ -31,8 +32,15 @@ from django.core.cache import caches
 import time
 from .tasks import update_gaps_status
 from django.core.files.storage import default_storage
-from pgamit import pyStationInfo, dbConnection, pyDate, pyETM
-from pgamit import Utils as pyUtils
+from geode import dbConnection, pyDate, pyETM
+from geode import Utils as pyUtils
+from geode.metadata.station_info import StationInfo
+from geode.etm.core.etm_config import EtmConfig
+from geode.etm.data.etm_params import EtmParams
+from geode.etm.core.etm_engine import EtmEngine
+from geode.etm.core.data_classes import SolutionOptions
+from geode.etm.core.type_declarations import SolutionType, EtmSolutionType, JumpType, AdjustmentModels, CovarianceFunction
+from geode.etm.visualization.data_classes import PlotOutputConfig
 import dateutil.parser
 from io import BytesIO
 import json
@@ -233,7 +241,7 @@ class NetworkList(CustomListCreateAPIView):
     serializer_class = serializers.NetworkSerializer
 
 
-class NetworkDetail(generics.RetrieveUpdateDestroyAPIView):
+class NetworkDetail(generics.RetrieveUpdateAPIView):
     queryset = models.Networks.objects.all()
     serializer_class = serializers.NetworkSerializer
 
@@ -356,11 +364,19 @@ class TimeSeries(CustomListAPIView):
     def get_queryset(self, pk):
         return None
 
-    def _get_required_param(self, request, params, param_name):
-        param_value = request.query_params.get(param_name)
+    def _clean_param(self, val):
+        if val is None:
+            return None
+        if isinstance(val, str):
+            val = val.strip()
+            if val == "" or val.lower() in ("null", "undefined"):
+                return None
+        return val
 
-        # param_value can't be None or an empty string
-        if param_value is not None and (isinstance(param_value, str) and param_value != ""):
+    def _get_required_param(self, request, params, param_name):
+        param_value = self._clean_param(request.query_params.get(param_name))
+
+        if param_value is not None:
             params[param_name] = param_value
         else:
             raise exceptions.CustomValidationErrorExceptionHandler(
@@ -382,16 +398,27 @@ class TimeSeries(CustomListAPIView):
                            "no_model", "remove_jumps", "remove_polynomial", "json"):
             self._get_required_param(request, params, param_name)
 
-        self._get_dates_param(request, params)
+        # remove_periodic and remove_stochastic are optional (default false) to keep older requests working
+        # support both remove_stochastic and remove_stochastic_noise
+        remove_periodic = self._clean_param(request.query_params.get("remove_periodic")) or "false"
+        params["remove_periodic"] = remove_periodic
 
-        for param_name in ("residuals", "missing_data", "plot_outliers", "plot_auto_jumps", "no_model", "remove_jumps", "remove_polynomial", "json"):
+        remove_stochastic = self._clean_param(request.query_params.get("remove_stochastic")) or \
+                            self._clean_param(request.query_params.get("remove_stochastic_noise")) or "false"
+        params["remove_stochastic"] = remove_stochastic
+
+        self._get_dates_param(request, params)
+        self._get_fit_window_param(request, params)
+        self._get_adjustment_params(request, params)
+
+        for param_name in ("residuals", "missing_data", "plot_outliers", "plot_auto_jumps", "no_model", "remove_jumps", "remove_polynomial", "json", "remove_periodic", "remove_stochastic"):
             self._convert_to_bool(params, param_name)
 
         params["solution"] = params["solution"].strip().upper()
 
-        if params["solution"] not in ("PPP", "GAMIT"):
+        if not utils.is_supported_solution(params["solution"]):
             raise exceptions.CustomValidationErrorExceptionHandler(
-                "'solution' parameter must be either 'PPP' or 'GAMIT'")
+                "'solution' parameter must be one of: " + utils.get_supported_solutions_message() + ".")
 
         if params["solution"] == "GAMIT":
             self._get_required_param(request, params, "stack")
@@ -400,8 +427,8 @@ class TimeSeries(CustomListAPIView):
 
     def _deprecated_check_params(self, request, params):
 
-        date_start = request.query_params.get("date_start")
-        date_end = request.query_params.get("date_end")
+        date_start = self._clean_param(request.query_params.get("date_start"))
+        date_end = self._clean_param(request.query_params.get("date_end"))
 
         for param_name, param_value in (("date_start", date_start), ("date_end", date_end)):
 
@@ -420,9 +447,30 @@ class TimeSeries(CustomListAPIView):
                 raise exceptions.CustomValidationErrorExceptionHandler(
                     "'date_start' parameter can't be greater than 'date_end' parameter.")
 
+    def _parse_time_window(self, time_window):
+        parsed = None
+        try:
+            if len(time_window) > 0:
+                if len(time_window) == 1:
+                    try:
+                        parsed = pyUtils.process_date(
+                            time_window, missing_input=None, allow_days=False)
+                        parsed = (parsed[0].fyear, )
+                    except ValueError:
+                        # an integer value
+                        parsed = float(time_window[0])
+                else:
+                    parsed = pyUtils.process_date(time_window)
+                    parsed = (parsed[0].fyear, parsed[1].fyear)
+        except Exception as e:
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                e.detail if hasattr(e, 'detail') else str(e))
+
+        return parsed
+
     def _get_dates_param(self, request, params):
-        date_start = request.query_params.get("date_start")
-        date_end = request.query_params.get("date_end")
+        date_start = self._clean_param(request.query_params.get("date_start"))
+        date_end = self._clean_param(request.query_params.get("date_end"))
 
         time_window = []
 
@@ -431,25 +479,71 @@ class TimeSeries(CustomListAPIView):
         if date_end is not None:
             time_window.append(date_end)
 
-        dates = None
-        try:
-            if len(time_window) > 0:
-                if len(time_window) == 1:
-                    try:
-                        dates = pyUtils.process_date(
-                            time_window, missing_input=None, allow_days=False)
-                        dates = (dates[0].fyear, )
-                    except ValueError:
-                        # an integer value
-                        dates = float(time_window[0])
-                else:
-                    dates = pyUtils.process_date(time_window)
-                    dates = (dates[0].fyear, dates[1].fyear)
-        except Exception as e:
-            raise exceptions.CustomValidationErrorExceptionHandler(
-                e.detail if hasattr(e, 'detail') else str(e))
+        params["dates"] = self._parse_time_window(time_window)
 
-        params["dates"] = dates
+    def _get_fit_window_param(self, request, params):
+        fit_window_start = self._clean_param(request.query_params.get("fit_window_start"))
+        fit_window_end = self._clean_param(request.query_params.get("fit_window_end"))
+
+        # the fit window defines which observations enter the adjustment
+        # (config.modeling.data_model_window) and needs both bounds to form a window
+        if (fit_window_start is None) != (fit_window_end is None):
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "'fit_window_start' and 'fit_window_end' parameters must both be provided.")
+
+        time_window = []
+
+        if fit_window_start is not None:
+            time_window.append(fit_window_start)
+        if fit_window_end is not None:
+            time_window.append(fit_window_end)
+
+        params["fit_window"] = self._parse_time_window(time_window)
+
+    def _parse_enum_param(self, value, enum_class, param_name, default=None):
+        value = self._clean_param(value)
+        if value is None:
+            return default
+
+        # Try to parse as integer first
+        try:
+            return enum_class(int(value))
+        except (TypeError, ValueError):
+            pass
+
+        # Try to parse by name/key (case insensitive)
+        for member in enum_class:
+            if member.name.upper() == value.upper():
+                return member
+
+        valid_values = ", ".join(f"{member.name} ({member.value})" for member in enum_class)
+        raise exceptions.CustomValidationErrorExceptionHandler(
+            "'" + param_name + "'" + " parameter must be one of: " + valid_values + ".")
+
+    def _get_adjustment_params(self, request, params):
+        # adjustment parameters are optional and fall back to geode defaults
+        # to keep older requests working
+        params["adjustment_model"] = self._parse_enum_param(
+            request.query_params.get("adjustment_model"),
+            AdjustmentModels, "adjustment_model",
+            default=AdjustmentModels.ROBUST_LEAST_SQUARES)
+
+        params["covariance_function"] = self._parse_enum_param(
+            request.query_params.get("covariance_function"),
+            CovarianceFunction, "covariance_function",
+            default=CovarianceFunction.GAUSSIAN)
+
+        # relaxation can be a single number or a comma-separated list (e.g. "12,44,66"),
+        # since geode iterates over config.modeling.relaxation (one value per post-seismic decay)
+        relaxation = self._clean_param(request.query_params.get("relaxation"))
+        if relaxation is None:
+            params["relaxation"] = [0.5]
+        else:
+            try:
+                params["relaxation"] = [float(r) for r in relaxation.split(",")]
+            except (TypeError, ValueError):
+                raise exceptions.CustomValidationErrorExceptionHandler(
+                    "'relaxation' parameter must be a number or a comma-separated list of numbers.")
 
     def _get_station(self, station_api_id):
         try:
@@ -467,41 +561,217 @@ class TimeSeries(CustomListAPIView):
 
         cnn = dbConnection.Cnn(settings.CONFIG_FILE_ABSOLUTE_PATH)
         try:
-            if params["solution"] == "GAMIT":
-                polyhedrons = cnn.query_float('SELECT "X", "Y", "Z", "Year", "DOY" FROM stacks '
-                                              'WHERE "name" = \'%s\' AND "NetworkCode" = \'%s\' AND '
-                                              '"StationCode" = \'%s\' '
-                                              'ORDER BY "Year", "DOY", "NetworkCode", "StationCode"'
-                                              % (params["stack"], network_code, station_code))
-
-                soln = pyETM.GamitSoln(
-                    cnn, polyhedrons, network_code, station_code, params["stack"])
-
-                etm = pyETM.GamitETM(cnn, network_code, station_code, False,
-                                     params["no_model"], gamit_soln=soln, plot_remove_jumps=params["remove_jumps"],
-                                     plot_polynomial_removed=params["remove_polynomial"])
+            solution_type = utils.get_solution_type(params["solution"])
+            if solution_type == SolutionType.GAMIT:
+                solution_options = SolutionOptions(
+                    solution_type=solution_type, stack_name=params["stack"])
             else:
-                etm = pyETM.PPPETM(cnn, network_code, station_code, False, params["no_model"],
-                                   plot_remove_jumps=params["remove_jumps"],
-                                   plot_polynomial_removed=params["remove_polynomial"])
+                solution_options = SolutionOptions(solution_type=solution_type)
+
+            config = EtmConfig(network_code=network_code, station_code=station_code,
+                               cnn=cnn, solution_options=solution_options)
+
+            # adjustment parameters must be set before building the EtmEngine,
+            # since the engine reads config.modeling in __init__
+            config.modeling.fit_auto_detected_jumps = params["plot_auto_jumps"]
+            config.modeling.relaxation = numpy.array(params["relaxation"])
+            config.modeling.least_squares_strategy.adjustment_model = params["adjustment_model"]
+            config.modeling.least_squares_strategy.covariance_function = params["covariance_function"]
+
+            if params["fit_window"] is not None:
+                config.modeling.data_model_window = [list(params["fit_window"])]
+
+            etm = EtmEngine(config, cnn=cnn)
+            etm.run_adjustment(cnn=cnn)
+
             if params["json"]:
-                response = etm.todictionary(time_series=True, model=True)
+                response = etm.save_etm(
+                    dump_model=not params["no_model"], dump_functions=True, dump_observations=True)
             else:
-                fileio = BytesIO()
-                response = etm.plot(pngfile=None, t_win=params["dates"], residuals=params["residuals"],
-                                    plot_missing=params["missing_data"], plot_auto_jumps=params["plot_auto_jumps"], plot_outliers=params["plot_outliers"], fileio=fileio)
+                config.plotting_config = PlotOutputConfig(
+                    file_io=BytesIO(), format='png', plot_time_window=params["dates"],
+                    plot_residuals_mode=params["residuals"], plot_missing_solutions=params["missing_data"],
+                    plot_show_outliers=params["plot_outliers"], plot_remove_jumps=params["remove_jumps"],
+                    plot_remove_polynomial=params["remove_polynomial"], plot_remove_periodic=params["remove_periodic"],
+                    plot_remove_stochastic=params["remove_stochastic"], plot_no_model=params["no_model"])
+                response = etm.plot()
 
-            etm_config = etm.pull_params()
+            etm_config = EtmParams.from_etm(etm, cnn).pull_params()
 
             if "jumps" in etm_config:
+                description_to_type = {jt.description: int(jt) for jt in JumpType}
                 for jump in etm_config["jumps"]:
-                    jump["type_name"] = pyETM.type_dict[jump["type"]]
+                    jump["type_name"] = jump["type"]
+                    jump["type"] = description_to_type.get(jump["type"])
 
         except Exception as e:
             raise exceptions.CustomValidationErrorExceptionHandler(
                 e.detail if hasattr(e, 'detail') else str(e))
 
-        return Response(data={"time_series": response, "etm_params": etm_config}, status=status.HTTP_200_OK)
+        # download_filename = build_filename() = "<net>.<stn>_<stack>" (e.g. arg.csps_igs14); the
+        # front uses it to name the downloaded ETM file (it appends the extension: .json / .png).
+        # named download_filename (not filename) to avoid colliding with the geode-internal
+        # solution_options.filename nested inside time_series.
+        return Response(data={"time_series": response, "etm_params": etm_config,
+                              "download_filename": config.build_filename()}, status=status.HTTP_200_OK)
+
+
+class BulkDownloadTimeSeries(APIView):
+    serializer_class = serializers.BulkDownloadTimeSeriesRequestSerializer
+
+    @extend_schema(
+        request=serializers.BulkDownloadTimeSeriesRequestSerializer,
+        responses={200: OpenApiResponse(
+            description="ZIP (application/zip) con un ETM JSON (solución PPP) por estación, "
+                        "más un manifest.json con las estaciones exitosas y las fallidas.")},
+        description="Genera un ZIP con el ETM JSON (PPP) de cada estación enviada (punto 8). "
+                    "El front manda la lista final de estaciones; sismos, capas y filtros de "
+                    "network/station code se resuelven en el front. Una estación que falla queda "
+                    "registrada en manifest.json sin abortar la descarga.")
+    def post(self, request, format=None):
+        serializer = serializers.BulkDownloadTimeSeriesRequestSerializer(
+            data=request.data)
+        serializer.is_valid(raise_exception=True)
+        stations = serializer.validated_data["stations"]
+
+        # No hay tope de estaciones: la generación corre sincrónica y queda acotada por el
+        # --timeout de gunicorn (una selección demasiado grande se corta por timeout). Si esto
+        # se vuelve un problema, mover la generación a un proceso aparte (Celery / cache).
+
+        # ZIP a archivo temporal (memoria acotada); FileResponse lo transmite ya terminado.
+        tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        tmp.close()
+        try:
+            utils.EtmBulkUtils.write_bulk_zip(stations, tmp.name)
+        except Exception as e:
+            os.remove(tmp.name)
+            raise exceptions.CustomServerErrorExceptionHandler(
+                e.detail if hasattr(e, 'detail') else str(e))
+
+        filename = f"etm_bulk_{len(stations)}_stations.zip"
+        response = FileResponse(open(tmp.name, 'rb'), as_attachment=True,
+                                filename=filename, content_type='application/zip')
+        # borrar el temporal cuando se termina de transmitir la respuesta
+        response._resource_closers.append(lambda: os.remove(tmp.name))
+        return response
+
+
+class TimeSeriesCoordinates(APIView):
+    serializer_class = serializers.DummySerializer
+
+    def get_queryset(self, pk):
+        return None
+
+    def _get_int_param(self, request, param_name):
+        value = request.query_params.get(param_name)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "'" + param_name + "' parameter must be an integer.")
+
+    def _get_mode_obs(self, request):
+        value = request.query_params.get("mode_obs")
+        if value is None or (isinstance(value, str) and value.strip() == ""):
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "'mode_obs' parameter is required.")
+        value = value.strip()
+
+        # accept the enum by name (MODEL/OBSERVATION, case-insensitive) or by id
+        try:
+            return EtmSolutionType(int(value))
+        except (TypeError, ValueError):
+            pass
+        for member in EtmSolutionType:
+            if member.name.upper() == value.upper():
+                return member
+
+        valid_values = ", ".join(member.name for member in EtmSolutionType)
+        raise exceptions.CustomValidationErrorExceptionHandler(
+            "'mode_obs' parameter must be one of: " + valid_values + ".")
+
+    def _get_query_date(self, request):
+        date_format = (request.query_params.get("date_format") or "").strip().lower()
+
+        # the date can be given in gregorian (year/month/day) or DOY (year/doy) form;
+        # validate it with the same Date() geode uses so an invalid date is a clean 400
+        if date_format == "gregorian":
+            year = self._get_int_param(request, "year")
+            month = self._get_int_param(request, "month")
+            day = self._get_int_param(request, "day")
+            try:
+                return pyDate.Date(year=year, month=month, day=day)
+            except Exception as e:
+                raise exceptions.CustomValidationErrorExceptionHandler(
+                    "'year', 'month' and 'day' must form a valid date: " +
+                    (e.detail if hasattr(e, 'detail') else str(e)))
+        elif date_format == "doy":
+            year = self._get_int_param(request, "year")
+            doy = self._get_int_param(request, "doy")
+            try:
+                return pyDate.Date(year=year, doy=doy)
+            except Exception as e:
+                raise exceptions.CustomValidationErrorExceptionHandler(
+                    "'year' and 'doy' must form a valid date: " +
+                    (e.detail if hasattr(e, 'detail') else str(e)))
+        else:
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "'date_format' parameter must be either 'gregorian' or 'doy'.")
+
+    @extend_schema(
+        description="Returns the station position for a given epoch, as ECEF XYZ and "
+                    "lat/lon/height, derived from the ETM model (mode_obs=MODEL) or from the "
+                    "observations (mode_obs=OBSERVATION). Requires solution (+stack if GAMIT), "
+                    "mode_obs and date_format (gregorian -> year/month/day, doy -> year/doy).",
+        responses={200: OpenApiResponse(
+            description="Object with xyz, lla, source and sigmas")}
+    )
+    def get(self, request, *args, **kwargs):
+        timeSeriesConfigUtils = utils.TimeSeriesConfigUtils()
+
+        solution = request.query_params.get("solution")
+        if not solution or not utils.is_supported_solution(solution):
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "'solution' parameter must be one of: " + utils.get_supported_solutions_message() + ".")
+
+        solution = solution.strip().upper()
+
+        if utils.get_solution_type(solution) == SolutionType.GAMIT:
+            if 'stack' not in request.query_params:
+                raise exceptions.CustomValidationErrorExceptionHandler(
+                    "stack parameter is required.")
+
+        mode_obs = self._get_mode_obs(request)
+        query_date = self._get_query_date(request)
+
+        etm = timeSeriesConfigUtils.initialize_etm(
+            request, solution, False, kwargs.get('station_api_id'))
+        cnn = timeSeriesConfigUtils.get_cnn()
+
+        try:
+            etm.run_adjustment(cnn=cnn)
+            position_result = etm.get_position(query_date, mode_obs)
+        except Exception as e:
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                e.detail if hasattr(e, 'detail') else str(e))
+
+        # get_position returns ECEF XYZ shaped [[X], [Y], [Z]] (one column per date)
+        position = position_result["position"]
+        x, y, z = position[0][0], position[1][0], position[2][0]
+
+        lat, lon, height = pyUtils.ecef2lla([x, y, z])
+
+        data = {
+            "xyz": {"x": x, "y": y, "z": z},
+            "lla": {"lat": float(lat[0]), "lon": float(lon[0]), "height": float(height[0])},
+            "source": position_result.get("source"),
+        }
+
+        sigmas = position_result.get("sigmas")
+        if sigmas is not None:
+            data["sigmas"] = {"x": sigmas[0][0], "y": sigmas[1][0], "z": sigmas[2][0]}
+
+        return Response(data=data, status=status.HTTP_200_OK)
 
 
 class AvailableJumpTypes(APIView):
@@ -527,6 +797,80 @@ class AvailableJumpTypes(APIView):
                 e.detail if hasattr(e, 'detail') else str(e))
 
 
+class SolutionTypes(APIView):
+    serializer_class = serializers.DummySerializer
+
+    def get_queryset(self, pk):
+        return None
+
+    @extend_schema(
+        description="Returns available ETM solution types from the geode library.",
+        responses={200: OpenApiResponse(
+            description="Array of solution types with id and type properties")}
+    )
+    def get(self, request, *args, **kwargs):
+        try:
+            # supported types come from the single source of truth in utils
+            # (everything in geode except the blacklist), so a new solution type is
+            # exposed automatically once it exists in geode, without changing this code
+            solution_types = [{"id": int(solution_type.value), "type": solution_type.name}
+                              for solution_type in utils.get_supported_solution_types()]
+
+            return Response(data={"solution_types": solution_types}, status=status.HTTP_200_OK)
+        except Exception as e:
+            raise exceptions.CustomServerErrorExceptionHandler(
+                e.detail if hasattr(e, 'detail') else str(e))
+
+
+class AdjustmentOptions(APIView):
+    serializer_class = serializers.DummySerializer
+
+    def get_queryset(self, pk):
+        return None
+
+    @extend_schema(
+        description="Returns least squares adjustment options (strategies and covariance models) from the geode library.",
+        responses={200: OpenApiResponse(
+            description="Object with adjustment_models and covariance_functions arrays")}
+    )
+    def get(self, request, *args, **kwargs):
+        try:
+            adjustment_models = [{"id": int(model.value), "type": model.name}
+                                 for model in AdjustmentModels]
+            covariance_functions = [{"id": int(cov.value), "type": cov.name}
+                                    for cov in CovarianceFunction]
+
+            return Response(data={"adjustment_models": adjustment_models,
+                                  "covariance_functions": covariance_functions}, status=status.HTTP_200_OK)
+        except Exception as e:
+            raise exceptions.CustomServerErrorExceptionHandler(
+                e.detail if hasattr(e, 'detail') else str(e))
+
+
+class ModeObsTypes(APIView):
+    serializer_class = serializers.DummySerializer
+
+    def get_queryset(self, pk):
+        return None
+
+    @extend_schema(
+        description="Returns the available mode_obs values (geode EtmSolutionType) for the "
+                    "time-series coordinates query.",
+        responses={200: OpenApiResponse(
+            description="Array of mode_obs types with id, type and description properties")}
+    )
+    def get(self, request, *args, **kwargs):
+        try:
+            mode_obs_types = [{"id": int(mode_obs.value), "type": mode_obs.name,
+                               "description": mode_obs.description}
+                              for mode_obs in EtmSolutionType]
+
+            return Response(data={"mode_obs_types": mode_obs_types}, status=status.HTTP_200_OK)
+        except Exception as e:
+            raise exceptions.CustomServerErrorExceptionHandler(
+                e.detail if hasattr(e, 'detail') else str(e))
+
+
 class TimeSeriesConfigResetPolynomial(CustomListCreateAPIView):
     serializer_class = serializers.DummySerializer
 
@@ -537,22 +881,18 @@ class TimeSeriesConfigResetPolynomial(CustomListCreateAPIView):
         timeSeriesConfigUtils = utils.TimeSeriesConfigUtils()
 
         solution = kwargs.get('solution')
-        if not solution or solution.strip().upper() not in ('PPP', 'GAMIT'):
+        if not solution or not utils.is_supported_solution(solution):
             raise exceptions.CustomValidationErrorExceptionHandler(
-                "'solution' parameter must be either 'PPP' or 'GAMIT'")
+                "'solution' parameter must be one of: " + utils.get_supported_solutions_message() + ".")
 
         solution = solution.strip().upper()
 
-        if solution == "GAMIT":
-            if 'stack' not in request.query_params:
-                raise exceptions.CustomValidationErrorExceptionHandler(
-                    "stack parameter is required.")
-
-        etm = timeSeriesConfigUtils.initialize_etm(
-            request, solution, False, kwargs.get('station_api_id'))
-        cnn = timeSeriesConfigUtils.get_cnn()
+        # No stack needed (not even for GAMIT): only writes the etm_params table, keyed by
+        # solution (soln), not by stack. Standalone EtmParams path -- no EtmEngine built.
+        etm_params = timeSeriesConfigUtils.initialize_etm_params(
+            solution, kwargs.get('station_api_id'))
         try:
-            etm.push_params(cnn=cnn, reset_polynomial=True)
+            etm_params.push_params(reset_polynomial=True)
         except Exception as e:
             raise exceptions.CustomValidationErrorExceptionHandler(
                 e.detail if hasattr(e, 'detail') else str(e))
@@ -569,22 +909,18 @@ class TimeSeriesConfigResetPeriodic(CustomListCreateAPIView):
     def post(self, request, *args, **kwargs):
         timeSeriesConfigUtils = utils.TimeSeriesConfigUtils()
         solution = kwargs.get('solution')
-        if not solution or solution.strip().upper() not in ('PPP', 'GAMIT'):
+        if not solution or not utils.is_supported_solution(solution):
             raise exceptions.CustomValidationErrorExceptionHandler(
-                "'solution' parameter must be either 'PPP' or 'GAMIT'")
+                "'solution' parameter must be one of: " + utils.get_supported_solutions_message() + ".")
 
         solution = solution.strip().upper()
 
-        if solution == "GAMIT":
-            if 'stack' not in request.query_params:
-                raise exceptions.CustomValidationErrorExceptionHandler(
-                    "stack parameter is required.")
-
-        etm = timeSeriesConfigUtils.initialize_etm(
-            request, solution, False, kwargs.get('station_api_id'))
-        cnn = timeSeriesConfigUtils.get_cnn()
+        # No stack needed (not even for GAMIT): only writes the etm_params table, keyed by
+        # solution (soln), not by stack. Standalone EtmParams path -- no EtmEngine built.
+        etm_params = timeSeriesConfigUtils.initialize_etm_params(
+            solution, kwargs.get('station_api_id'))
         try:
-            etm.push_params(cnn=cnn, reset_periodic=True)
+            etm_params.push_params(reset_periodic=True)
         except Exception as e:
             raise exceptions.CustomValidationErrorExceptionHandler(
                 e.detail if hasattr(e, 'detail') else str(e))
@@ -601,22 +937,18 @@ class TimeSeriesConfigResetJumps(CustomListCreateAPIView):
     def post(self, request, *args, **kwargs):
         timeSeriesConfigUtils = utils.TimeSeriesConfigUtils()
         solution = kwargs.get('solution')
-        if not solution or solution.strip().upper() not in ('PPP', 'GAMIT'):
+        if not solution or not utils.is_supported_solution(solution):
             raise exceptions.CustomValidationErrorExceptionHandler(
-                "'solution' parameter must be either 'PPP' or 'GAMIT'")
+                "'solution' parameter must be one of: " + utils.get_supported_solutions_message() + ".")
 
         solution = solution.strip().upper()
 
-        if solution == "GAMIT":
-            if 'stack' not in request.query_params:
-                raise exceptions.CustomValidationErrorExceptionHandler(
-                    "stack parameter is required.")
-
-        etm = timeSeriesConfigUtils.initialize_etm(
-            request, solution, False, kwargs.get('station_api_id'))
-        cnn = timeSeriesConfigUtils.get_cnn()
+        # No stack needed (not even for GAMIT): only writes the etm_params table, keyed by
+        # solution (soln), not by stack. Standalone EtmParams path -- no EtmEngine built.
+        etm_params = timeSeriesConfigUtils.initialize_etm_params(
+            solution, kwargs.get('station_api_id'))
         try:
-            etm.push_params(cnn=cnn, reset_jumps=True)
+            etm_params.push_params(reset_jumps=True)
         except Exception as e:
             raise exceptions.CustomValidationErrorExceptionHandler(
                 e.detail if hasattr(e, 'detail') else str(e))
@@ -633,20 +965,16 @@ class TimeSeriesConfigSetPolynomial(CustomListCreateAPIView):
     def post(self, request, *args, **kwargs):
         timeSeriesConfigUtils = utils.TimeSeriesConfigUtils()
         solution = kwargs.get('solution')
-        if not solution or solution.strip().upper() not in ('PPP', 'GAMIT'):
+        if not solution or not utils.is_supported_solution(solution):
             raise exceptions.CustomValidationErrorExceptionHandler(
-                "'solution' parameter must be either 'PPP' or 'GAMIT'")
+                "'solution' parameter must be one of: " + utils.get_supported_solutions_message() + ".")
 
         solution = solution.strip().upper()
 
-        if solution == "GAMIT":
-            if 'stack' not in request.query_params:
-                raise exceptions.CustomValidationErrorExceptionHandler(
-                    "stack parameter is required.")
-
-        etm = timeSeriesConfigUtils.initialize_etm(
-            request, solution, False, kwargs.get('station_api_id'))
-        cnn = timeSeriesConfigUtils.get_cnn()
+        # No stack needed (not even for GAMIT): only writes the etm_params table, keyed by
+        # solution (soln), not by stack. Standalone EtmParams path -- no EtmEngine built.
+        etm_params = timeSeriesConfigUtils.initialize_etm_params(
+            solution, kwargs.get('station_api_id'))
         # check if terms, year and doy is in body
         if 'terms' not in request.data:
             raise exceptions.CustomValidationErrorExceptionHandler(
@@ -675,7 +1003,7 @@ class TimeSeriesConfigSetPolynomial(CustomListCreateAPIView):
             raise exceptions.CustomValidationErrorExceptionHandler(
                 "terms parameter must be a integer.")
         try:
-            etm.push_params(cnn=cnn, params={
+            etm_params.push_params(params={
                             'object': 'polynomial', 'terms': terms, 'Year': year, 'DOY': doy})
         except Exception as e:
             raise exceptions.CustomValidationErrorExceptionHandler(
@@ -693,20 +1021,16 @@ class TimeSeriesConfigSetPeriodic(CustomListCreateAPIView):
     def post(self, request, *args, **kwargs):
         timeSeriesConfigUtils = utils.TimeSeriesConfigUtils()
         solution = kwargs.get('solution')
-        if not solution or solution.strip().upper() not in ('PPP', 'GAMIT'):
+        if not solution or not utils.is_supported_solution(solution):
             raise exceptions.CustomValidationErrorExceptionHandler(
-                "'solution' parameter must be either 'PPP' or 'GAMIT'")
+                "'solution' parameter must be one of: " + utils.get_supported_solutions_message() + ".")
 
         solution = solution.strip().upper()
 
-        if solution == "GAMIT":
-            if 'stack' not in request.query_params:
-                raise exceptions.CustomValidationErrorExceptionHandler(
-                    "stack parameter is required.")
-
-        etm = timeSeriesConfigUtils.initialize_etm(
-            request, solution, False, kwargs.get('station_api_id'))
-        cnn = timeSeriesConfigUtils.get_cnn()
+        # No stack needed (not even for GAMIT): only writes the etm_params table, keyed by
+        # solution (soln), not by stack. Standalone EtmParams path -- no EtmEngine built.
+        etm_params = timeSeriesConfigUtils.initialize_etm_params(
+            solution, kwargs.get('station_api_id'))
 
         if 'frequencies' not in request.data:
             raise exceptions.CustomValidationErrorExceptionHandler(
@@ -724,7 +1048,7 @@ class TimeSeriesConfigSetPeriodic(CustomListCreateAPIView):
                     "frequencies parameter must be a list of numbers.")
 
         try:
-            etm.push_params(cnn=cnn, params={
+            etm_params.push_params(params={
                             'object': 'periodic', 'frequencies': request.data['frequencies']})
         except Exception as e:
             raise exceptions.CustomValidationErrorExceptionHandler(
@@ -739,27 +1063,9 @@ class TimeSeriesConfigSetJumps(CustomListCreateAPIView):
     def get_queryset(self, pk):
         return None
 
-    def post(self, request, *args, **kwargs):
-
-        timeSeriesConfigUtils = utils.TimeSeriesConfigUtils()
-
-        solution = kwargs.get('solution')
-        if not solution or solution.strip().upper() not in ('PPP', 'GAMIT'):
-            raise exceptions.CustomValidationErrorExceptionHandler(
-                "'solution' parameter must be either 'PPP' or 'GAMIT'")
-
-        solution = solution.strip().upper()
-
-        if solution == "GAMIT":
-            if 'stack' not in request.query_params:
-                raise exceptions.CustomValidationErrorExceptionHandler(
-                    "stack parameter is required.")
-
-        etm = timeSeriesConfigUtils.initialize_etm(
-            request, solution, False, kwargs.get('station_api_id'))
-
-        cnn = timeSeriesConfigUtils.get_cnn()
-
+    def _build_jump_params(self, request, force_action=None):
+        # builds (and validates) the jump params dict shared by create (POST) and edit (PUT).
+        # create reads the action from the body; edit forces it (force_action, see put()).
         if 'Year' not in request.data:
             raise exceptions.CustomValidationErrorExceptionHandler(
                 "Year parameter is required.")
@@ -768,12 +1074,26 @@ class TimeSeriesConfigSetJumps(CustomListCreateAPIView):
             raise exceptions.CustomValidationErrorExceptionHandler(
                 "DOY parameter is required.")
 
-        if 'action' not in request.data:
+        if force_action is not None:
+            action = force_action
+        elif 'action' in request.data:
+            action = request.data['action']
+        else:
             raise exceptions.CustomValidationErrorExceptionHandler(
                 "action parameter is required.")
 
         params = {'object': 'jump', 'Year': request.data['Year'],
-                  'DOY': request.data['DOY'], 'action': request.data['action']}
+                  'DOY': request.data['DOY'], 'action': action}
+
+        # geode validates the date for polynomial params but NOT for jumps, so an invalid
+        # Year/DOY (e.g. DOY=0) gets inserted and then breaks every ETM load. Validate it
+        # here with the same Date() geode uses, to reject it with a 400 and never persist it.
+        try:
+            pyDate.Date(year=params['Year'], doy=params['DOY'])
+        except Exception as e:
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "'Year' and 'DOY' must form a valid date: " +
+                (e.detail if hasattr(e, 'detail') else str(e)))
 
         # jump_type parameter is optional
         if 'jump_type' in request.data:
@@ -792,14 +1112,119 @@ class TimeSeriesConfigSetJumps(CustomListCreateAPIView):
 
             params["relaxation"] = request.data['relaxation']
 
+        return params
+
+    def post(self, request, *args, **kwargs):
+
+        timeSeriesConfigUtils = utils.TimeSeriesConfigUtils()
+
+        solution = kwargs.get('solution')
+        if not solution or not utils.is_supported_solution(solution):
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "'solution' parameter must be one of: " + utils.get_supported_solutions_message() + ".")
+
+        solution = solution.strip().upper()
+
+        # No stack needed (not even for GAMIT): only writes the etm_params table, keyed by
+        # solution (soln), not by stack. Standalone EtmParams path -- no EtmEngine built.
+        etm_params = timeSeriesConfigUtils.initialize_etm_params(
+            solution, kwargs.get('station_api_id'))
+
+        params = self._build_jump_params(request)
+
         try:
 
-            etm.push_params(cnn=cnn, params=params)
+            etm_params.push_params(params=params)
         except Exception as e:
             raise exceptions.CustomValidationErrorExceptionHandler(
                 e.detail if hasattr(e, 'detail') else str(e))
 
         return Response(data={"message": "Jump set successfully."}, status=status.HTTP_200_OK)
+
+    def put(self, request, *args, **kwargs):
+        # edit a jump = change ONLY its jump_type (and relaxation). the date (Year/DOY) is the
+        # jump's identity and CANNOT change: geode keys overrides by date, so moving the date
+        # would orphan the original -- an automatic jump would simply reappear at its date --
+        # and create a brand-new jump at the new date. to change a date, delete + create.
+
+        timeSeriesConfigUtils = utils.TimeSeriesConfigUtils()
+
+        solution = kwargs.get('solution')
+        if not solution or not utils.is_supported_solution(solution):
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "'solution' parameter must be one of: " + utils.get_supported_solutions_message() + ".")
+
+        solution = solution.strip().upper()
+
+        # jump_type is what the edit changes, so it is required here (it is optional on create).
+        if 'jump_type' not in request.data:
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "jump_type parameter is required.")
+
+        # force action='+': editing the type writes an ACTIVE manual override at the jump's
+        # date. this is also what makes editing an AUTOMATIC jump (e.g. an earthquake) work --
+        # the automatic jump has no row of its own, so the override (matched by date) is what
+        # carries the new type and keeps it fitted. deactivating/deleting a jump is a separate
+        # endpoint, so an edit never needs '-'.
+        params = self._build_jump_params(request, force_action='+')
+
+        etm_params = timeSeriesConfigUtils.initialize_etm_params(
+            solution, kwargs.get('station_api_id'))
+
+        try:
+            # push_params does DELETE-then-INSERT at the date, so an existing manual override is
+            # replaced in place; for an automatic jump it inserts the override geode then applies
+            # on top of the detected jump.
+            etm_params.push_params(params=params)
+        except Exception as e:
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                e.detail if hasattr(e, 'detail') else str(e))
+
+        return Response(data={"message": "Jump edited successfully."}, status=status.HTTP_200_OK)
+
+
+class TimeSeriesConfigSetCopyParams(CustomListCreateAPIView):
+    serializer_class = serializers.DummySerializer
+
+    def get_queryset(self, pk):
+        return None
+
+    def post(self, request, *args, **kwargs):
+        timeSeriesConfigUtils = utils.TimeSeriesConfigUtils()
+
+        solution = kwargs.get('solution')
+        if not solution or not utils.is_supported_solution(solution):
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "'solution' parameter must be one of: " + utils.get_supported_solutions_message() + ".")
+
+        solution = solution.strip().upper()
+
+        # set-copy-params does NOT require the stack, not even for GAMIT: the copy_params
+        # flag and the copied params are keyed by solution (soln), not by stack (confirmed
+        # with geode's author). We use geode's standalone EtmParams write path, which never
+        # builds the EtmEngine and therefore never needs a stack to load the time series.
+
+        if 'copy_params' not in request.data:
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "copy_params parameter is required.")
+
+        copy_params = request.data['copy_params']
+
+        if not isinstance(copy_params, bool):
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "copy_params parameter must be a boolean.")
+
+        etm_params = timeSeriesConfigUtils.initialize_etm_params(
+            solution, kwargs.get('station_api_id'))
+        try:
+            # copy_params=True copies this solution's trajectory params to the other
+            # solutions and keeps them in sync on later edits; False removes that flag
+            etm_params.push_params(copy_params=copy_params)
+        except Exception as e:
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                e.detail if hasattr(e, 'detail') else str(e))
+
+        return Response(data={"message": "Copy parameters updated successfully."}, status=status.HTTP_200_OK)
 
 
 class TimeSeriesConfigDeleteJump(CustomListCreateAPIView):
@@ -832,9 +1257,9 @@ class TimeSeriesConfigDeleteJump(CustomListCreateAPIView):
 
         solution = solution.strip().lower()
 
-        if solution not in ("gamit", "ppp"):
+        if not utils.is_supported_solution(solution):
             raise exceptions.CustomValidationErrorExceptionHandler(
-                "solution parameter must be either 'gamit' or 'ppp'.")
+                "'solution' parameter must be one of: " + utils.get_supported_solutions_message() + ".")
 
         if not isinstance(request.data['Year'], int):
             raise exceptions.CustomValidationErrorExceptionHandler(
@@ -1760,6 +2185,67 @@ class RinexTankStructDetail(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = serializers.RinexTankStructSerializer
 
 
+class StationsWithRinexOnDate(APIView):
+    serializer_class = serializers.DummySerializer
+
+    def get_queryset(self):
+        return None
+
+    @extend_schema(
+        description="Get api_ids of stations with at least one rinex in a given date range (YYYY-MM-DD)",
+        responses={200: OpenApiResponse(description="Array of station api_ids")}
+    )
+    def get(self, request, from_date, to_date, *args, **kwargs):
+        try:
+            from_date_obj = datetime.datetime.strptime(from_date, "%Y-%m-%d").date()
+            to_date_obj = datetime.datetime.strptime(to_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise exceptions.CustomValidationErrorExceptionHandler("Dates must be in YYYY-MM-DD format.")
+
+        if to_date_obj < from_date_obj:
+            raise exceptions.CustomValidationErrorExceptionHandler("to_date must be equal to or greater than from_date.")
+
+        # Get unique network and station codes that have rinex data for the given date range
+        rinex_records = models.Rinex.objects.filter(
+            observation_year__gte=from_date_obj.year,
+            observation_year__lte=to_date_obj.year
+        ).exclude(
+            observation_year=from_date_obj.year,
+            observation_month__lt=from_date_obj.month
+        ).exclude(
+            observation_year=to_date_obj.year,
+            observation_month__gt=to_date_obj.month
+        ).exclude(
+            observation_year=from_date_obj.year,
+            observation_month=from_date_obj.month,
+            observation_day__lt=from_date_obj.day
+        ).exclude(
+            observation_year=to_date_obj.year,
+            observation_month=to_date_obj.month,
+            observation_day__gt=to_date_obj.day
+        ).values_list('network_code', 'station_code').distinct()
+
+        if not rinex_records:
+            return Response(data={"station_api_ids": []}, status=status.HTTP_200_OK)
+
+        network_codes = [r[0] for r in rinex_records]
+        station_codes = [r[1] for r in rinex_records]
+
+        # Get stations matching these codes
+        stations = models.Stations.objects.filter(
+            network_code__network_code__in=network_codes,
+            station_code__in=station_codes
+        ).values_list('api_id', 'network_code__network_code', 'station_code')
+
+        rinex_set = set(rinex_records)
+        
+        station_api_ids = [
+            station[0] for station in stations if (station[1], station[2]) in rinex_set
+        ]
+
+        return Response(data={"station_api_ids": station_api_ids}, status=status.HTTP_200_OK)
+
+
 class SourcesFormatsList(CustomListCreateAPIView):
     queryset = models.SourcesFormats.objects.all()
     serializer_class = serializers.SourcesFormatsSerializer
@@ -2097,6 +2583,7 @@ class ParseStationInfoByFile(APIView):
             "antenna_height": station_info_record_from_pgamit.AntennaHeight,
             "antenna_north": station_info_record_from_pgamit.AntennaNorth,
             "antenna_east": station_info_record_from_pgamit.AntennaEast,
+            "antenna_azimuth": station_info_record_from_pgamit.AntennaDAZ,
             "height_code": station_info_record_from_pgamit.HeightCode,
             "radome_code": station_info_record_from_pgamit.RadomeCode,
             "date_start": pyDate.Date(stninfo=station_info_record_from_pgamit.DateStart).datetime(),
@@ -2146,7 +2633,7 @@ class ParseStationInfoByFile(APIView):
         try:
             cnn = dbConnection.Cnn(settings.CONFIG_FILE_ABSOLUTE_PATH)
 
-            pgamit_stationinfo = pyStationInfo.StationInfo(
+            pgamit_stationinfo = StationInfo(
                 cnn=cnn, NetworkCode=station.network_code.network_code, StationCode=station.station_code, allow_empty=True)
             station_info_records = pgamit_stationinfo.parse_station_info(
                 full_file_path)
@@ -2178,6 +2665,7 @@ class InsertStationInfoByFile(APIView):
             "antenna_height": station_info_record_from_pgamit.AntennaHeight,
             "antenna_north": station_info_record_from_pgamit.AntennaNorth,
             "antenna_east": station_info_record_from_pgamit.AntennaEast,
+            "antenna_azimuth": station_info_record_from_pgamit.AntennaDAZ,
             "height_code": station_info_record_from_pgamit.HeightCode,
             "radome_code": station_info_record_from_pgamit.RadomeCode,
             "date_start": pyDate.Date(stninfo=station_info_record_from_pgamit.DateStart).datetime(),
@@ -2279,7 +2767,7 @@ class InsertStationInfoByFile(APIView):
         try:
             cnn = dbConnection.Cnn(settings.CONFIG_FILE_ABSOLUTE_PATH)
 
-            pgamit_stationinfo = pyStationInfo.StationInfo(
+            pgamit_stationinfo = StationInfo(
                 cnn=cnn, NetworkCode=station.network_code.network_code, StationCode=station.station_code, allow_empty=True)
             station_info_records = pgamit_stationinfo.parse_station_info(
                 full_file_path)
@@ -2334,6 +2822,26 @@ class GetStationKMZ(APIView):
             raise exceptions.CustomServerErrorExceptionHandler(e)
 
         return Response(data={"kmz": kmz}, status=status.HTTP_200_OK)
+
+
+class GetStationReportHtml(APIView):
+    serializer_class = serializers.DummySerializer
+
+    def get_queryset(self, station_api_id):
+        try:
+            return models.Stations.objects.get(api_id=station_api_id)
+        except models.Stations.DoesNotExist:
+            raise Http404
+
+    def get(self, request, station_api_id, format=None):
+        station = self.get_queryset(station_api_id)
+        try:
+            html = utils.StationReportGenerator.generate_station_report_html(
+                station)
+        except Exception as e:
+            raise exceptions.CustomServerErrorExceptionHandler(e)
+
+        return Response(data={"html": html}, status=status.HTTP_200_OK)
 
 
 class GetNearbyStations(APIView):
@@ -2458,6 +2966,17 @@ class DeleteUpdateGapsStatusBlock(APIView):
     def post(self, request, format=None):
         caches['default'].delete('update_gaps_status_lock')
         return Response(status=status.HTTP_201_CREATED)
+
+
+class DistinctAntennaCodes(CustomListAPIView):
+    queryset = models.Antennas.objects.values('antenna_code').distinct()
+    serializer_class = serializers.DistinctAntennaCodeSerializer
+
+
+class DistinctRadomeCodes(CustomListAPIView):
+    queryset = models.Antennas.objects.values(
+        'radome_code').distinct().order_by('radome_code')
+    serializer_class = serializers.DistinctRadomeCodeSerializer
 
 
 class DistinctStackNames(APIView):

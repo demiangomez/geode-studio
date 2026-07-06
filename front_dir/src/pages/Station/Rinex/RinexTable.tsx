@@ -152,7 +152,7 @@ const RinexTable = ({
 
                             setModals({
                                 show: true,
-                                title: "Information",
+                                title: "Instruments",
                                 type: "none",
                             });
                         }}
@@ -246,7 +246,7 @@ const RinexTable = ({
                         setRinexStationInfoRelated(data.related_station_info);
                         setModals({
                             show: true,
-                            title: "Information",
+                            title: "Instruments",
                             type: "none",
                         });
                     }}
@@ -307,8 +307,8 @@ const RinexTable = ({
     };
 
     return (
-        <div className={tooltipId ? "overflow-x-clip" : "overflow-x-auto pb-2"}>
-            <table className="table ">
+        <div className={tooltipId ? "w-full overflow-x-clip" : "w-full overflow-x-auto pb-2"}>
+            <table className="table w-full">
                 <thead>
                     <tr className="">
                         {titles.length > 0 ? (
@@ -351,10 +351,10 @@ const RinexTable = ({
                     {loading ? (
                         <tr>
                             <td
-                                colSpan={titles.length + 2}
-                                className="relative h-[200px]"
+                                colSpan={Math.max(titles.length + 2, 3)}
+                                className="w-full"
                             >
-                                <div className="absolute inset-0 flex justify-center items-center">
+                                <div className="w-full h-[200px] flex justify-center items-center">
                                     <Spinner size="lg" />
                                 </div>
                             </td>
@@ -404,7 +404,7 @@ const RinexTable = ({
                                                             >
                                                                 {isSameGroup &&
                                                                     first.groupId !==
-                                                                        "group-0" && (
+                                                                    "group-0" && (
                                                                         <div className="absolute top-0">
                                                                             ...
                                                                         </div>
@@ -416,70 +416,70 @@ const RinexTable = ({
 
                                                                     {tooltipId ===
                                                                         first.groupId && (
-                                                                        <div
-                                                                            className="absolute -top-[78px] bg-gray-800 text-white p-2 rounded 
-                                            text-pretty whitespace-nowrap w-[240px] z-50 overflow-visible"
-                                                                            onMouseEnter={() =>
-                                                                                setTooltipId(
-                                                                                    first.groupId,
-                                                                                )
-                                                                            }
-                                                                            onMouseLeave={() =>
-                                                                                setTooltipId(
-                                                                                    undefined,
-                                                                                )
-                                                                            }
-                                                                        >
-                                                                            <div className="flex space-x-4 items-center">
-                                                                                <button
-                                                                                    onClick={() => {
-                                                                                        setRinexGroup(
-                                                                                            undefined,
-                                                                                        );
-                                                                                        setModals(
-                                                                                            {
-                                                                                                show: true,
-                                                                                                title: "RinexAdd",
-                                                                                                type: "add",
-                                                                                            },
-                                                                                        );
-                                                                                    }}
-                                                                                    className="w-[45%] hover:bg-gray-400 bg-gray-500 rounded p-4"
-                                                                                >
-                                                                                    By
-                                                                                    file
-                                                                                </button>
-                                                                                <span>
-                                                                                    Or
-                                                                                </span>
-                                                                                <button
-                                                                                    onClick={() => {
-                                                                                        setRinexGroup(
-                                                                                            fullGroup?.rinex,
-                                                                                        );
-
-                                                                                        setModals(
-                                                                                            {
-                                                                                                show: true,
-                                                                                                title: "EditStats",
-                                                                                                type: "none",
-                                                                                            },
-                                                                                        );
-                                                                                    }}
-                                                                                    className="w-[45%] hover:bg-gray-400 bg-gray-500 rounded p-4"
-                                                                                >
-                                                                                    By
-                                                                                    rinex
-                                                                                </button>
-                                                                            </div>
                                                                             <div
-                                                                                className="absolute top-[100%] left-3 w-0 
+                                                                                className="absolute -top-[78px] bg-gray-800 text-white p-2 rounded 
+                                            text-pretty whitespace-nowrap w-[240px] z-50 overflow-visible"
+                                                                                onMouseEnter={() =>
+                                                                                    setTooltipId(
+                                                                                        first.groupId,
+                                                                                    )
+                                                                                }
+                                                                                onMouseLeave={() =>
+                                                                                    setTooltipId(
+                                                                                        undefined,
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                <div className="flex space-x-4 items-center">
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            setRinexGroup(
+                                                                                                undefined,
+                                                                                            );
+                                                                                            setModals(
+                                                                                                {
+                                                                                                    show: true,
+                                                                                                    title: "RinexAdd",
+                                                                                                    type: "add",
+                                                                                                },
+                                                                                            );
+                                                                                        }}
+                                                                                        className="w-[45%] hover:bg-gray-400 bg-gray-500 rounded p-4"
+                                                                                    >
+                                                                                        By
+                                                                                        file
+                                                                                    </button>
+                                                                                    <span>
+                                                                                        Or
+                                                                                    </span>
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            setRinexGroup(
+                                                                                                fullGroup?.rinex,
+                                                                                            );
+
+                                                                                            setModals(
+                                                                                                {
+                                                                                                    show: true,
+                                                                                                    title: "EditStats",
+                                                                                                    type: "none",
+                                                                                                },
+                                                                                            );
+                                                                                        }}
+                                                                                        className="w-[45%] hover:bg-gray-400 bg-gray-500 rounded p-4"
+                                                                                    >
+                                                                                        By
+                                                                                        rinex
+                                                                                    </button>
+                                                                                </div>
+                                                                                <div
+                                                                                    className="absolute top-[100%] left-3 w-0 
                                                 -translate-x-2/4 h-0 border-l-8 border-l-transparent 
                                                 border-r-8 border-r-transparent border-t-8
                                                 border-t-gray-800"
-                                                                            ></div>
-                                                                        </div>
-                                                                    )}
+                                                                                ></div>
+                                                                            </div>
+                                                                        )}
                                                                 </div>
                                                             </th>
                                                             <th
@@ -498,6 +498,94 @@ const RinexTable = ({
                                                                         String(
                                                                             rinex.api_id,
                                                                         ) && (
+                                                                            <div
+                                                                                className="absolute -top-[75px] bg-gray-800 text-white p-2 rounded 
+                                            text-pretty whitespace-nowrap w-[240px] z-50 overflow-visible"
+                                                                                onMouseEnter={() =>
+                                                                                    setTooltipId(
+                                                                                        String(
+                                                                                            rinex.api_id,
+                                                                                        ),
+                                                                                    )
+                                                                                }
+                                                                                onMouseLeave={() =>
+                                                                                    setTooltipId(
+                                                                                        undefined,
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                <div className="flex space-x-4 items-center">
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            setSingleRinex(
+                                                                                                undefined,
+                                                                                            );
+                                                                                            setModals(
+                                                                                                {
+                                                                                                    show: true,
+                                                                                                    title: "RinexAdd",
+                                                                                                    type: "add",
+                                                                                                },
+                                                                                            );
+                                                                                        }}
+                                                                                        className="w-[45%] hover:bg-gray-400 bg-gray-500 rounded p-4"
+                                                                                    >
+                                                                                        By
+                                                                                        file
+                                                                                    </button>
+                                                                                    <span>
+                                                                                        Or
+                                                                                    </span>
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            setSingleRinex(
+                                                                                                rinex,
+                                                                                            );
+
+                                                                                            setModals(
+                                                                                                {
+                                                                                                    show: true,
+                                                                                                    title: "EditStats",
+                                                                                                    type: "none",
+                                                                                                },
+                                                                                            );
+                                                                                        }}
+                                                                                        className="w-[45%] hover:bg-gray-400 bg-gray-500 rounded p-4"
+                                                                                    >
+                                                                                        By
+                                                                                        rinex
+                                                                                    </button>
+                                                                                </div>
+                                                                                <div
+                                                                                    className="absolute top-[100%] left-3 w-0 
+                                                -translate-x-2/4 h-0 border-l-8 border-l-transparent 
+                                                border-r-8 border-r-transparent border-t-8
+                                                border-t-gray-800"
+                                                                                ></div>
+                                                                            </div>
+                                                                        )}
+
+                                                                    {rinexInfoSecondLevel(
+                                                                        rinexItem,
+                                                                    )}
+                                                                </div>
+                                                            </th>
+                                                        </>
+                                                    )}
+                                                {rinexIndex > 0 &&
+                                                    rinexSubIndex === 0 && (
+                                                        <th
+                                                            rowSpan={
+                                                                rinexItemLength
+                                                            }
+                                                            scope="rowgroup"
+                                                            className="relative h-full border-[1px] border-base-content "
+                                                        >
+                                                            <div className="relative ">
+                                                                {tooltipId ===
+                                                                    String(
+                                                                        rinex.api_id,
+                                                                    ) && (
                                                                         <div
                                                                             className="absolute -top-[75px] bg-gray-800 text-white p-2 rounded 
                                             text-pretty whitespace-nowrap w-[240px] z-50 overflow-visible"
@@ -565,94 +653,6 @@ const RinexTable = ({
                                                                         </div>
                                                                     )}
 
-                                                                    {rinexInfoSecondLevel(
-                                                                        rinexItem,
-                                                                    )}
-                                                                </div>
-                                                            </th>
-                                                        </>
-                                                    )}
-                                                {rinexIndex > 0 &&
-                                                    rinexSubIndex === 0 && (
-                                                        <th
-                                                            rowSpan={
-                                                                rinexItemLength
-                                                            }
-                                                            scope="rowgroup"
-                                                            className="relative h-full border-[1px] border-base-content "
-                                                        >
-                                                            <div className="relative ">
-                                                                {tooltipId ===
-                                                                    String(
-                                                                        rinex.api_id,
-                                                                    ) && (
-                                                                    <div
-                                                                        className="absolute -top-[75px] bg-gray-800 text-white p-2 rounded 
-                                            text-pretty whitespace-nowrap w-[240px] z-50 overflow-visible"
-                                                                        onMouseEnter={() =>
-                                                                            setTooltipId(
-                                                                                String(
-                                                                                    rinex.api_id,
-                                                                                ),
-                                                                            )
-                                                                        }
-                                                                        onMouseLeave={() =>
-                                                                            setTooltipId(
-                                                                                undefined,
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        <div className="flex space-x-4 items-center">
-                                                                            <button
-                                                                                onClick={() => {
-                                                                                    setSingleRinex(
-                                                                                        undefined,
-                                                                                    );
-                                                                                    setModals(
-                                                                                        {
-                                                                                            show: true,
-                                                                                            title: "RinexAdd",
-                                                                                            type: "add",
-                                                                                        },
-                                                                                    );
-                                                                                }}
-                                                                                className="w-[45%] hover:bg-gray-400 bg-gray-500 rounded p-4"
-                                                                            >
-                                                                                By
-                                                                                file
-                                                                            </button>
-                                                                            <span>
-                                                                                Or
-                                                                            </span>
-                                                                            <button
-                                                                                onClick={() => {
-                                                                                    setSingleRinex(
-                                                                                        rinex,
-                                                                                    );
-
-                                                                                    setModals(
-                                                                                        {
-                                                                                            show: true,
-                                                                                            title: "EditStats",
-                                                                                            type: "none",
-                                                                                        },
-                                                                                    );
-                                                                                }}
-                                                                                className="w-[45%] hover:bg-gray-400 bg-gray-500 rounded p-4"
-                                                                            >
-                                                                                By
-                                                                                rinex
-                                                                            </button>
-                                                                        </div>
-                                                                        <div
-                                                                            className="absolute top-[100%] left-3 w-0 
-                                                -translate-x-2/4 h-0 border-l-8 border-l-transparent 
-                                                border-r-8 border-r-transparent border-t-8
-                                                border-t-gray-800"
-                                                                        ></div>
-                                                                    </div>
-                                                                )}
-
                                                                 {rinexInfoSecondLevel(
                                                                     rinexItem,
                                                                 )}
@@ -693,7 +693,7 @@ const RinexTable = ({
 
                                                     const valuesToUnderline =
                                                         rinexWithoutApiId[
-                                                            "metadata_mismatch"
+                                                        "metadata_mismatch"
                                                         ];
 
                                                     if (
@@ -711,7 +711,7 @@ const RinexTable = ({
                                                             /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/;
                                                         return (
                                                             typeof val ===
-                                                                "string" &&
+                                                            "string" &&
                                                             isoDateRegex.test(
                                                                 val,
                                                             )
@@ -731,14 +731,14 @@ const RinexTable = ({
                                                             title={
                                                                 !isDate
                                                                     ? (value?.toString() ??
-                                                                      "")
+                                                                        "")
                                                                     : (formattedDates(
-                                                                          woTz(
-                                                                              new Date(
-                                                                                  value as string,
-                                                                              ),
-                                                                          ) as Date,
-                                                                      ) ?? "")
+                                                                        woTz(
+                                                                            new Date(
+                                                                                value as string,
+                                                                            ),
+                                                                        ) as Date,
+                                                                    ) ?? "")
                                                             }
                                                         >
                                                             {valuesToUnderline.includes(
@@ -746,14 +746,14 @@ const RinexTable = ({
                                                             ) ? (
                                                                 <span className="text-red-600 font-bold underline">
                                                                     {value !==
-                                                                    ""
+                                                                        ""
                                                                         ? value
                                                                         : "-"}
                                                                 </span>
                                                             ) : (
                                                                 formatValue(
                                                                     (value as string) ??
-                                                                        "",
+                                                                    "",
                                                                 )
                                                             )}
                                                         </td>

@@ -39,12 +39,9 @@ type Record = {
     AntennaEast: number;
     HeightCode: string;
     RadomeCode: string;
-    DateStart: {
-        stninfo: string;
-    };
-    DateEnd: {
-        stninfo: string;
-    };
+    AntennaDAZ: number;
+    DateStart: string;
+    DateEnd: string;
     Comments: string | null;
     ReceiverVers: string;
     hash: number;
@@ -118,11 +115,11 @@ const RinexAdd = ({ stationApiId, handleCloseModal, setModalState }: Props) => {
     const [loading, setLoading] = useState<boolean>(false);
     const [msg, setMsg] = useState<
         | {
-              status: number;
-              msg: string;
-              errors?: RinexFileResponse | Errors;
-              rinex_other_errors?: { [key: string]: string[] };
-          }
+            status: number;
+            msg: string;
+            errors?: RinexFileResponse | Errors;
+            rinex_other_errors?: { [key: string]: string[] };
+        }
         | undefined
     >(undefined);
 
@@ -147,8 +144,10 @@ const RinexAdd = ({ stationApiId, handleCloseModal, setModalState }: Props) => {
         "EAST",
         "HC",
         "RAD",
+        "ANT DAZ",
         "COMMENTS",
     ];
+
 
     const getRecords = async () => {
         try {
@@ -181,20 +180,39 @@ const RinexAdd = ({ stationApiId, handleCloseModal, setModalState }: Props) => {
                             StationCode,
                             DateStart,
                             DateEnd,
-                            //eslint-disable-next-line
-                            ReceiverVers,
-                            //eslint-disable-next-line
-                            hash,
-                            //eslint-disable-next-line
-                            record_format,
-                            ...restOfStationInfo
+                            ReceiverCode,
+                            ReceiverSerial,
+                            ReceiverFirmware,
+                            AntennaCode,
+                            AntennaSerial,
+                            AntennaHeight,
+                            AntennaNorth,
+                            AntennaEast,
+                            HeightCode,
+                            RadomeCode,
+                            AntennaDAZ,
+                            Comments,
                         }: Record) => {
+                            // Fila explícita en el orden de `titles`: el backend no
+                            // garantiza el orden de las keys, así que no se usa
+                            // Object.values (desalineaba columnas).
                             return [
                                 NetworkCode,
                                 StationCode,
-                                DateStart.stninfo,
-                                DateEnd.stninfo,
-                                ...Object.values(restOfStationInfo),
+                                DateStart,
+                                DateEnd,
+                                ReceiverCode,
+                                ReceiverSerial,
+                                ReceiverFirmware,
+                                AntennaCode,
+                                AntennaSerial,
+                                AntennaHeight,
+                                AntennaNorth,
+                                AntennaEast,
+                                HeightCode,
+                                RadomeCode,
+                                AntennaDAZ,
+                                Comments,
                             ];
                         },
                     );
@@ -362,7 +380,7 @@ const RinexAdd = ({ stationApiId, handleCloseModal, setModalState }: Props) => {
                     onAlterClickFunction={() => addAllRecords()}
                     state={records}
                     setState={setRecords}
-                    onClickFunction={() => {}}
+                    onClickFunction={() => { }}
                     dataFetchUrl="api/station"
                 />
             )}
@@ -379,7 +397,7 @@ const RinexAdd = ({ stationApiId, handleCloseModal, setModalState }: Props) => {
                         records.length === 0
                     }
                 >
-                    Add asd
+                    Add
                     {loading && (
                         <span className="loading loading-spinner loading-sm self-center"></span>
                     )}

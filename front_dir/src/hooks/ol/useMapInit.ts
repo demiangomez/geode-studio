@@ -1,12 +1,33 @@
 import { useEffect, useRef, useState } from "react";
+
 import Map from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
 import OSM from "ol/source/OSM";
+import XYZ from "ol/source/XYZ";
 import Overlay from "ol/Overlay";
-import "ol/ol.css";
+
 import { fromLonLat } from "ol/proj";
 import { ScaleLine, Zoom } from "ol/control";
+
+import "ol/ol.css";
+
+export interface MapLayerState {
+    topo: boolean;
+    satellite: boolean;
+}
+
+// Zoom maximo de la View segun la capa base activa. ArcGIS World Imagery se queda sin
+// imagen ~z18 y por encima devuelve el tile-placeholder "Map data not yet available", asi
+// que topamos el zoom (scroll/pinch/botones) en satelite. Topo y osm no tienen ese problema
+// y se dejan sin tope efectivo (over-zoom pixelado si hace falta).
+const SATELLITE_MAX_ZOOM = 18;
+const OPENTOPOMAP_MAX_ZOOM = 17; // maximo real que sirve opentopomap; over-zoom por encima
+const DEFAULT_MAX_ZOOM = 28; // OL default: sin tope efectivo para osm/topo
+
+export interface MapProjectionState {
+    globe: boolean;
+}
 
 interface UseMapInitOptions {
     center: [number, number];
@@ -16,12 +37,7 @@ interface UseMapInitOptions {
     tooltipRef?: React.RefObject<HTMLDivElement | null>;
     enableScaleControl?: boolean;
     enableZoomControl?: boolean;
-    // zoomControlPosition?:
-    //     | "top-left"
-    //     | "top-right"
-    //     | "bottom-left"
-    //     | "bottom-right"; // reserved for future use
-    topoMap?: boolean;
+    mapLayerState?: MapLayerState;
 }
 
 interface UseMapInitReturn {
@@ -31,12 +47,6 @@ interface UseMapInitReturn {
     isMapReady: boolean;
 }
 
-// const VIEW_EXTENT = transformExtent(
-//     [-Infinity, -85, Infinity, 85],
-//     "EPSG:4326",
-//     "EPSG:3857",
-// );
-
 export const useMapInit = ({
     center,
     zoom,
@@ -45,14 +55,13 @@ export const useMapInit = ({
     tooltipRef,
     enableScaleControl = false,
     enableZoomControl = false,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    // zoomControlPosition: _zoomControlPosition,
-    topoMap = false,
+    mapLayerState,
 }: UseMapInitOptions): UseMapInitReturn => {
     const mapInstance = useRef<Map | null>(null);
     const popupOverlay = useRef<Overlay | null>(null);
     const tooltipOverlay = useRef<Overlay | null>(null);
     const tileLayerRef = useRef<TileLayer | null>(null);
+
     const [isMapReady, setIsMapReady] = useState(false);
 
     useEffect(() => {
@@ -65,7 +74,7 @@ export const useMapInit = ({
                 element: popupRef.current,
                 autoPan: false,
                 positioning: "bottom-center",
-                offset: [0, -10],
+                offset: [0, -5],
             });
             popupOverlay.current = overlay;
             overlays.push(overlay);
@@ -76,7 +85,7 @@ export const useMapInit = ({
                 element: tooltipRef.current,
                 autoPan: false,
                 positioning: "top-center",
-                offset: [0, -35],
+                offset: [0, -30],
                 stopEvent: false,
             });
             tooltipOverlay.current = tooltip;
@@ -102,8 +111,7 @@ export const useMapInit = ({
                 center: fromLonLat(center),
                 zoom,
                 minZoom: 3,
-                // extent: VIEW_EXTENT,
-                // Do NOT use multiWorld - it duplicates features causing severe performance issues
+                maxZoom: DEFAULT_MAX_ZOOM,
                 multiWorld: true,
                 constrainOnlyCenter: true,
             }),
@@ -130,15 +138,47 @@ export const useMapInit = ({
     useEffect(() => {
         if (!tileLayerRef.current) return;
 
-        const source = topoMap
-            ? new OSM({
-                  url: "https://{a-c}.tile.opentopomap.org/{z}/{x}/{y}.png",
-                  wrapX: true,
-              })
-            : new OSM({ wrapX: true });
+        let source;
+        let maxZoom: number;
+        if (mapLayerState?.satellite) {
+            maxZoom = SATELLITE_MAX_ZOOM;
+            source = new XYZ({
+                url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                maxZoom,
+                wrapX: true,
+            });
+        } else if (mapLayerState?.topo) {
+            maxZoom = DEFAULT_MAX_ZOOM;
+            source = new OSM({
+                url: "https://{a-c}.tile.opentopomap.org/{z}/{x}/{y}.png",
+                maxZoom: OPENTOPOMAP_MAX_ZOOM,
+                wrapX: true,
+            });
+        } else {
+            maxZoom = DEFAULT_MAX_ZOOM;
+            source = new OSM({ wrapX: true });
+        }
 
-        tileLayerRef.current.setSource(source);
-    }, [topoMap]);
+        const map = mapInstance.current;
+        if (!map || !tileLayerRef.current) return;
+
+        const view = map.getView();
+        view.setMaxZoom(maxZoom);
+        const currentZoom = view.getZoom();
+        if (currentZoom !== undefined && currentZoom > maxZoom) {
+            view.setZoom(maxZoom);
+        }
+
+        // necesario remover y agregar porque cesium no permite cambiar la capa desde el source
+        // sino que necesita el evento explicito de eliminacion y agregado de la capa.
+
+        map.removeLayer(tileLayerRef.current);
+
+        const newLayer = new TileLayer({ source });
+        // Insert at index 0 to ensure it remains the background base layer
+        map.getLayers().insertAt(0, newLayer);
+        tileLayerRef.current = newLayer;
+    }, [mapLayerState?.topo, mapLayerState?.satellite]);
 
     return { mapInstance, popupOverlay, tooltipOverlay, isMapReady };
 };

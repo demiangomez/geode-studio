@@ -10,7 +10,7 @@ import {
 
 import { getStationsService, getStationVisitsService } from "@services";
 
-import { useFormReducer, useAuth, useApi } from "@hooks";
+import { useFormReducer, useAuth, useApi, useClickOutside } from "@hooks";
 
 import {
     CampaignsData,
@@ -46,6 +46,13 @@ const StationSelectModal = ({
     const [showMenu, setShowMenu] = useState<
         { type: string; show: boolean } | undefined
     >(undefined);
+
+    const openMenuRef = useRef<HTMLDivElement>(null);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     const [station, setStation] = useState<StationData | undefined>(undefined);
 
@@ -163,7 +170,13 @@ const StationSelectModal = ({
                         <Spinner size={"lg"} />
                     </div>
                 ) : tab === 1 ? (
-                    <>
+                    <div
+                        ref={
+                            showMenu?.show && showMenu.type === "name"
+                                ? openMenuRef
+                                : undefined
+                        }
+                    >
                         <label
                             className={`w-full input input-bordered flex items-center gap-2`}
                             title={"Stations"}
@@ -238,92 +251,106 @@ const StationSelectModal = ({
                                 ))}
                             </Menu>
                         ) : null}
-                    </>
+                    </div>
                 ) : (
                     tab === 2 && (
                         <>
-                            <label
-                                className={`w-full input input-bordered flex items-center gap-2`}
-                                title={"Stations"}
+                            <div
+                                ref={
+                                    showMenu?.show && showMenu.type === "name"
+                                        ? openMenuRef
+                                        : undefined
+                                }
                             >
-                                <div className="label ">
-                                    <span className="font-bold">STATIONS</span>
-                                </div>
-                                <input
-                                    type="text"
-                                    value={formState["name"] ?? ""}
-                                    onChange={(e) => {
-                                        const value = e.target.value;
-                                        dispatch({
-                                            type: "change_value",
-                                            payload: {
-                                                inputName: "name",
-                                                inputValue: value,
-                                            },
-                                        });
-                                        const parts = value
-                                            .toLowerCase()
-                                            .split(" ");
-                                        const match = stations?.filter((p) =>
-                                            parts.every(
-                                                (part) =>
+                                <label
+                                    className={`w-full input input-bordered flex items-center gap-2`}
+                                    title={"Stations"}
+                                >
+                                    <div className="label ">
+                                        <span className="font-bold">
+                                            STATIONS
+                                        </span>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={formState["name"] ?? ""}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            dispatch({
+                                                type: "change_value",
+                                                payload: {
+                                                    inputName: "name",
+                                                    inputValue: value,
+                                                },
+                                            });
+                                            const parts = value
+                                                .toLowerCase()
+                                                .split(" ");
+                                            const match = stations?.filter(
+                                                (p) =>
+                                                    parts.every(
+                                                        (part) =>
+                                                            p.network_code
+                                                                .toLowerCase()
+                                                                .includes(
+                                                                    part,
+                                                                ) ||
+                                                            p.station_code
+                                                                .toLowerCase()
+                                                                .includes(part),
+                                                    ),
+                                            );
+
+                                            setMatchStation(match);
+                                        }}
+                                        className="grow"
+                                        autoComplete="off"
+                                    />
+
+                                    <MenuButton
+                                        setShowMenu={setShowMenu}
+                                        showMenu={showMenu}
+                                        typeKey={"name"}
+                                    />
+                                </label>
+                                {showMenu?.show && showMenu?.type === "name" ? (
+                                    <Menu>
+                                        {(matchStation &&
+                                        matchStation.length > 0
+                                            ? matchStation
+                                            : stations
+                                        )?.map((p) => (
+                                            <MenuContent
+                                                key={p.api_id}
+                                                typeKey={""}
+                                                value={
                                                     p.network_code
-                                                        .toLowerCase()
-                                                        .includes(part) ||
+                                                        .trim()
+                                                        .toUpperCase() +
+                                                    "." +
                                                     p.station_code
-                                                        .toLowerCase()
-                                                        .includes(part),
-                                            ),
-                                        );
-
-                                        setMatchStation(match);
-                                    }}
-                                    className="grow"
-                                    autoComplete="off"
-                                />
-
-                                <MenuButton
-                                    setShowMenu={setShowMenu}
-                                    showMenu={showMenu}
-                                    typeKey={"name"}
-                                />
-                            </label>
-                            {showMenu?.show && showMenu?.type === "name" ? (
-                                <Menu>
-                                    {(matchStation && matchStation.length > 0
-                                        ? matchStation
-                                        : stations
-                                    )?.map((p) => (
-                                        <MenuContent
-                                            key={p.api_id}
-                                            typeKey={""}
-                                            value={
-                                                p.network_code
-                                                    .trim()
-                                                    .toUpperCase() +
-                                                "." +
-                                                p.station_code
-                                                    .trim()
-                                                    .toUpperCase()
-                                            }
-                                            alterFunction={() => {
-                                                setStation(p);
-                                                dispatch({
-                                                    type: "change_value",
-                                                    payload: {
-                                                        inputName: "name",
-                                                        inputValue:
-                                                            p.network_code +
-                                                            "." +
-                                                            p.station_code,
-                                                    },
-                                                });
-                                            }}
-                                            setShowMenu={setShowMenu}
-                                        />
-                                    ))}
-                                </Menu>
-                            ) : null}
+                                                        .trim()
+                                                        .toUpperCase()
+                                                }
+                                                alterFunction={() => {
+                                                    setStation(p);
+                                                    dispatch({
+                                                        type: "change_value",
+                                                        payload: {
+                                                            inputName: "name",
+                                                            inputValue:
+                                                                p.network_code +
+                                                                "." +
+                                                                p.station_code,
+                                                        },
+                                                    });
+                                                }}
+                                                setShowMenu={setShowMenu}
+                                            />
+                                        ))}
+                                    </Menu>
+                                ) : null}
+                            </div>
                             <div className="flex flex-grow flex-col justify-start items-center">
                                 {visits && visits.length > 0 ? (
                                     <>

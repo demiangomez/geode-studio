@@ -43,6 +43,7 @@ class Antennas(BaseModel):
     # Field name made lowercase.
     antenna_description = models.CharField(
         db_column='AntennaDescription', blank=True, null=True)
+    radome_code = models.CharField(db_column='RadomeCode', max_length=7)
     api_id = models.AutoField(primary_key=True)
 
     class Meta:
@@ -793,6 +794,9 @@ class Stationinfo(BaseModel):
     # Field name made lowercase.
     antenna_east = models.DecimalField(
         db_column='AntennaEast', max_digits=12, decimal_places=4, blank=True, null=True)
+    # Antenna azimuth (shown to the user as "Antenna Azimuth"). DB column is lowercase 'antdaz'.
+    antenna_azimuth = models.DecimalField(
+        db_column='antdaz', max_digits=4, decimal_places=1, blank=True, null=True)
     # Field name made lowercase.
     height_code = models.CharField(
         db_column='HeightCode')

@@ -1,11 +1,12 @@
 import React, { createContext, useReducer, useContext } from "react";
 
 import {
-    useUserStateType as UserState,
-    useUserDispatchType as Dispatch,
-    useUserInfo,
-    useUserInitialState as initialState,
-} from "@hooks";
+    UserState,
+    Dispatch,
+    initialState,
+} from "./useUserInfo.reducer";
+
+import { useUserInfo } from "./useUserInfo.reducer";
 
 export const UserContext = createContext<
     { state: UserState; dispatch: Dispatch } | undefined

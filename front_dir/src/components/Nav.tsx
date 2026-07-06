@@ -10,21 +10,16 @@ import {
     UserCircleIcon,
     UserGroupIcon,
     ServerStackIcon,
+    ShareIcon,
     Cog6ToothIcon,
     UsersIcon,
 } from "@heroicons/react/24/outline";
 
-import { useApi, useAuth } from "@hooks";
-import { StationModal } from "@components/index";
-import { getServerHealthService } from "@services";
-import { ErrorResponse } from "@types";
+import StationModal from "@components/modals/Station/StationModal/StationModal";
 
+import { useApi, useAuth, useClickOutside } from "@hooks";
+import { useServerHealth } from "@hooks/queries";
 import { jwtDeserializer, showModal } from "@utils";
-
-type healthCheck = {
-    result: string;
-    statusCode: number;
-};
 
 const Nav = () => {
     const { logout, token, userPhoto } = useAuth();
@@ -33,7 +28,7 @@ const Nav = () => {
     const tokenDeserialized = jwtDeserializer(token as string);
     const userName = tokenDeserialized?.username;
 
-    const [serverHealth, setServerHealth] = useState<healthCheck | null>(null);
+    const { status: healthStatus, title: healthTitle } = useServerHealth(api);
 
     const [modals, setModals] = useState<
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
@@ -52,58 +47,11 @@ const Nav = () => {
         });
     };
 
-    const serverHealthCheck = async () => {
-        try {
-            const res = await getServerHealthService<
-                healthCheck | ErrorResponse
-            >(api);
-            if ("status" in res) {
-                setServerHealth({
-                    result: res?.response?.errors[0]?.detail,
-                    statusCode: res.statusCode,
-                });
-            } else {
-                setServerHealth(res);
-            }
-        } catch (err) {
-            setServerHealth({
-                result: "Server is down",
-                statusCode: 500,
-            });
-            console.error(err);
-        }
-    };
-
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (
-                dropdownRef.current &&
-                !dropdownRef.current.contains(event.target as Node)
-            ) {
-                setIsDroped(false);
-            }
-        }
-        if (isDroped) {
-            document.addEventListener("mousedown", handleClickOutside);
-        } else {
-            document.removeEventListener("mousedown", handleClickOutside);
-        }
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, [isDroped]);
+    useClickOutside(dropdownRef, () => setIsDroped(false), isDroped);
 
     useEffect(() => {
         modals?.show && showModal(modals.title);
     }, [modals]);
-
-    useEffect(() => {
-        serverHealthCheck();
-
-        const intervalId = setInterval(serverHealthCheck, 30000);
-
-        return () => clearInterval(intervalId);
-    }, []); // eslint-disable-line
 
     return (
         <>
@@ -112,22 +60,22 @@ const Nav = () => {
                 style={{ maxHeight: "none", minHeight: "8vh" }}
             >
                 <div className="navbar-start">
-                    <div
-                        className="indicator ml-4"
-                        title={serverHealth ? serverHealth.result : ""}
-                    >
+                    <div className="indicator ml-4" title={healthTitle}>
                         <ServerIcon
                             fill="none"
                             className="size-7"
                             strokeWidth={2}
                         />
                         <span
-                            className={`badge badge-xs badge-${serverHealth ? (serverHealth?.statusCode === 200 ? "success" : "error") : "neutral"} indicator-item`}
+                            className={`badge badge-xs badge-${healthStatus} indicator-item`}
                         ></span>
                     </div>
                 </div>
-                <div className="navbar-center">
-                    <Link to={"/"} className="text-2xl ml-6">
+                <div className="navbar-center font-montserrat">
+                    <Link
+                        to={"/"}
+                        className="text-2xl font-semibold tracking-tight"
+                    >
                         GeoDE
                     </Link>
                 </div>
@@ -165,6 +113,13 @@ const Nav = () => {
                         title="Sources Servers"
                     >
                         <ServerStackIcon className="size-8" />
+                    </Link>
+                    <Link
+                        className="btn btn-ghost btn-circle"
+                        to={"/networks"}
+                        title="Networks"
+                    >
+                        <ShareIcon className="size-8" />
                     </Link>
                     <div className="" ref={dropdownRef}>
                         <div
@@ -227,7 +182,7 @@ const Nav = () => {
                                     <a
                                         className="hover:bg-slate-600 flex w-full justify-start"
                                         onClick={() => {
-                                            logout(true);
+                                            logout();
                                         }}
                                     >
                                         <ArrowRightEndOnRectangleIcon className="size-6" />

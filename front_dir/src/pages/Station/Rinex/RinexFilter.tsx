@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Menu, MenuButton, MenuContent, Modal } from "@componentsReact";
 
-import { useApi, useAuth, useFormReducer, useFormValidation } from "@hooks";
+import {
+    useApi,
+    useAuth,
+    useClickOutside,
+    useFormReducer,
+    useFormValidation,
+} from "@hooks";
 import { getAntennasService, getReceiversService } from "@services";
 import {
     AntennaData,
@@ -69,6 +75,9 @@ const RinexFilter = ({
     const [showMenu, setShowMenu] = useState<
         { type: string; show: boolean } | undefined
     >(undefined);
+
+    const openMenuRef = useRef<HTMLDivElement>(null);
+    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
 
     const [receivers, setReceivers] = useState<ReceiversData[]>([]);
     const [matchingReceivers, setMatchingReceivers] = useState<ReceiversData[]>(
@@ -348,7 +357,13 @@ const RinexFilter = ({
                                 {equipmentFilters.map((filter, index) => (
                                     <div
                                         key={index}
-                                        className="flex flex-col text-sm space-y-2 my-2"
+                                        className="flex flex-col text-sm space-y-2 my-2 relative"
+                                        ref={
+                                            showMenu?.show &&
+                                            showMenu.type === filter
+                                                ? openMenuRef
+                                                : undefined
+                                        }
                                     >
                                         <span className="font-bold">
                                             {filter.toUpperCase()}
@@ -391,11 +406,11 @@ const RinexFilter = ({
                                                 />
                                             )}
                                         </label>
-                                        <div>
+                                        <div className="absolute left-0 top-full z-[100] w-full">
                                             {showMenu?.show &&
                                             showMenu.type === filter &&
                                             filter === "receiver type" ? (
-                                                <Menu absolute={true}>
+                                                <Menu>
                                                     {(matchingReceivers.length >
                                                     0
                                                         ? matchingReceivers
@@ -422,7 +437,7 @@ const RinexFilter = ({
                                             ) : showMenu?.show &&
                                               showMenu.type === filter &&
                                               filter === "antenna type" ? (
-                                                <Menu absolute={true}>
+                                                <Menu>
                                                     {(matchingAntennas.length >
                                                     0
                                                         ? matchingAntennas

@@ -1,14 +1,11 @@
-//React
 import { useEffect } from "react";
 
-//Components
 import {
     PeopleSettingsForm,
     SquareSkeleton,
     UserSettingsForm,
 } from "@componentsReact";
 
-//Hooks
 import { useAuth } from "@hooks";
 
 const Settings = () => {
@@ -19,19 +16,19 @@ const Settings = () => {
     }, []);
 
     return (
-        <div className="justify-items-center mt-2">
-            <h3 className="text-3xl font-bold text-center">Settings</h3>
+        <div className="p-4">
+            <div className="w-full text-center my-6">
+                <h3 className="text-4xl font-bold">Settings</h3>
+            </div>
             {user ? (
-                <div
-                    className={`w-full gap-4 p-4 flex  ${user?.person === null ? "flex-row " : "lg:flex-col "} `}
-                >
-                    <div className="flex-1">
+                <div className="flex flex-col 2xl:flex-row 2xl:items-start items-center gap-4 justify-center">
+                    <div className="flex-1 w-full">
                         <UserSettingsForm
                             userData={user}
                             getData={getUserData}
                         />
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 w-full min-w-0">
                         <PeopleSettingsForm
                             person={user.person ?? null}
                             getData={getUserData}
@@ -39,7 +36,7 @@ const Settings = () => {
                     </div>
                 </div>
             ) : (
-                <div className="w-full h-full grid grid-cols-2 mt-20 ">
+                <div className="w-full h-full grid grid-cols-2 mt-20">
                     <SquareSkeleton mainSize="500px" />
                     <SquareSkeleton mainSize="500px" />
                 </div>

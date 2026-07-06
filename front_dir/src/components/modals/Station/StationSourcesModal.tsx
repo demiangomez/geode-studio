@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     Alert,
     ConfirmDeleteModal,
@@ -17,7 +17,7 @@ import {
     deleteSourcesStationsService,
 } from "@services";
 
-import { useFormReducer } from "@hooks";
+import { useClickOutside, useFormReducer } from "@hooks";
 
 import { showModal } from "@utils";
 
@@ -74,6 +74,9 @@ const StationSourcesModel = ({
     const [showMenu, setShowMenu] = useState<
         { show: boolean; type: string } | undefined
     >({ show: false, type: "" });
+
+    const openMenuRef = useRef<HTMLDivElement>(null);
+    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
 
     const errorBadge = msg?.errors?.errors?.map((e) => e.attr);
 
@@ -289,7 +292,15 @@ const StationSourcesModel = ({
                 </h2>
                 <div className="flex flex-col gap-3 w-full">
                     {camps.map((camp) => (
-                        <div key={camp} className="w-full">
+                        <div
+                            key={camp}
+                            className="w-full"
+                            ref={
+                                showMenu?.show && showMenu.type === camp
+                                    ? openMenuRef
+                                    : undefined
+                            }
+                        >
                             <label
                                 className={`w-full input input-bordered flex items-center gap-2 ${
                                     errorBadge?.includes(camp)

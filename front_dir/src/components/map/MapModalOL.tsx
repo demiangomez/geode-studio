@@ -21,26 +21,14 @@ import type { ModifyEvent } from "ol/interaction/Modify";
 
 import { MapSkeleton, Modal, MapStationCreate } from "@componentsReact";
 
-import {
-    getStationTypesService,
-    getStationStatusService,
-    getStationsService,
-} from "@services";
+import { useAuth, useApi, useMapInit } from "@hooks";
 
-import { useAuth, useApi, useLocalStorage, useMapInit } from "@hooks";
+import { getLastCenterLonLat, getLastZoom } from "@olUtils";
 
 import { METADATA_STATE } from "@utils/reducerFormStates";
 
-import {
-    StationStatusServiceData,
-    StationStatusData,
-    StationTypeServiceData,
-    StationTypeData,
-    StationServiceData,
-    StationData,
-} from "@types";
-
 import { TrashIcon } from "@heroicons/react/24/outline";
+import { useMetadata, useStations } from "@hooks/queries";
 
 // Simple small red pin marker
 const MARKER_PIN_SVG = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
@@ -74,30 +62,19 @@ const MapModal = ({
     const mapRef = useRef<HTMLDivElement>(null);
     const stationTooltipRef = useRef<HTMLDivElement>(null);
 
-    // LocalStorage
-    const [, setLastZoomLevel] = useLocalStorage("lastZoomLevel", "8");
-    const [, setLastPosition] = useLocalStorage("lastPosition", "[0,0]");
-
     // State
-    const [stations, setStations] = useState<StationData[] | undefined>(
-        undefined,
-    );
+
     const [disableButton] = useState(false);
-    const [types, setTypes] = useState<{ image: string; name: string }[]>([]);
-    const [statuses, setStatuses] = useState<{ name: string; color: string }[]>(
-        [],
-    );
     const [isMarkerSelected, setIsMarkerSelected] = useState(false);
     const [currentMarker, setCurrentMarker] = useState<{
         lat: number;
         lng: number;
     } | null>(null);
-    const [loadingMap, setLoadingMap] = useState(false);
     const [rangeValue, setRangeValue] = useState(40);
     const [isDragging, setIsDragging] = useState(false);
     const [isDrawingInProgress, setIsDrawingInProgress] = useState(false);
 
-    // Compute initial center from formState or localStorage
+    // Compute initial center from formState or the last navigated position
     const initialCenter = useMemo<[number, number]>(() => {
         if (formState?.station?.lat && formState?.station?.lon) {
             return [
@@ -105,21 +82,10 @@ const MapModal = ({
                 parseFloat(formState.station.lat),
             ];
         }
-        const savedPosition = localStorage.getItem("lastPosition");
-        if (savedPosition) {
-            const parts = savedPosition.split(",").map(parseFloat);
-            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-                // localStorage stores [lat, lng]; OL expects [lon, lat]
-                return [parts[1], parts[0]];
-            }
-        }
-        return [0, 0];
+        return getLastCenterLonLat() ?? [0, 0];
     }, []);
 
-    const initialZoom = useMemo(() => {
-        const saved = localStorage.getItem("lastZoomLevel");
-        return saved ? parseInt(saved) : 4;
-    }, []);
+    const initialZoom = useMemo(() => getLastZoom(4), []);
 
     // Map init
     const { mapInstance, isMapReady } = useMapInit({
@@ -147,51 +113,6 @@ const MapModal = ({
     const handleCloseModal = () => {
         setIsMarkerSelected(false);
         setCurrentMarker(null);
-    };
-
-    const getStationStatuses = async () => {
-        try {
-            const res =
-                await getStationStatusService<StationStatusServiceData>(api);
-            if (res) {
-                setStatuses(
-                    res.data.map((status: StationStatusData) => ({
-                        color: status.color_name,
-                        name: status.name,
-                    })),
-                );
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    const getStations = async () => {
-        try {
-            const result = await getStationsService<StationServiceData>(api);
-            if (result) {
-                setStations(result.data);
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    const getStationTypes = async () => {
-        try {
-            const res =
-                await getStationTypesService<StationTypeServiceData>(api);
-            if (res) {
-                setTypes(
-                    res.data.map((type: StationTypeData) => ({
-                        image: type.actual_image as string,
-                        name: type.name,
-                    })),
-                );
-            }
-        } catch (err) {
-            console.error(err);
-        }
     };
 
     // Delete all drawn features and reset state
@@ -401,27 +322,7 @@ const MapModal = ({
             }
         }
 
-        // --- Persist zoom & position to localStorage ---
-        const view = map.getView();
-        const onZoomChange = () => {
-            const currentZoom = view.getZoom();
-            if (currentZoom !== undefined) {
-                setLastZoomLevel(currentZoom.toString());
-            }
-        };
-        const onCenterChange = () => {
-            const center = view.getCenter();
-            if (center) {
-                const [lon, lat] = toLonLat(center);
-                setLastPosition([lat, lon].toString());
-            }
-        };
-        view.on("change:resolution", onZoomChange);
-        view.on("change:center", onCenterChange);
-
         return () => {
-            view.un("change:resolution", onZoomChange);
-            view.un("change:center", onCenterChange);
             map.removeInteraction(draw);
             if (modifyInteractionRef.current) {
                 map.removeInteraction(modifyInteractionRef.current);
@@ -526,19 +427,14 @@ const MapModal = ({
 
     // Fetch stations data (marker mode only)
 
-    useEffect(() => {
-        if (markerType === "marker") {
-            setLoadingMap(true);
-            Promise.all([
-                getStations(),
-                getStationStatuses(),
-                getStationTypes(),
-            ]).then(() => {
-                setLoadingMap(false);
-            });
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [markerType]);
+    const { data: stations, isLoading: loadingMap } = useStations(
+        api,
+        {},
+        { enabled: markerType === "marker" },
+    );
+    const { statuses, types } = useMetadata(api, {
+        enabled: markerType === "marker",
+    });
 
     // -------------------------------------------------------
     // Center map when formState changes
@@ -624,9 +520,9 @@ const MapModal = ({
                         isMapReady && (
                             <MapStationCreate
                                 mapInstance={mapInstance}
-                                stations={stations}
-                                types={types}
-                                statuses={statuses}
+                                stations={stations?.data}
+                                types={types ?? []}
+                                statuses={statuses ?? []}
                                 rangeValue={rangeValue}
                                 currentMarker={currentMarker}
                                 tooltipRef={stationTooltipRef}

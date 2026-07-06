@@ -11,11 +11,15 @@
     border-radius: 8px;
     padding: 12px;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    min-width: 440px;
+    min-width: 470px;
     max-width: 700px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
     position: relative;
     transform: translate(-50%, -103%);
     margin-bottom: 12px;
+    cursor: default;
 }
 
 .ol-popup-closer {
@@ -85,14 +89,13 @@
 }
 
 #map .ol-viewport {
-  cursor: grab;
+    cursor: grab;
 }
 
 #map.has-feature .ol-viewport {
-  cursor: pointer;
+    cursor: pointer;
 }
 
 #map:not(.has-feature) .ol-viewport:active {
-  cursor: grabbing;
+    cursor: grabbing;
 }
-

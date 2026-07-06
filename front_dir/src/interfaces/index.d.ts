@@ -55,6 +55,7 @@ export interface GetParams {
     limit?: number;
     monument_id?: number;
     campaign?: number;
+    original_quality?: boolean;
 }
 
 export interface TokenPayload {
@@ -88,6 +89,9 @@ export interface EarthquakeData {
     rake2: number;
     id: string;
     location: string;
+    // UI toggle states
+    ui_toggle_mask?: boolean;
+    ui_toggle_vector?: boolean;
 }
 
 export interface EarthQuakeParams {
@@ -127,6 +131,52 @@ export interface FilesErrorResponse {
     response: FileErrors;
     status: string;
     statusCode: number;
+}
+
+// Config del ETM (time-series-config): tipos de solución y opciones de ajuste.
+export interface TimeSeriesConfigOption {
+    id: number;
+    type: string;
+}
+
+export interface SolutionTypesServiceData {
+    solution_types: TimeSeriesConfigOption[];
+}
+
+export interface AdjustmentOptionsServiceData {
+    adjustment_models: TimeSeriesConfigOption[];
+    covariance_functions: TimeSeriesConfigOption[];
+}
+
+// mode_obs del Query de coordenadas (MODEL / OBSERVATION). La description del
+// backend se ignora; TimeSeriesConfigOption (id+type) alcanza.
+export interface ModeObsTypesServiceData {
+    mode_obs_types: TimeSeriesConfigOption[];
+}
+
+export interface StationTimeSeriesServiceData {
+    etm_params: TimeSeriesParamsData;
+    time_series: string;
+    download_filename: string;
+}
+
+export interface StationCoordinatesData {
+    xyz: { x: number; y: number; z: number };
+    lla: { lat: number; lon: number; height: number };
+    source: string;
+    sigmas: { x: number; y: number; z: number };
+}
+
+export interface BulkDownloadStation {
+    network_code: string;
+    station_code: string;
+}
+
+export interface BulkDownloadResult {
+    blob?: Blob;
+    filename?: string;
+    statusCode: number;
+    errorDetail?: string;
 }
 
 export interface PatchDescriptionImageResponse {
@@ -187,6 +237,15 @@ export interface StationsAffectedServiceData {
     kml_including_postseismic: string;
     kml_without_postseismic: string;
     coseismic_displacements: CoseismicDisplacement[];
+    /** Optional lists for multi-earthquake selection */
+    kml_list_including_postseismic?: { id: number; data: string }[];
+    kml_list_without_postseismic?: { id: number; data: string }[];
+    /** Final active KML list after merging individual toggles */
+    active_kml_list?: { id: number; data: string }[];
+    /** Final active affected stations info after merging individual toggles */
+    active_affected_stations?: StationAffectedInfo[];
+    /** Original data for each individual earthquake mapped by api_id */
+    individual_data?: Record<string, StationsAffectedServiceData>;
 }
 
 export interface CoseismicDisplacement {
@@ -205,6 +264,14 @@ export interface StationAffectedInfo {
 export interface FilterState {
     typeOption: string[];
     statusOption: string[];
+}
+
+export interface TemporalFilterState {
+    enabled: boolean;
+    dateStart: number | null;
+    dateEnd: number | null;
+    hiddenPoints: boolean;
+    exactDate: boolean;
 }
 
 export interface ExtendedStationInfoData extends StationInfoData {
@@ -312,6 +379,18 @@ export interface GamitHTCServiceData {
     count: number;
     data: GamitHTCData[];
     total_count: number;
+    statusCode: number;
+}
+
+export interface RadomeData {
+    radome_code: string;
+}
+
+export interface RadomesServiceData {
+    count: number;
+    total_count: number;
+    data: RadomeData[];
+    statusCode: number;
 }
 
 export interface NetworkServiceData {
@@ -603,7 +682,8 @@ export interface ColorServiceData {
 }
 
 export interface StationTypeData {
-    actual_image: string | File;
+    actual_image?: string | File;
+    image: string | File;
     id: number;
     name: string;
     search_icon_on_assets_folder: boolean;
@@ -650,17 +730,17 @@ export interface People {
 export type PeopleSelectedData =
     | undefined
     | [
-          number,
-          string,
-          string,
-          string,
-          string,
-          string,
-          number | string,
-          string,
-          string,
-          string,
-      ];
+        number,
+        string,
+        string,
+        string,
+        string,
+        string,
+        number | string,
+        string,
+        string,
+        string,
+    ];
 
 export interface EndpointCluster {
     [key: string]: [
@@ -689,6 +769,10 @@ export interface NetworkData {
     api_id: number;
     network_code: string;
     network_name: string;
+}
+
+export interface ExtendedNetworkData extends NetworkData {
+    statusCode: number;
 }
 
 export interface CountriesData {
@@ -772,6 +856,7 @@ export interface StationInfoData {
     antenna_height: string;
     antenna_north: string;
     antenna_serial: string;
+    antenna_azimuth?: string;
     api_id: number;
     comments: null | string;
     date_end: string;
@@ -844,6 +929,7 @@ export interface TimeSeriesParamsData {
     jumps: ConfigJumpData[];
     periodic: any;
     polynomial: ConfigPolynomialData;
+    copy_params?: boolean;
 }
 
 export interface TimeSeriesParamsServiceData {

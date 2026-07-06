@@ -24,7 +24,7 @@ const Scroller = ({
             {buttonCondition ? (
                 <button
                     className={
-                        "btn absolute top-2 right-2 z-[10000] btn-sm  min-w-[180px] text-black" +
+                        "btn absolute top-2 right-2 z-[100000] btn-sm  min-w-[180px] text-black" +
                         (hasFilteredData ? " btn-success" : " ")
                     }
                     style={{ backgroundColor: !hasFilteredData ? "white" : "" }}
@@ -36,12 +36,12 @@ const Scroller = ({
             {scrollerCondition ? (
                 <div
                     id="controller"
-                    className="z-[1000000000] absolute top-12 right-2"
+                    className="z-[100003] absolute top-12 right-2"
                 >
                     <div
                         className={
                             fromMain
-                                ? "overflow-y-auto max-h-[230px] h-auto w-[450px] ml-2 bg-white rounded-md scrollbar-thin scrollbar-thumb-rounded px-4 border border-gray-400"
+                                ? "overflow-y-auto max-h-[500px] h-auto w-[450px] ml-2 bg-white rounded-md scrollbar-thin scrollbar-thumb-rounded px-4 border border-gray-400"
                                 : "overflow-y-auto max-h-[200px] h-auto max-w-[280px] min-w-[180px] ml-2 bg-white rounded-md scrollbar-thin px-4 border border-gray-400"
                         }
                     >

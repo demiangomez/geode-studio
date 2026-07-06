@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
     Alert,
     ConfirmDeleteModal,
+    CopyButton,
     LargeSkeleton,
     Modal,
     RenderFileModal,
@@ -15,14 +16,12 @@ import {
     useApi,
     useAuth,
     useFormReducer,
-    usePopup,
     useWaitCursor,
 } from "@hooks";
 
 import {
     ArrowDownTrayIcon,
     BookOpenIcon,
-    ClipboardDocumentIcon,
     PencilSquareIcon,
     PlusCircleIcon,
     TrashIcon,
@@ -32,19 +31,18 @@ import defPhoto from "@assets/images/placeholder.png";
 
 import {
     delStationsFilesAttachedService,
-    getMonumentsTypesService,
     getMonumentsTypesByIdService,
     getRinexService,
     getStationFileByIdAttachedService,
     getStationsFilesAttachedService,
     getStationInfoService,
-    getStationStatusService,
-    getStationTypesService,
     patchStationMetaService,
     patchStationService,
     getStationsService,
     getStationMetaService,
 } from "@services";
+
+import { useMetadata } from "@hooks/queries";
 
 import { classHtml, decimalToDMS, formattedDates, showModal } from "@utils";
 
@@ -53,7 +51,6 @@ import {
     Errors,
     ExtendedStationData,
     MonumentTypes,
-    MonumentTypesServiceData,
     RinexData,
     RinexServiceData,
     StationData,
@@ -63,8 +60,6 @@ import {
     StationInfoServiceData,
     StationMetadataServiceData,
     StationServiceData,
-    StationStatus,
-    StationStatusServiceData,
 } from "@types";
 
 interface StationMetadataProps {
@@ -91,10 +86,6 @@ const StationMetadataModal = ({
 }: StationMetadataProps) => {
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
-
-    const { show, showPopup } = usePopup(2000);
-
-    const [copyId, setCopyId] = useState<string | null>(null);
 
     const [oceanTideType, setOceanTideType] = useState<
         "by file" | "manual" | undefined
@@ -123,8 +114,6 @@ const StationMetadataModal = ({
     const [updateLoading, setUpdateLoading] = useState<boolean>(false);
     const [edit, setEdit] = useState<boolean>(false);
 
-    const [monumentType, setMonumentType] = useState<MonumentTypes[]>([]);
-
     const [chosenMonumentPhoto, setChosenMonumentPhoto] = useState<
         string | null
     >(null);
@@ -132,10 +121,6 @@ const StationMetadataModal = ({
     const [fileToEdit, setFileToEdit] = useState<
         StationFilesData | undefined
     >();
-
-    const [stationStatus, setStationStatus] = useState<StationStatus[]>([]);
-
-    const [stationType, setStationType] = useState<StationStatus[]>([]);
 
     const [firstRinex, setFirstRinex] = useState<RinexData | undefined>(
         undefined,
@@ -214,26 +199,21 @@ const StationMetadataModal = ({
             console.error(err);
         }
     };
+    const { types: stationType, statuses: stationStatus } = useMetadata(api, {
+        enabled: !!stationMetaMain,
+    });
 
-    const getTypes = async () => {
+    const { monuments: monumentsType } = useMetadata(
+        api,
+        { enabled: !!stationMetaMain },
+        { only_metadata: true },
+    );
+
+    const getMonumentPhoto = async () => {
         try {
             if (stationMetaMain) {
-                const status =
-                    await getStationStatusService<StationStatusServiceData>(
-                        api,
-                    );
-
-                const types =
-                    await getStationTypesService<StationStatusServiceData>(api);
-
-                const params = { only_metadata: true };
-                const monuments =
-                    await getMonumentsTypesService<MonumentTypesServiceData>(
-                        api,
-                        params,
-                    );
-                if (monuments.data.length > 0) {
-                    const auxMonumentType = monuments.data;
+                if (monumentsType && monumentsType.length > 0) {
+                    const auxMonumentType = monumentsType;
                     if (auxMonumentType) {
                         const monumentId = auxMonumentType.find(
                             (mt) =>
@@ -243,20 +223,6 @@ const StationMetadataModal = ({
                         await getMonumentPhotoById(monumentId);
                     }
                 }
-
-                const stationTypes = types.data.sort((a, b) =>
-                    a.name.localeCompare(b.name),
-                );
-                const stationStatus = status.data.sort((a, b) =>
-                    a.name.localeCompare(b.name),
-                );
-                const monumentTypes = monuments.data.sort((a, b) =>
-                    a.name.localeCompare(b.name),
-                );
-
-                setStationType(stationTypes ?? []);
-                setMonumentType(monumentTypes ?? []);
-                setStationStatus(stationStatus ?? []);
             }
         } catch (err) {
             console.error(err);
@@ -271,15 +237,20 @@ const StationMetadataModal = ({
                 limit: 1,
                 offset: 0,
             });
-            const totalRecords = firstRes.total_count;
+            if (firstRes.statusCode !== 200 || firstRes.total_count === 0) {
+                return;
+            }
+            setFirstRinex(firstRes.data[0]);
+
             const lastRes = await getRinexService<RinexServiceData>(api, {
                 network_code: station?.network_code,
                 station_code: station?.station_code,
                 limit: 1,
-                offset: totalRecords - 1,
+                offset: firstRes.total_count - 1,
             });
-            setFirstRinex(firstRes.data[0]);
-            setLastRinex(lastRes.data[0]);
+            if (lastRes.statusCode === 200) {
+                setLastRinex(lastRes.data[0]);
+            }
         } catch (err) {
             console.error(err);
         }
@@ -502,16 +473,18 @@ const StationMetadataModal = ({
     }, [stationMeta, station]);
 
     useEffect(() => {
-        Promise.all([
-            setLoading(true),
-            getTypes(),
-            getRinex(),
-            getStationMeta(),
-            getStation(),
-        ]).then(() => {
+        setLoading(true);
+        Promise.all([getRinex(), getStationMeta(), getStation()]).then(() => {
             setLoading(false);
         });
     }, []);
+
+    // la foto inicial recién puede pedirse cuando llega el catálogo de monuments
+    useEffect(() => {
+        if (!edit && monumentsType && monumentsType.length > 0) {
+            getMonumentPhoto();
+        }
+    }, [monumentsType, stationMetaMain, edit]); // eslint-disable-line
 
     useEffect(() => {
         modals?.show && showModal(modals.title);
@@ -567,15 +540,15 @@ const StationMetadataModal = ({
             },
             stationMeta: {
                 station_type:
-                    stationType.find(
+                    stationType?.find(
                         (st) => st.id === Number(stationMeta?.station_type),
                     )?.name ?? "",
                 monument_type:
-                    monumentType.find(
+                    monumentsType?.find(
                         (mt) => mt.id === Number(stationMeta?.monument_type),
                     )?.name ?? "",
                 status:
-                    stationStatus.find(
+                    stationStatus?.find(
                         (st) => st.id === Number(stationMeta?.status),
                     )?.name ?? "",
                 remote_access_link: stationMeta?.remote_access_link ?? "",
@@ -594,9 +567,19 @@ const StationMetadataModal = ({
                 auto_z: String(Number(stationData?.auto_z).toFixed(3)) ?? "",
             },
         };
-    }, [stationType, monumentType, stationStatus, stationData, stationMeta]);
+    }, [
+        stationType,
+        monumentsType,
+        stationStatus,
+        stationData,
+        stationMeta,
+        firstRinex,
+        lastRinex,
+        stationInfo,
+    ]);
 
     const { formState, dispatch } = useFormReducer(formattedData);
+
     useEffect(() => {
         dispatch({
             type: "set",
@@ -606,8 +589,8 @@ const StationMetadataModal = ({
 
     useEffect(() => {
         // useEffect to set monumentType photo dinamically on edit monument type
-        if (monumentType.length > 0 && edit) {
-            const newMonumentSelected = monumentType.find(
+        if (monumentsType && monumentsType.length > 0 && edit) {
+            const newMonumentSelected = monumentsType.find(
                 (mt) => mt.name === formState.stationMeta.monument_type,
             );
             if (
@@ -620,13 +603,13 @@ const StationMetadataModal = ({
                 newMonumentSelected &&
                 newMonumentSelected.id === Number(stationMeta?.monument_type)
             ) {
-                const monumentId = monumentType.find(
+                const monumentId = monumentsType.find(
                     (mt) => mt.id === Number(stationMeta?.monument_type),
                 )?.id;
                 getMonumentPhotoById(monumentId);
             }
         }
-    }, [stationMeta, monumentType, formState.stationMeta.monument_type]);
+    }, [stationMeta, monumentsType, formState.stationMeta.monument_type]);
 
     const handleChange = (
         e:
@@ -772,13 +755,13 @@ const StationMetadataModal = ({
                         formState.booleansDesc.battery_description,
                     communications_description:
                         formState.booleansDesc.communications_description,
-                    station_type: stationType.find(
+                    station_type: stationType?.find(
                         (st) => st.name === formState.stationMeta.station_type,
                     )?.id,
-                    monument_type: monumentType.find(
+                    monument_type: monumentsType?.find(
                         (mt) => mt.name === formState.stationMeta.monument_type,
                     )?.id,
-                    status: stationStatus.find(
+                    status: stationStatus?.find(
                         (st) => st.name === formState.stationMeta.status,
                     )?.id,
                     navigation_file_delete: false,
@@ -903,10 +886,10 @@ const StationMetadataModal = ({
         return key === "station_type"
             ? inputRefType
             : key === "monument_type"
-              ? inputRefMonument
-              : key === "status"
-                ? inputRefStatus
-                : null;
+                ? inputRefMonument
+                : key === "status"
+                    ? inputRefStatus
+                    : null;
     };
 
     const handleGetFile = async (file: StationFilesData) => {
@@ -996,7 +979,7 @@ const StationMetadataModal = ({
                                                             className="text-sm font-bold flex items-center"
                                                             title={
                                                                 generalFields[
-                                                                    idx
+                                                                idx
                                                                 ]
                                                             }
                                                         >
@@ -1005,7 +988,7 @@ const StationMetadataModal = ({
                                                                 className={`size-3  rounded-full ml-3`}
                                                                 title={
                                                                     generalFields[
-                                                                        idx
+                                                                    idx
                                                                     ]
                                                                 }
                                                             ></div>
@@ -1018,19 +1001,19 @@ const StationMetadataModal = ({
                                                                         errorBadge
                                                                             ? errorBadge.detail
                                                                             : key ===
-                                                                                    "max_dist" &&
+                                                                                "max_dist" &&
                                                                                 maxDistErrorBadge
-                                                                              ? maxDistErrorBadge.detail
-                                                                              : ""
+                                                                                ? maxDistErrorBadge.detail
+                                                                                : ""
                                                                     }
                                                                     style={
                                                                         inputsWithSelectKey.includes(
                                                                             key,
                                                                         )
                                                                             ? {
-                                                                                  padding:
-                                                                                      "0",
-                                                                              }
+                                                                                padding:
+                                                                                    "0",
+                                                                            }
                                                                             : {}
                                                                     }
                                                                 >
@@ -1046,7 +1029,7 @@ const StationMetadataModal = ({
                                                                             value={
                                                                                 formState
                                                                                     .stationMeta[
-                                                                                    key as keyof typeof formState.stationMeta
+                                                                                key as keyof typeof formState.stationMeta
                                                                                 ] ??
                                                                                 ""
                                                                             }
@@ -1067,16 +1050,16 @@ const StationMetadataModal = ({
                                                                                     {
                                                                                         type: "change_value",
                                                                                         payload:
-                                                                                            {
-                                                                                                inputName:
-                                                                                                    e
-                                                                                                        .target
-                                                                                                        .name,
-                                                                                                inputValue:
-                                                                                                    e
-                                                                                                        .target
-                                                                                                        .value,
-                                                                                            },
+                                                                                        {
+                                                                                            inputName:
+                                                                                                e
+                                                                                                    .target
+                                                                                                    .name,
+                                                                                            inputValue:
+                                                                                                e
+                                                                                                    .target
+                                                                                                    .value,
+                                                                                        },
                                                                                     },
                                                                                 );
                                                                             }}
@@ -1093,15 +1076,18 @@ const StationMetadataModal = ({
                                                                                 )}
                                                                             </option>
                                                                             {(key ===
-                                                                            "station_type"
-                                                                                ? stationType
+                                                                                "station_type"
+                                                                                ? (stationType ??
+                                                                                    [])
                                                                                 : key ===
                                                                                     "monument_type"
-                                                                                  ? monumentType
-                                                                                  : key ===
-                                                                                      "status"
-                                                                                    ? stationStatus
-                                                                                    : []
+                                                                                    ? (monumentsType ??
+                                                                                        [])
+                                                                                    : key ===
+                                                                                        "status"
+                                                                                        ? (stationStatus ??
+                                                                                            [])
+                                                                                        : []
                                                                             ).map(
                                                                                 (
                                                                                     item,
@@ -1121,12 +1107,12 @@ const StationMetadataModal = ({
                                                                                         {item
                                                                                             .name
                                                                                             .length >
-                                                                                        30
+                                                                                            30
                                                                                             ? item.name.slice(
-                                                                                                  0,
-                                                                                                  30,
-                                                                                              ) +
-                                                                                              "..."
+                                                                                                0,
+                                                                                                30,
+                                                                                            ) +
+                                                                                            "..."
                                                                                             : item.name}
                                                                                     </option>
                                                                                 ),
@@ -1145,7 +1131,7 @@ const StationMetadataModal = ({
                                                                             value={
                                                                                 formState
                                                                                     .stationMeta[
-                                                                                    key as keyof typeof formState.stationMeta
+                                                                                key as keyof typeof formState.stationMeta
                                                                                 ] ??
                                                                                 ""
                                                                             }
@@ -1170,8 +1156,8 @@ const StationMetadataModal = ({
                                                                             }
                                                                         </span>
                                                                     ) : key ===
-                                                                          "max_dist" &&
-                                                                      maxDistErrorBadge ? (
+                                                                        "max_dist" &&
+                                                                        maxDistErrorBadge ? (
                                                                         <span className="badge badge-error self-start -mt-2">
                                                                             {
                                                                                 maxDistErrorBadge.code
@@ -1181,7 +1167,7 @@ const StationMetadataModal = ({
                                                                 </label>
                                                             </div>
                                                         ) : key ===
-                                                          "remote_access_link" ? (
+                                                            "remote_access_link" ? (
                                                             formState
                                                                 .stationMeta[
                                                                 key as keyof typeof formState.stationMeta
@@ -1192,14 +1178,14 @@ const StationMetadataModal = ({
                                                                     href={
                                                                         formState
                                                                             .stationMeta[
-                                                                            key as keyof typeof formState.stationMeta
+                                                                        key as keyof typeof formState.stationMeta
                                                                         ]
                                                                     }
                                                                 >
                                                                     {
                                                                         formState
                                                                             .stationMeta[
-                                                                            key as keyof typeof formState.stationMeta
+                                                                        key as keyof typeof formState.stationMeta
                                                                         ]
                                                                     }
                                                                 </a>
@@ -1214,13 +1200,13 @@ const StationMetadataModal = ({
                                                                     .stationMeta[
                                                                     key as keyof typeof formState.stationMeta
                                                                 ] &&
-                                                                formState
-                                                                    .stationMeta[
-                                                                    key as keyof typeof formState.stationMeta
-                                                                ] !== "" ? (
                                                                     formState
                                                                         .stationMeta[
-                                                                        key as keyof typeof formState.stationMeta
+                                                                    key as keyof typeof formState.stationMeta
+                                                                    ] !== "" ? (
+                                                                    formState
+                                                                        .stationMeta[
+                                                                    key as keyof typeof formState.stationMeta
                                                                     ]
                                                                 ) : (
                                                                     <span className="text-gray-400">
@@ -1258,7 +1244,7 @@ const StationMetadataModal = ({
                                                         <div className="text-sm font-bold flex items-center">
                                                             {
                                                                 generalFields2[
-                                                                    idx
+                                                                idx
                                                                 ]
                                                             }
                                                             {edit ? (
@@ -1279,22 +1265,22 @@ const StationMetadataModal = ({
                                                                             {
                                                                                 type: "change_value",
                                                                                 payload:
-                                                                                    {
-                                                                                        inputName:
-                                                                                            "booleans." +
-                                                                                            key,
-                                                                                        inputValue:
-                                                                                            e
-                                                                                                .target
-                                                                                                .checked,
-                                                                                    },
+                                                                                {
+                                                                                    inputName:
+                                                                                        "booleans." +
+                                                                                        key,
+                                                                                    inputValue:
+                                                                                        e
+                                                                                            .target
+                                                                                            .checked,
+                                                                                },
                                                                             },
                                                                         );
                                                                     }}
                                                                     checked={
                                                                         formState
                                                                             .booleans[
-                                                                            key as keyof typeof formState.booleans
+                                                                        key as keyof typeof formState.booleans
                                                                         ]
                                                                     }
                                                                 />
@@ -1303,7 +1289,7 @@ const StationMetadataModal = ({
                                                                     className={`size-3 ${pointer} rounded-full ml-3`}
                                                                     title={
                                                                         generalFields2[
-                                                                            idx
+                                                                        idx
                                                                         ]
                                                                     }
                                                                 ></div>
@@ -1322,7 +1308,7 @@ const StationMetadataModal = ({
                                                                         value={
                                                                             formState
                                                                                 .booleansDesc[
-                                                                                descKey
+                                                                            descKey
                                                                             ]
                                                                         }
                                                                         name={
@@ -1354,7 +1340,7 @@ const StationMetadataModal = ({
                                                                 ] !== "" ? (
                                                                     formState
                                                                         .booleansDesc[
-                                                                        descKey
+                                                                    descKey
                                                                     ]
                                                                 ) : (
                                                                     <span className="text-gray-400">
@@ -1380,7 +1366,7 @@ const StationMetadataModal = ({
                                                         <div className="text-sm font-bold flex items-center">
                                                             {
                                                                 generalFields3[
-                                                                    idx
+                                                                idx
                                                                 ]
                                                             }
                                                         </div>
@@ -1411,7 +1397,7 @@ const StationMetadataModal = ({
 
                                                 if (key === "navigation_file") {
                                                     return (
-                                                        <div>
+                                                        <div key={key}>
                                                             <div className="text-sm font-bold flex items-center justify-between">
                                                                 Navigation File
                                                                 {edit && (
@@ -1454,24 +1440,24 @@ const StationMetadataModal = ({
                                                                             .rinex[
                                                                             key as keyof typeof formState.rinex
                                                                         ] && (
-                                                                            <button
-                                                                                className="btn btn-ghost btn-circle mr-4"
-                                                                                onClick={() => {
-                                                                                    setModals(
-                                                                                        {
-                                                                                            show: true,
-                                                                                            title: "ConfirmDelete",
-                                                                                            type: "edit",
-                                                                                        },
-                                                                                    );
-                                                                                    setFileType(
-                                                                                        "meta",
-                                                                                    );
-                                                                                }}
-                                                                            >
-                                                                                <TrashIcon className="size-6 text-red-600" />
-                                                                            </button>
-                                                                        )}
+                                                                                <button
+                                                                                    className="btn btn-ghost btn-circle mr-4"
+                                                                                    onClick={() => {
+                                                                                        setModals(
+                                                                                            {
+                                                                                                show: true,
+                                                                                                title: "ConfirmDelete",
+                                                                                                type: "edit",
+                                                                                            },
+                                                                                        );
+                                                                                        setFileType(
+                                                                                            "meta",
+                                                                                        );
+                                                                                    }}
+                                                                                >
+                                                                                    <TrashIcon className="size-6 text-red-600" />
+                                                                                </button>
+                                                                            )}
                                                                         <p className="break-words">
                                                                             {formState
                                                                                 .rinex[
@@ -1479,7 +1465,7 @@ const StationMetadataModal = ({
                                                                             ] ? (
                                                                                 formState
                                                                                     .rinex[
-                                                                                    key as keyof typeof formState.rinex
+                                                                                key as keyof typeof formState.rinex
                                                                                 ]
                                                                             ) : (
                                                                                 <span className="text-gray-400">
@@ -1492,18 +1478,18 @@ const StationMetadataModal = ({
                                                                             .rinex[
                                                                             key as keyof typeof formState.rinex
                                                                         ] && (
-                                                                            <a
-                                                                                className="btn-circle btn-ghost flex justify-center w-4/12"
-                                                                                download={
-                                                                                    formState
-                                                                                        .rinex
-                                                                                        .navigation_file
-                                                                                }
-                                                                                href={`data:application/octet-stream;base64,${stationMeta?.navigation_actual_file}`}
-                                                                            >
-                                                                                <ArrowDownTrayIcon className="size-6 self-center" />
-                                                                            </a>
-                                                                        )}
+                                                                                <a
+                                                                                    className="btn-circle btn-ghost flex justify-center w-4/12"
+                                                                                    download={
+                                                                                        formState
+                                                                                            .rinex
+                                                                                            .navigation_file
+                                                                                    }
+                                                                                    href={`data:application/octet-stream;base64,${stationMeta?.navigation_actual_file}`}
+                                                                                >
+                                                                                    <ArrowDownTrayIcon className="size-6 self-center" />
+                                                                                </a>
+                                                                            )}
                                                                     </div>
                                                                 </div>
                                                             ) : (
@@ -1512,13 +1498,13 @@ const StationMetadataModal = ({
                                                                         .rinex[
                                                                         key as keyof typeof formState.rinex
                                                                     ] &&
-                                                                    formState
-                                                                        .rinex[
-                                                                        key as keyof typeof formState.rinex
-                                                                    ] !== "" ? (
                                                                         formState
                                                                             .rinex[
-                                                                            key as keyof typeof formState.rinex
+                                                                        key as keyof typeof formState.rinex
+                                                                        ] !== "" ? (
+                                                                        formState
+                                                                            .rinex[
+                                                                        key as keyof typeof formState.rinex
                                                                         ]
                                                                     ) : (
                                                                         <span className="text-gray-400">
@@ -1547,11 +1533,11 @@ const StationMetadataModal = ({
                                 src={
                                     chosenMonumentPhoto
                                         ? "data:image/png;base64," +
-                                          chosenMonumentPhoto
+                                        chosenMonumentPhoto
                                         : defPhoto
                                 }
                                 alt={
-                                    monumentType.find(
+                                    monumentsType?.find(
                                         (mt) =>
                                             mt.id ===
                                             Number(stationMeta?.monument_type),
@@ -1685,17 +1671,17 @@ const StationMetadataModal = ({
                                                                     onClick={async () => {
                                                                         edit
                                                                             ? setEditFile(
-                                                                                  file,
-                                                                              )
+                                                                                file,
+                                                                            )
                                                                             : isPdf(
-                                                                                    file.filename,
-                                                                                )
-                                                                              ? setFileToShow(
+                                                                                file.filename,
+                                                                            )
+                                                                                ? setFileToShow(
                                                                                     await getFileById(
                                                                                         file.id,
                                                                                     ),
                                                                                 )
-                                                                              : handleGetFile(
+                                                                                : handleGetFile(
                                                                                     file,
                                                                                 );
                                                                     }}
@@ -1718,8 +1704,8 @@ const StationMetadataModal = ({
                                                                             />
                                                                         </svg>
                                                                     ) : isPdf(
-                                                                          file.filename,
-                                                                      ) ? (
+                                                                        file.filename,
+                                                                    ) ? (
                                                                         <BookOpenIcon className="size-6 self-center" />
                                                                     ) : (
                                                                         <ArrowDownTrayIcon className="size-6 self-center" />
@@ -1784,7 +1770,7 @@ const StationMetadataModal = ({
                                                 autoComplete="off"
                                                 value={
                                                     formState.stationMeta[
-                                                        "harpos_coeff_otl" as keyof typeof formState.stationMeta
+                                                    "harpos_coeff_otl" as keyof typeof formState.stationMeta
                                                     ] ?? ""
                                                 }
                                                 name={
@@ -1818,13 +1804,13 @@ const StationMetadataModal = ({
                                         {formState.stationMeta[
                                             "harpos_coeff_otl" as keyof typeof formState.stationMeta
                                         ] &&
-                                        formState.stationMeta[
+                                            formState.stationMeta[
                                             "harpos_coeff_otl" as keyof typeof formState.stationMeta
-                                        ] !== "" ? (
+                                            ] !== "" ? (
                                             <p className="break-words whitespace-pre-wrap overflow-y-auto h-full p-2">
                                                 {
                                                     formState.stationMeta[
-                                                        "harpos_coeff_otl" as keyof typeof formState.stationMeta
+                                                    "harpos_coeff_otl" as keyof typeof formState.stationMeta
                                                     ]
                                                 }
                                             </p>
@@ -1845,27 +1831,11 @@ const StationMetadataModal = ({
                         <div className="card bg-base-200 grow shadow-xl">
                             <h2 className="card-title border-b-2 border-base-300 p-2 justify-between">
                                 Geodetic Coordinates
-                                <button
-                                    className={` ${showPopup && copyId === "geodetic" ? "tooltip tooltip-open" : ""} mr-2`}
-                                    data-tip="Copied !"
-                                >
-                                    <ClipboardDocumentIcon
-                                        className="size-6 cursor-pointer rounded-md transition-all duration-75 btn-ghost hover:scale-125"
-                                        title={"copy coordinates"}
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(
-                                                "LATITUDE: " +
-                                                    formState.station.lat +
-                                                    ",LONGITUDE: " +
-                                                    formState.station.lon +
-                                                    ",HEIGHT: " +
-                                                    formState.station.height,
-                                            );
-                                            setCopyId("geodetic");
-                                            show();
-                                        }}
-                                    />
-                                </button>
+                                <CopyButton
+                                    text={`LATITUDE: ${formState.station.lat},LONGITUDE: ${formState.station.lon},HEIGHT: ${formState.station.height}`}
+                                    className="mr-2"
+                                    iconClassName="size-6"
+                                />
                             </h2>
                             <div className="card-body">
                                 <div className="grid grid-cols-3 gap-2">
@@ -1888,8 +1858,8 @@ const StationMetadataModal = ({
                                                             {key === "lat"
                                                                 ? "Latitude"
                                                                 : key === "lon"
-                                                                  ? "Longitude"
-                                                                  : "Height"}
+                                                                    ? "Longitude"
+                                                                    : "Height"}
                                                         </div>
                                                         {edit ? (
                                                             <div className="flex flex-col space-y-1">
@@ -1908,7 +1878,7 @@ const StationMetadataModal = ({
                                                                         value={
                                                                             formState
                                                                                 .station[
-                                                                                key as keyof typeof formState.station
+                                                                            key as keyof typeof formState.station
                                                                             ] ??
                                                                             ""
                                                                         }
@@ -1951,17 +1921,17 @@ const StationMetadataModal = ({
                                                                             Number(
                                                                                 formState
                                                                                     .station[
-                                                                                    key as keyof typeof formState.station
+                                                                                key as keyof typeof formState.station
                                                                                 ],
                                                                             ),
                                                                             key ===
-                                                                                "lat",
+                                                                            "lat",
                                                                         )
                                                                     ) : (
                                                                         Number(
                                                                             formState
                                                                                 .station[
-                                                                                key as keyof typeof formState.station
+                                                                            key as keyof typeof formState.station
                                                                             ],
                                                                         ) + " m"
                                                                     )
@@ -1983,27 +1953,11 @@ const StationMetadataModal = ({
                         <div className="card bg-base-200 grow shadow-xl">
                             <h2 className="card-title border-b-2 border-base-300 p-2 justify-between">
                                 Cartesian Coordinates
-                                <button
-                                    className={` ${showPopup && copyId === "coordinates" ? "tooltip tooltip-open" : ""} mr-2`}
-                                    data-tip="Copied !"
-                                >
-                                    <ClipboardDocumentIcon
-                                        className="size-6 cursor-pointer rounded-md transition-all duration-75 btn-ghost hover:scale-125"
-                                        title={"copy coordinates"}
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(
-                                                "X: " +
-                                                    formState.station.auto_x +
-                                                    ",Y: " +
-                                                    formState.station.auto_y +
-                                                    ",Z: " +
-                                                    formState.station.auto_z,
-                                            );
-                                            setCopyId("coordinates");
-                                            show();
-                                        }}
-                                    />
-                                </button>
+                                <CopyButton
+                                    text={`X: ${formState.station.auto_x},Y: ${formState.station.auto_y},Z: ${formState.station.auto_z}`}
+                                    className="mr-2"
+                                    iconClassName="size-6"
+                                />
                             </h2>
                             <div className="card-body">
                                 <div className="grid grid-cols-3 md:grid-cols-2 grid-flow-dense gap-2">
@@ -2025,8 +1979,8 @@ const StationMetadataModal = ({
                                                                 ? "X"
                                                                 : key ===
                                                                     "auto_y"
-                                                                  ? "Y"
-                                                                  : "Z"}
+                                                                    ? "Y"
+                                                                    : "Z"}
                                                         </div>
                                                         {edit ? (
                                                             <div className="flex flex-col space-y-1">
@@ -2040,7 +1994,7 @@ const StationMetadataModal = ({
                                                                         value={
                                                                             formState
                                                                                 .station[
-                                                                                key as keyof typeof formState.station
+                                                                            key as keyof typeof formState.station
                                                                             ] ??
                                                                             ""
                                                                         }
@@ -2079,7 +2033,7 @@ const StationMetadataModal = ({
                                                                     Number(
                                                                         formState
                                                                             .station[
-                                                                            key as keyof typeof formState.station
+                                                                        key as keyof typeof formState.station
                                                                         ],
                                                                     ) + " m"
                                                                 ) : (
@@ -2115,7 +2069,7 @@ const StationMetadataModal = ({
                                                         <div className="text-sm font-bold flex items-center">
                                                             {
                                                                 equipmentFields[
-                                                                    idx
+                                                                idx
                                                                 ]
                                                             }
                                                         </div>
@@ -2149,13 +2103,13 @@ const StationMetadataModal = ({
                     <Alert
                         msg={
                             metaMsg?.status === 200 &&
-                            stationMsg?.status === 200
+                                stationMsg?.status === 200
                                 ? metaMsg
                                 : metaMsg?.status !== 200
-                                  ? metaMsg
-                                  : stationMsg?.status !== 200
-                                    ? stationMsg
-                                    : undefined
+                                    ? metaMsg
+                                    : stationMsg?.status !== 200
+                                        ? stationMsg
+                                        : undefined
                         }
                     />
                     <button

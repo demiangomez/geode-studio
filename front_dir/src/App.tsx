@@ -1,3 +1,6 @@
+import { Suspense } from "react";
+import { queryClient } from "@queryClient";
+
 import {
     Route,
     createBrowserRouter,
@@ -5,35 +8,49 @@ import {
     createRoutesFromElements,
 } from "react-router-dom";
 
-import "global";
-
-import {
-    Error,
-    Login,
-    Main,
-    Users,
-    Station,
-    Overview,
-    Campaigns,
-    Settings,
-    PeopleRelations,
-} from "@pagesReact";
-
-import {
-    StationEvents,
-    StationMain,
-    StationPeople,
-    StationRinex,
-    StationTimeSeries,
-    StationVisits,
-    StationSources,
-    SourcesServers,
-} from "@componentsReact";
+import { QueryClientProvider } from "@tanstack/react-query";
 
 import { ProtectedRoute, UnprotectedRoute } from "@routes";
 
 import { AuthProvider } from "@hooks/useAuth";
 import { UserContextProvider } from "@hooks/user/userInfo.context";
+
+/**
+ * Cuando un import falla el navegador vuelve a pedir el archivo en vez de fallar
+ * esto es útil para cuando cambia el hash del archivo
+ */
+import { lazyRetry } from "@utils";
+
+// Lazy load pages
+const Error = lazyRetry(() => import("./pages/Error"));
+const Login = lazyRetry(() => import("./pages/Login"));
+const Main = lazyRetry(() => import("./pages/Main"));
+const Users = lazyRetry(() => import("./pages/Users/Users"));
+const Station = lazyRetry(() => import("./pages/Station/Station"));
+const Overview = lazyRetry(() => import("./pages/Overview/Overview"));
+const Networks = lazyRetry(() => import("./pages/Networks/Networks"));
+const Campaigns = lazyRetry(() => import("./pages/Campaigns/Campaigns"));
+const Settings = lazyRetry(() => import("./pages/User/Settings"));
+const PeopleRelations = lazyRetry(() => import("./pages/People/People"));
+
+// Lazy load components
+const StationEvents = lazyRetry(() => import("./pages/Station/Events/Events"));
+const StationMain = lazyRetry(() => import("./components/station/StationMain"));
+const StationPeople = lazyRetry(() => import("./pages/Station/People"));
+const StationRinex = lazyRetry(() => import("./pages/Station/Rinex/Rinex"));
+const StationTimeSeries = lazyRetry(() => import("./pages/Station/TimeSeries"));
+const StationVisits = lazyRetry(() => import("./pages/Station/Visits"));
+const StationSources = lazyRetry(() => import("./pages/Station/Sources"));
+const SourcesServers = lazyRetry(
+    () => import("./pages/SourcesServers/Sources"),
+);
+
+// Loading fallback component
+const LoadingFallback = () => (
+    <div className="flex items-center justify-center h-screen w-screen bg-base-200">
+        <span className="loading loading-spinner loading-lg text-primary"></span>
+    </div>
+);
 
 const router = createBrowserRouter(
     createRoutesFromElements(
@@ -51,7 +68,11 @@ const router = createBrowserRouter(
                     },
                 }}
             >
-                <Route index element={<Main />} />
+                <Route
+                    index
+                    element={<Main />}
+                    handle={{ title: "Mapview" }}
+                />
                 <Route
                     path="campaigns"
                     element={<Campaigns />}
@@ -59,6 +80,7 @@ const router = createBrowserRouter(
                         crumb: () => {
                             return "campaigns";
                         },
+                        title: "Campaigns",
                     }}
                 />
                 <Route
@@ -68,6 +90,17 @@ const router = createBrowserRouter(
                         crumb: () => {
                             return "sources-servers";
                         },
+                        title: "Sources",
+                    }}
+                />
+                <Route
+                    path="networks"
+                    element={<Networks />}
+                    handle={{
+                        crumb: () => {
+                            return "networks";
+                        },
+                        title: "Networks",
                     }}
                 />
                 <Route
@@ -77,6 +110,7 @@ const router = createBrowserRouter(
                         crumb: () => {
                             return "people";
                         },
+                        title: "People",
                     }}
                 />
                 <Route
@@ -86,6 +120,7 @@ const router = createBrowserRouter(
                         crumb: () => {
                             return "overview";
                         },
+                        title: "Overview",
                     }}
                 />
                 <Route
@@ -95,6 +130,7 @@ const router = createBrowserRouter(
                         crumb: () => {
                             return "Users";
                         },
+                        title: "Users",
                     }}
                 />
                 <Route
@@ -104,6 +140,7 @@ const router = createBrowserRouter(
                         crumb: () => {
                             return "settings";
                         },
+                        title: "Settings",
                     }}
                 />
 
@@ -114,6 +151,8 @@ const router = createBrowserRouter(
                         crumb: () => {
                             return "Station";
                         },
+                        title: (m: any) =>
+                            `${m.params.nc}.${m.params.sc}`.toUpperCase(),
                     }}
                 >
                     <Route index element={<StationMain />} />
@@ -189,14 +228,18 @@ const router = createBrowserRouter(
 
 function App() {
     return (
-        <UserContextProvider>
-            <AuthProvider>
-                <RouterProvider
-                    router={router}
-                    future={{ v7_startTransition: true }}
-                />
-            </AuthProvider>
-        </UserContextProvider>
+        <QueryClientProvider client={queryClient}>
+            <UserContextProvider>
+                <AuthProvider>
+                    <Suspense fallback={<LoadingFallback />}>
+                        <RouterProvider
+                            router={router}
+                            future={{ v7_startTransition: true }}
+                        />
+                    </Suspense>
+                </AuthProvider>
+            </UserContextProvider>
+        </QueryClientProvider>
     );
 }
 

@@ -1,29 +1,42 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, {
+    useEffect,
+    useRef,
+    useState,
+    useMemo,
+    useCallback,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Dropdown } from "@componentsReact";
 
-import {
-    CountriesData,
-    CountriesServiceData,
-    GetParams,
-    NetworkData,
-    NetworkServiceData,
-    StationData,
-} from "@types";
+import { GetParams, StationData } from "@types";
 
-import { getCountriesService, getNetworksService } from "@services";
-
-import { useAuth } from "@hooks/useAuth";
-import useApi from "@hooks/useApi";
+import { useAuth, useApi, useClickOutside } from "@hooks";
+import { useMetadata } from "@hooks/queries";
+import { XMarkIcon } from "@heroicons/react/24/outline";
 
 interface SearchInputProps {
     stations: StationData[] | undefined;
     params: GetParams;
     setParams: React.Dispatch<React.SetStateAction<GetParams>>;
     setStation: React.Dispatch<React.SetStateAction<StationData | undefined>>;
+    setPosToFly: (
+        pos:
+            | [number, number]
+            | ((
+                prev: [number, number] | undefined,
+            ) => [number, number] | undefined)
+            | undefined,
+    ) => void;
 }
 
-const SearchInput = ({ stations, params, setParams }: SearchInputProps) => {
+const EMPTY_ARRAY: StationData[] = [];
+
+const SearchInput = ({
+    stations,
+    params,
+    setParams,
+    setPosToFly,
+}: SearchInputProps) => {
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
 
@@ -31,176 +44,179 @@ const SearchInput = ({ stations, params, setParams }: SearchInputProps) => {
 
     const location = useLocation();
 
-    const locationState = location.state as StationData;
-
-    const [countries, setCountries] = useState<CountriesData[] | undefined>(
-        undefined,
-    );
-    const [networks, setNetworks] = useState<NetworkData[] | undefined>(
-        undefined,
-    );
+    const locationState = location.state as
+        | (StationData & { mainParams?: GetParams })
+        | null;
 
     const [dropdown, setDropdown] = useState<{
         type: undefined | string;
         dropdown: boolean;
     }>({ type: undefined, dropdown: false });
-    const [codeSelected, setCodeSelected] = useState<string>(
-        locationState?.mainParams?.country_code?.toUpperCase() ?? "",
-    );
-    const [networkSelected, setNetworkSelected] = useState<string>(
-        locationState?.mainParams?.network_code?.toUpperCase() ?? "",
-    );
 
-    const [dropdownClassnames, setDropdownClassnames] = useState("hidden");
+    const codeSelected = (params.country_code ?? "").toUpperCase();
+    const networkSelected = (params.network_code ?? "").toUpperCase();
 
-    const getCountries = async () => {
-        const result = await getCountriesService<CountriesServiceData>(api);
-        if (result) {
-            setCountries(result.data);
-        }
-    };
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [selectedIndex, setSelectedIndex] = useState(-1);
 
-    const getNetworks = async () => {
-        const result = await getNetworksService<NetworkServiceData>(api);
-        if (result) {
-            setNetworks(result.data);
-        }
-    };
+    const dropdownRef = useRef<HTMLDivElement | null>(null);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+
+    const { countries, networks } = useMetadata(api);
+
+    const filteredStations = useMemo(() => {
+        const baseStations = stations ?? EMPTY_ARRAY;
+        if (!params.station_code) return baseStations;
+        const searchInputLower = params.station_code.toLowerCase();
+        return baseStations.filter((station) =>
+            station.station_code?.toLowerCase().includes(searchInputLower),
+        );
+    }, [stations, params.station_code]);
+
+    const handleCountryChange: React.Dispatch<React.SetStateAction<string>> =
+        useCallback(
+            (value) => {
+                const newValue =
+                    typeof value === "function" ? value(codeSelected) : value;
+                setParams((p) => ({
+                    ...p,
+                    country_code: newValue,
+                    // Sin contexto de navegación, cambiar país resetea la red
+                    ...(locationState ? {} : { network_code: "" }),
+                }));
+            },
+            [codeSelected, locationState, setParams],
+        );
+
+    const handleNetworkChange: React.Dispatch<React.SetStateAction<string>> =
+        useCallback(
+            (value) => {
+                const newValue =
+                    typeof value === "function"
+                        ? value(networkSelected)
+                        : value;
+                setParams((p) => ({
+                    ...p,
+                    network_code: newValue.toLowerCase(),
+                }));
+            },
+            [networkSelected, setParams],
+        );
+
+    useClickOutside([dropdownRef, inputRef], () => setIsDropdownOpen(false));
 
     useEffect(() => {
-        getCountries();
-        getNetworks();
+        setSelectedIndex((prev) => (prev === -1 ? prev : -1));
+    }, [filteredStations, isDropdownOpen]);
 
-        const handleClickOutside = (event: MouseEvent) => {
-            const searchInput = document.getElementById("search-station");
-            if (
-                dropdownRef.current &&
-                !dropdownRef.current.contains(event.target as Node) &&
-                event.target !== searchInput
-            ) {
-                setDropdownClassnames("hidden");
+    useEffect(() => {
+        if (selectedIndex >= 0 && dropdownRef.current) {
+            const selectedElement = dropdownRef.current.querySelector(
+                `li:nth-child(${selectedIndex + 1})`,
+            );
+            if (selectedElement) {
+                selectedElement.scrollIntoView({
+                    block: "nearest",
+                });
             }
-        };
-
-        const handleSearchInputClick = () => {
-            if (params.station_code) {
-                setDropdownClassnames("dropdown dropdown-open w-[80%] pt-2");
-            }
-        };
-
-        const searchInput = document.getElementById("search-station");
-        searchInput?.addEventListener("click", handleSearchInputClick);
-        document.addEventListener("mousedown", handleClickOutside);
-
-        return () => {
-            searchInput?.removeEventListener("click", handleSearchInputClick);
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, [params.station_code]);
-
-    useEffect(() => {
-        if (!locationState) {
-            setNetworkSelected("");
         }
-    }, [codeSelected]);
+    }, [selectedIndex]);
 
     useEffect(() => {
-        if (locationState?.mainParams) {
-            const stateParams = locationState?.mainParams;
-            setCodeSelected(stateParams.country_code?.toUpperCase() ?? "");
-            setNetworkSelected(stateParams.network_code?.toUpperCase() ?? "");
+        if (params.station_code && filteredStations.length === 1) {
+            const s = filteredStations[0];
+            setPosToFly((prev) => {
+                if (prev && prev[0] === s.lat && prev[1] === s.lon) return prev;
+                return [s.lat, s.lon];
+            });
         }
-    }, [locationState]);
+    }, [filteredStations, params.station_code, setPosToFly]);
 
-    useEffect(() => {
-        setParams({
-            ...params,
-            country_code: codeSelected,
-            network_code: networkSelected.toLowerCase(),
-            station_code: locationState?.mainParams?.station_code ?? "",
-        });
-    }, [networkSelected, codeSelected]);
+    const handleStationSelect = useCallback(
+        (station: StationData) => {
+            setParams((prev) => ({
+                ...prev,
+                station_code: station.station_code ?? "",
+            }));
+            setIsDropdownOpen(false);
+            setSelectedIndex(-1);
+            setPosToFly([station.lat, station.lon]);
+            navigate(`/${station.network_code}/${station.station_code}`, {
+                state: { ...station, mainParams: params },
+            });
+        },
+        [navigate, params, setParams, setPosToFly],
+    );
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const searchInput = document.getElementById(
-            "search-station",
-        ) as HTMLInputElement;
-        const { value } = searchInput;
 
-        if (value) {
-            const networkSelected = e.currentTarget.textContent?.split(".")[0];
-            const codeSelected = e.currentTarget.textContent?.split(".")[1];
+        if (selectedIndex >= 0 && selectedIndex < filteredStations.length) {
+            handleStationSelect(filteredStations[selectedIndex]);
+            return;
+        }
 
-            const foundStation: StationData | undefined = stations?.find(
-                (station) =>
-                    station.network_code?.toLowerCase() ===
-                        networkSelected?.toLowerCase() &&
-                    station.station_code?.toLowerCase() ===
-                        codeSelected?.toLowerCase(),
+        if (params.station_code && filteredStations.length > 0) {
+            const exactMatch = filteredStations.find(
+                (s) =>
+                    s.station_code?.toLowerCase() ===
+                    params.station_code?.toLowerCase(),
             );
-            if (foundStation) {
-                navigate(
-                    `/${foundStation.network_code}/${foundStation.station_code}`,
-                    { state: { ...foundStation, mainParams: params } },
-                );
-
-                // return;
-            }
+            handleStationSelect(exactMatch || filteredStations[0]);
         }
-    };
-
-    const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-        const searchInput = document.getElementById(
-            "search-station",
-        ) as HTMLInputElement;
-        const { textContent } = e.target as HTMLAnchorElement;
-
-        if (textContent) {
-            searchInput.value = textContent.split(".")[1];
-            setDropdownClassnames("hidden");
-        }
-
-        handleSubmit(e);
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const searchInput = e.target.value.trim();
+        const value = e.target.value.trim();
+        setParams((prev) => ({
+            ...prev,
+            station_code: value,
+        }));
+        setIsDropdownOpen(value.length > 0);
+        setSelectedIndex(-1);
+    };
 
-        const isInputEmpty = searchInput.length === 0;
-        if (isInputEmpty) {
-            setDropdownClassnames("hidden");
-            setParams((prev) => ({
-                ...prev,
-                station_code: "",
-            }));
-        } else {
-            setParams({
-                ...params,
-                station_code: searchInput,
-            });
-            const filteredStations =
-                searchInput.length !== 0
-                    ? stations?.filter((station) =>
-                          station.station_code
-                              .toLowerCase()
-                              .includes(searchInput.toLowerCase()),
-                      )
-                    : stations;
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (!isDropdownOpen || filteredStations.length === 0) return;
 
-            const newClassnames =
-                filteredStations && filteredStations.length > 0
-                    ? "dropdown dropdown-open w-[80%] pt-2"
-                    : "hidden";
-
-            setDropdownClassnames(newClassnames);
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setSelectedIndex((prev) =>
+                prev < filteredStations.length - 1 ? prev + 1 : prev,
+            );
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setSelectedIndex((prev) => (prev > -1 ? prev - 1 : prev));
+        } else if (e.key === "Escape") {
+            setIsDropdownOpen(false);
+            setSelectedIndex(-1);
         }
     };
 
-    const dropdownRef = useRef<HTMLDivElement | null>(null);
+    const handleClearFilters = useCallback(() => {
+        setIsDropdownOpen(false);
+        setSelectedIndex(-1);
+
+        if (location.state) {
+            navigate(location.pathname, { replace: true, state: {} });
+        }
+
+        setParams((prev) => ({
+            ...prev,
+            country_code: "",
+            network_code: "",
+            station_code: "",
+        }));
+    }, [location, navigate, setParams]);
+
+    const handleInputClick = () => {
+        if (params.station_code) {
+            setIsDropdownOpen(true);
+        }
+    };
 
     return (
-        <div className="bg-inherit h-16 flex flex-col items-center justify-center text-black text-2xl w-6/12 self-center">
+        <div className="bg-inherit h-16 flex flex-col items-center justify-center text-black text-2xl w-full self-center relative">
             <form
                 onSubmit={handleSubmit}
                 className="relative w-full h-full rounded-md bg-white flex flex-nowrap items-stretch"
@@ -211,7 +227,7 @@ const SearchInput = ({ stations, params, setParams }: SearchInputProps) => {
                     dropdown={dropdown}
                     data={countries}
                     dataSelected={codeSelected}
-                    setDataSelected={setCodeSelected}
+                    setDataSelected={handleCountryChange as any}
                     setDropdown={setDropdown}
                 />
                 <Dropdown
@@ -219,12 +235,13 @@ const SearchInput = ({ stations, params, setParams }: SearchInputProps) => {
                     dropdown={dropdown}
                     data={networks}
                     dataSelected={networkSelected}
-                    setDataSelected={setNetworkSelected}
+                    setDataSelected={handleNetworkChange as any}
                     setDropdown={setDropdown}
                 />
 
                 <div className="w-full">
                     <button
+                        type="button"
                         className="btn btn-circle absolute -top-4 z-10 left-[125px] btn-error"
                         title="Clear filters"
                         style={{
@@ -232,42 +249,9 @@ const SearchInput = ({ stations, params, setParams }: SearchInputProps) => {
                             height: "30px",
                             minHeight: "10px",
                         }}
-                        onClick={() => {
-                            const searchInput = document.getElementById(
-                                "search-station",
-                            ) as HTMLInputElement;
-                            searchInput.value = "";
-                            setDropdownClassnames("hidden");
-                            setCodeSelected("");
-                            setNetworkSelected("");
-                            location.state
-                                ? location.state.mainParams
-                                    ? delete location.state.mainParams
-                                    : null
-                                : null;
-
-                            setParams({
-                                ...params,
-                                country_code: "",
-                                network_code: "",
-                                station_code: "",
-                            });
-                        }}
+                        onClick={handleClearFilters}
                     >
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                d="M6 18L18 6M6 6l12 12"
-                            />
-                        </svg>
+                        <XMarkIcon className="size-6" />
                     </button>
                     <input
                         id="search-station"
@@ -287,14 +271,15 @@ const SearchInput = ({ stations, params, setParams }: SearchInputProps) => {
                             !networkSelected && codeSelected
                                 ? "Select a network"
                                 : networkSelected && !codeSelected
-                                  ? "Select a country"
-                                  : undefined
+                                    ? "Select a country"
+                                    : undefined
                         }
                         aria-describedby="addon-wrapping"
-                        onChange={(e) => {
-                            handleChange(e);
-                        }}
+                        onClick={handleInputClick}
+                        onChange={handleChange}
+                        onKeyDown={handleKeyDown}
                         value={params.station_code}
+                        ref={inputRef}
                     />
                     <label
                         className="absolute left-[170px] text-black text-xs pointer-events-none
@@ -310,7 +295,7 @@ const SearchInput = ({ stations, params, setParams }: SearchInputProps) => {
                     disabled:cursor-not-allowed disabled:text-gray-500 disabled:text
                     "
                     type="submit"
-                    // disabled={!networkSelected || !codeSelected}
+                // disabled={!networkSelected || !codeSelected}
                 >
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -328,7 +313,14 @@ const SearchInput = ({ stations, params, setParams }: SearchInputProps) => {
                     </svg>
                 </button>
             </form>
-            <div className={dropdownClassnames} ref={dropdownRef}>
+            <div
+                className={
+                    isDropdownOpen && filteredStations.length > 0
+                        ? "absolute top-full left-0 w-full pt-2 z-50"
+                        : "hidden"
+                }
+                ref={dropdownRef}
+            >
                 <ul
                     tabIndex={0}
                     className="dropdown-content z-30 menu divide-y-2 
@@ -341,18 +333,19 @@ const SearchInput = ({ stations, params, setParams }: SearchInputProps) => {
                         overflowX: "hidden",
                     }}
                 >
-                    {stations?.map((station) => (
-                        <li key={station?.api_id} className="text-lg w-full">
-                            <a
-                                onClick={(e) => {
-                                    handleClick(e);
-                                }}
-                                className="w-full justify-center"
+                    {filteredStations.map((station, index) => (
+                        <li
+                            key={station?.api_id}
+                            className="text-lg w-full"
+                            onMouseEnter={() => setSelectedIndex(index)}
+                        >
+                            <button
+                                type="button"
+                                onClick={() => handleStationSelect(station)}
+                                className={`w-full justify-center ${selectedIndex === index ? "bg-gray-700" : ""}`}
                             >
-                                {station?.network_code?.toUpperCase() +
-                                    "." +
-                                    station?.station_code?.toUpperCase()}
-                            </a>
+                                {`${station?.network_code?.toUpperCase()}.${station?.station_code?.toUpperCase()}`}
+                            </button>
                         </li>
                     ))}
                 </ul>

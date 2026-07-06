@@ -40,11 +40,16 @@ const Breadcrumb = ({ state, setters }: Props) => {
 
     return (
         <div
-            className={`breadcrumbs absolute left-36 peer-[.w-72]:translate-x-40 transition-all mt-4 
-                badge overflow-hidden text-sm`}
+            className="breadcrumbs absolute left-24 mt-4 badge overflow-hidden text-sm"
         >
             <ul>
                 {crumbs.map((c: string, idx: number) => {
+                    const isLast = idx === crumbs.length - 1;
+
+                    if (isLast) {
+                        return <li key={c + String(idx)}>{c}</li>;
+                    }
+
                     return (
                         <li key={c + String(idx)}>
                             <Link
@@ -52,7 +57,7 @@ const Breadcrumb = ({ state, setters }: Props) => {
                                 onClick={() =>
                                     (matches as any)[idx]?.handle.crumb() ===
                                         "Station" &&
-                                    actualMatch.pathname !== stationPath
+                                        actualMatch.pathname !== stationPath
                                         ? handleStation()
                                         : null
                                 }

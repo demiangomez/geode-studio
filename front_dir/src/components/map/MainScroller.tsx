@@ -1,68 +1,38 @@
-import { useState, useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { Scroller, Spinner } from "@componentsReact";
+
 import { useAuth, useApi, useLocalStorage } from "@hooks";
-import { getStationStatusService, getStationTypesService } from "@services";
-import {
-    EarthQuakeFormState,
-    FilterState,
-    StationStatus,
-    StationStatusServiceData,
-} from "@types";
+import type { MapLayerState, MapProjectionState } from "@hooks";
 
 interface MainScrollerProps {
-    mapState: boolean;
-    topoMapState: boolean;
     altData?: {
         dataFiltered: any[];
         originalDataCount: any;
         hasEarthquakes?: boolean;
     };
     fromMain: boolean;
-    filters: {
-        openFilters: boolean;
-        stationType: boolean;
-        stationWithProblems: boolean;
-        stationWithoutProblems: boolean;
-        stationStatus: boolean;
-    };
-    filterState: FilterState;
-    showScroller: boolean;
-    setFilters: React.Dispatch<
-        React.SetStateAction<{
-            openFilters: boolean;
-            stationType: boolean;
-            stationWithProblems: boolean;
-            stationWithoutProblems: boolean;
-            stationStatus: boolean;
-        }>
-    >;
-    setFormState: React.Dispatch<React.SetStateAction<EarthQuakeFormState>>;
-    setFilterState: React.Dispatch<React.SetStateAction<FilterState>>;
-    setTopoMapState: React.Dispatch<React.SetStateAction<boolean>>;
-    setShowScroller: React.Dispatch<React.SetStateAction<boolean>>;
-    setShowEarthquakeModal: React.Dispatch<
-        React.SetStateAction<
-            | { show: boolean; title: string; type: "add" | "edit" | "none" }
-            | undefined
-        >
-    >;
 }
 
-const MainScroller = ({
-    altData,
-    mapState,
-    filters,
-    fromMain,
-    filterState,
-    topoMapState,
-    showScroller,
-    setFilters,
-    setFormState,
-    setFilterState,
-    setTopoMapState,
-    setShowScroller,
-    setShowEarthquakeModal,
-}: MainScrollerProps) => {
+import { useMapStore } from "@store";
+import { useMetadata } from "@hooks/queries";
+import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+
+const MainScroller = ({ altData, fromMain }: MainScrollerProps) => {
+    const mapState = useMapStore((s) => s.mapState);
+    const filters = useMapStore((s) => s.filters);
+    const filterState = useMapStore((s) => s.filterState);
+    const mapLayerState = useMapStore((s) => s.mapLayerState);
+    const mapProjectionState = useMapStore((s) => s.mapProjectionState);
+    const showScroller = useMapStore((s) => s.showScroller);
+
+    const setFilters = useMapStore((s) => s.setFilters);
+
+    const setFilterState = useMapStore((s) => s.setFilterState);
+    const setMapLayerState = useMapStore((s) => s.setMapLayerState);
+    const setMapProjectionState = useMapStore((s) => s.setMapProjectionState);
+    const setShowScroller = useMapStore((s) => s.setShowScroller);
+    const setShowEarthquakeModal = useMapStore((s) => s.setEarthquakeModal);
+
     //------------------------------------------------UseAuth----------------------------------------------
     const { token, logout } = useAuth();
 
@@ -75,13 +45,6 @@ const MainScroller = ({
         JSON.stringify({}),
     );
 
-    //------------------------------------------------UseState----------------------------------------------
-    const [stationType, setStationType] = useState<StationStatus[]>([]);
-
-    const [stationStatus, setStationStatus] = useState<StationStatus[]>([]);
-
-    const [loading, setLoading] = useState<boolean>(false);
-
     //------------------------------------------------Functions----------------------------------------------
     const handleLocalStorage = (key: string, value: string) => {
         setMapFilters(
@@ -92,23 +55,11 @@ const MainScroller = ({
         );
     };
 
-    const getTypes = async () => {
-        try {
-            setLoading(true);
-            const status =
-                await getStationStatusService<StationStatusServiceData>(api);
-
-            const types =
-                await getStationTypesService<StationStatusServiceData>(api);
-
-            setStationType(types.data ?? []);
-            setStationStatus(status.data ?? []);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const {
+        statuses: stationStatus,
+        types: stationType,
+        isLoading: loading,
+    } = useMetadata(api, { enabled: !mapState });
 
     const hasFilters = () => {
         return (
@@ -122,7 +73,77 @@ const MainScroller = ({
     const hasFilteredData =
         hasFilters() && altData?.dataFiltered && !altData.hasEarthquakes;
 
+    const handleProjectionToggle = (
+        projection: keyof MapProjectionState,
+        checked: boolean,
+    ) => {
+        const newState: MapProjectionState = { [projection]: checked };
+
+        setMapFilters(
+            JSON.stringify({
+                ...JSON.parse(mapFilters ?? "{}"),
+                [`${projection.charAt(0).toUpperCase() + projection.slice(1)}ProjectionMapState`]:
+                    checked.toString(),
+            }),
+        );
+        setMapProjectionState(newState);
+    };
+
+    const handleLayerToggle = (
+        layer: keyof MapLayerState,
+        checked: boolean,
+    ) => {
+        // Mutual exclusion: activating one deactivates the other
+        const newState: MapLayerState =
+            layer === "topo"
+                ? {
+                      topo: checked,
+                      satellite: checked ? false : mapLayerState.satellite,
+                  }
+                : {
+                      topo: checked ? false : mapLayerState.topo,
+                      satellite: checked,
+                  };
+
+        // Batch both keys in a single localStorage write to avoid stale closure
+        setMapFilters(
+            JSON.stringify({
+                ...JSON.parse(mapFilters ?? "{}"),
+                topoMapState: newState.topo.toString(),
+                satelliteMapState: newState.satellite.toString(),
+            }),
+        );
+        setMapLayerState(newState);
+    };
+
     //------------------------------------------------UseEffect----------------------------------------------
+
+    // Restore mapLayerState from localStorage on initial mount only
+    useEffect(() => {
+        if (mapFilters) {
+            const localStorageFilters = JSON.parse(mapFilters);
+            const f = Object.entries(localStorageFilters).reduce(
+                (acc, [key, value]) => {
+                    return {
+                        ...acc,
+                        [key]: JSON.parse(value as string),
+                    };
+                },
+                {},
+            ) as any;
+
+            setMapLayerState({
+                topo: f.topoMapState ?? false,
+                satellite: f.satelliteMapState ?? false,
+            });
+            setMapProjectionState({
+                globe: f.GlobeProjectionMapState ?? false,
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Restore filters from localStorage reactively
     useEffect(() => {
         if (mapFilters) {
             const localStorageFilters = JSON.parse(mapFilters);
@@ -137,15 +158,13 @@ const MainScroller = ({
                 {},
             ) as any;
 
-            setTopoMapState(f.topoMapState);
-
-            setFilters((prev) => ({
+            setFilters((prev: any) => ({
                 ...prev,
                 stationWithProblems: f.stationWithProblems,
                 stationWithoutProblems: f.stationWithoutProblems,
             }));
 
-            setFilterState((prev) => ({
+            setFilterState((prev: any) => ({
                 ...prev,
                 typeOption: f.stationType ?? [],
                 statusOption: f.stationStatus ?? [],
@@ -153,25 +172,14 @@ const MainScroller = ({
         }
     }, [mapFilters]);
 
-    const getTypesCallback = useMemo(() => {
-        if (!mapState) {
-            return () => getTypes();
-        }
-        return () => {};
-    }, [mapState]);
-
-    useEffect(() => {
-        getTypesCallback();
-    }, [getTypesCallback]);
-
     //------------------------------------------------Return----------------------------------------------
 
     return (
         <>
             <Scroller
-                fromMain={true}
+                fromMain
                 hasFilteredData={hasFilteredData && !mapState ? true : false}
-                buttonCondition={true}
+                buttonCondition
                 scrollerCondition={fromMain && showScroller}
                 scrollerName={
                     !mapState && hasFilteredData && altData?.originalDataCount
@@ -190,79 +198,105 @@ const MainScroller = ({
                     </div>
                 ) : (
                     <ul className="menu rounded-box w-auto">
+                        {/* a. Find earthquake */}
                         <li>
-                            <div
-                                className="form-control p-0"
+                            <a
+                                className="flex justify-between items-center font-bold"
+                                style={{ paddingRight: "10px" }}
                                 onClick={() => {
                                     setShowEarthquakeModal({
                                         show: true,
                                         title: "earthquake",
                                         type: "none",
                                     });
-                                    setFormState({
-                                        date_start: undefined,
-                                        date_end: undefined,
-                                        max_magnitude: "",
-                                        min_magnitude: "",
-                                        id: "",
-                                        max_depth: "",
-                                        min_depth: "",
-                                        min_latitude: "",
-                                        max_latitude: "",
-                                        min_longitude: "",
-                                        max_longitude: "",
-                                        polygon_coordinates: [[]],
-                                    });
                                 }}
                             >
-                                <label className="label cursor-pointer truncate w-[370px]">
-                                    <span className="font-bold mr-4">
-                                        Find Earthquake
-                                    </span>
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        strokeWidth={1.5}
-                                        stroke="currentColor"
-                                        className="size-6"
-                                    >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
-                                        />
-                                    </svg>
-                                </label>
-                            </div>
+                                <span>Find Earthquake</span>
+                                <MagnifyingGlassIcon className="size-5" />
+                            </a>
                         </li>
+                        {/* b. Layers & Projection */}
                         <li>
-                            <div className="form-control p-0">
-                                <label className="label cursor-pointer truncate w-[370px]">
-                                    <span className="font-bold mr-4">
-                                        Topo Layer
-                                    </span>
-                                    <input
-                                        type="checkbox"
-                                        className="checkbox checkbox-sm"
-                                        defaultChecked={topoMapState}
-                                        onChange={(e) => {
-                                            handleLocalStorage(
-                                                "topoMapState",
-                                                e.target.checked.toString(),
-                                            );
-                                            setTopoMapState(e.target.checked);
-                                        }}
-                                    />
-                                </label>
-                            </div>
+                            <details>
+                                <summary>Layers & Projection</summary>
+                                <ul>
+                                    {/* 1. Globe Projection */}
+                                    <li>
+                                        <div className="form-control p-0">
+                                            <label className="label cursor-pointer truncate w-[248px]">
+                                                <span className="font-bold mr-4">
+                                                    Globe Projection
+                                                </span>
+                                                <input
+                                                    type="checkbox"
+                                                    className="checkbox checkbox-sm"
+                                                    checked={
+                                                        mapProjectionState.globe
+                                                    }
+                                                    onChange={(e) => {
+                                                        handleProjectionToggle(
+                                                            "globe",
+                                                            e.target.checked,
+                                                        );
+                                                    }}
+                                                />
+                                            </label>
+                                        </div>
+                                    </li>
+                                    {/* 2. Topo layer */}
+                                    <li>
+                                        <div className="form-control p-0">
+                                            <label className="label cursor-pointer truncate w-[248px]">
+                                                <span className="font-bold mr-4">
+                                                    Topo Layer
+                                                </span>
+                                                <input
+                                                    type="checkbox"
+                                                    className="checkbox checkbox-sm"
+                                                    checked={mapLayerState.topo}
+                                                    onChange={(e) => {
+                                                        handleLayerToggle(
+                                                            "topo",
+                                                            e.target.checked,
+                                                        );
+                                                    }}
+                                                />
+                                            </label>
+                                        </div>
+                                    </li>
+                                    {/* 3. Satellite layer */}
+                                    <li>
+                                        <div className="form-control p-0">
+                                            <label className="label cursor-pointer truncate w-[248px]">
+                                                <span className="font-bold mr-4">
+                                                    Satellite Layer
+                                                </span>
+                                                <input
+                                                    type="checkbox"
+                                                    className="checkbox checkbox-sm"
+                                                    checked={
+                                                        mapLayerState.satellite
+                                                    }
+                                                    onChange={(e) => {
+                                                        handleLayerToggle(
+                                                            "satellite",
+                                                            e.target.checked,
+                                                        );
+                                                    }}
+                                                />
+                                            </label>
+                                        </div>
+                                    </li>
+                                </ul>
+                            </details>
                         </li>
+                        {/* c. Filter stations */}
                         {!mapState && (
                             <li>
                                 <details>
                                     <summary
                                         onClick={() => {
-                                            setFilters((prev) => {
+                                            setFilters((prev: any) => {
                                                 return {
                                                     ...prev,
                                                     openFilters:
@@ -271,9 +305,10 @@ const MainScroller = ({
                                             });
                                         }}
                                     >
-                                        Filters
+                                        Filter Stations
                                     </summary>
                                     <ul>
+                                        {/* 1. Stations with problems */}
                                         <li>
                                             <div className="form-control">
                                                 <label className="label cursor-pointer truncate w-[248px]">
@@ -292,7 +327,7 @@ const MainScroller = ({
                                                                 (!filters.stationWithProblems).toString(),
                                                             );
                                                             setFilters(
-                                                                (prev) => {
+                                                                (prev: any) => {
                                                                     return {
                                                                         ...prev,
                                                                         stationWithProblems:
@@ -305,6 +340,7 @@ const MainScroller = ({
                                                 </label>
                                             </div>
                                         </li>
+                                        {/* 2. Stations without problems */}
                                         <li>
                                             <div className="form-control">
                                                 <label className="label cursor-pointer truncate w-[248px]">
@@ -323,7 +359,7 @@ const MainScroller = ({
                                                                 (!filters.stationWithoutProblems).toString(),
                                                             );
                                                             setFilters(
-                                                                (prev) => {
+                                                                (prev: any) => {
                                                                     return {
                                                                         ...prev,
                                                                         stationWithoutProblems:
@@ -336,23 +372,26 @@ const MainScroller = ({
                                                 </label>
                                             </div>
                                         </li>
+                                        {/* 3. Station type */}
                                         <li>
                                             <details>
                                                 <summary
                                                     onClick={() => {
-                                                        setFilters((prev) => {
-                                                            return {
-                                                                ...prev,
-                                                                stationType:
-                                                                    !prev.stationType,
-                                                            };
-                                                        });
+                                                        setFilters(
+                                                            (prev: any) => {
+                                                                return {
+                                                                    ...prev,
+                                                                    stationType:
+                                                                        !prev.stationType,
+                                                                };
+                                                            },
+                                                        );
                                                     }}
                                                 >
                                                     Station type
                                                 </summary>
                                                 <ul>
-                                                    {stationType.map(
+                                                    {stationType?.map(
                                                         (typeOption) => (
                                                             <li
                                                                 key={
@@ -449,23 +488,26 @@ const MainScroller = ({
                                                 </ul>
                                             </details>
                                         </li>
+                                        {/* 4. Station status */}
                                         <li>
                                             <details>
                                                 <summary
                                                     onClick={() => {
-                                                        setFilters((prev) => {
-                                                            return {
-                                                                ...prev,
-                                                                stationStatus:
-                                                                    !prev.stationStatus,
-                                                            };
-                                                        });
+                                                        setFilters(
+                                                            (prev: any) => {
+                                                                return {
+                                                                    ...prev,
+                                                                    stationStatus:
+                                                                        !prev.stationStatus,
+                                                                };
+                                                            },
+                                                        );
                                                     }}
                                                 >
                                                     Station Status
                                                 </summary>
                                                 <ul>
-                                                    {stationStatus.map(
+                                                    {stationStatus?.map(
                                                         (statusOption) => (
                                                             <li
                                                                 key={

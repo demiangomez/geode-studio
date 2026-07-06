@@ -1,13 +1,13 @@
 FROM node:22 AS build
 
 WORKDIR /app
-COPY . /app
-COPY .env /app/.env
 
 COPY package*.json /app/
-
 RUN npm ci
-RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
+
+COPY . .
+
+RUN npm run build
 
 FROM nginx:latest
 

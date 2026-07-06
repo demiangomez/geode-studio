@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { Popup, Spinner, VisitsScroller } from "@componentsReact";
-
-import domtoimage from "dom-to-image";
+import Popup from "@components/map/Popup";
+import VisitsScroller from "@components/map/VisitsScroller";
 
 import { fromLonLat } from "ol/proj";
 import { Style } from "ol/style";
@@ -11,13 +10,7 @@ import Icon from "ol/style/Icon";
 import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
 
-import { apiOkStatuses } from "@utils";
-
-import {
-    getStationTypesService,
-    getStationStatusService,
-    getNearbyStations,
-} from "@services";
+import { getNearbyStations } from "@services";
 
 import {
     useApi,
@@ -34,6 +27,7 @@ import {
     getCachedColoredIcon,
     getIconScale,
     CLUSTER_MAX_ZOOM,
+    getLastZoom,
 } from "@olUtils";
 
 import "./MapOL.css";
@@ -44,11 +38,8 @@ import {
     StationData,
     StationMetadataServiceData,
     StationVisitsData,
-    StationTypeServiceData,
-    StationStatusServiceData,
-    StationTypeData,
-    StationStatusData,
 } from "@types";
+import { useMetadata } from "@hooks/queries";
 
 interface VisitsStates {
     visitId: number;
@@ -76,13 +67,7 @@ interface MapStationOLProps {
           }
         | string
         | undefined;
-    loadPdf: boolean;
-    loadedPdfData: boolean;
     station: StationData | undefined;
-    setStationLocationScreen?: (url: string) => void;
-    setStationLocationDetailScreen?: (url: string) => void;
-    setLoadPdf: React.Dispatch<React.SetStateAction<boolean>>;
-    setLoadedMap: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const NearbyStationsControl: React.FC<{
@@ -141,13 +126,7 @@ const NearbyStationsControl: React.FC<{
 const MapStationOL: React.FC<MapStationOLProps> = ({
     visitScrollerProps,
     base64Data,
-    loadPdf,
-    loadedPdfData,
     station,
-    setStationLocationScreen,
-    setStationLocationDetailScreen,
-    setLoadPdf,
-    setLoadedMap,
 }) => {
     const { token, logout, clusteringDistance } = useAuth();
     const api = useApi(token, logout);
@@ -163,18 +142,13 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
     const [nearbyRadius, setNearbyRadius] = useState(100);
     const [nearbyStations, setNearbyStations] = useState<StationData[]>([]);
     const [showScroller, setShowScroller] = useState(false);
-    const [types, setTypes] = useState<{ image: string; name: string }[]>([]);
-    const [statuses, setStatuses] = useState<{ name: string; color: string }[]>(
-        [],
-    );
+
     const [selectedPopupStation, setSelectedPopupStation] =
         useState<StationData | null>(null);
     const [tooltipStation, setTooltipStation] = useState<StationData | null>(
         null,
     );
 
-    const [zoom6Captured, setZoom6Captured] = useState(false);
-    const [zoom16Captured, setZoom16Captured] = useState(false);
     const [currentZoom, setCurrentZoom] = useState(12);
 
     const center: [number, number] = station
@@ -231,37 +205,8 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
         [visitScrollerProps.changeKml],
     );
 
-    // ---- Fetch station types & statuses ----
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [typesRes, statusesRes] = await Promise.all([
-                    getStationTypesService<StationTypeServiceData>(api),
-                    getStationStatusService<StationStatusServiceData>(api),
-                ]);
-                if (typesRes && apiOkStatuses.includes(typesRes.statusCode)) {
-                    setTypes(
-                        typesRes.data.map((t: StationTypeData) => ({
-                            image: t.actual_image as string,
-                            name: t.name,
-                        })),
-                    );
-                }
-                if (statusesRes) {
-                    setStatuses(
-                        statusesRes.data.map((s: StationStatusData) => ({
-                            color: s.color_name,
-                            name: s.name,
-                        })),
-                    );
-                }
-            } catch (err) {
-                console.error(err);
-            }
-        };
-        fetchData();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    // station types and statuses
+    const { statuses, types } = useMetadata(api);
 
     // ---- Main station marker ----
     useEffect(() => {
@@ -276,8 +221,8 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
         }
 
         const addMarker = async () => {
-            const iconSrc = iconUrl(station, types);
-            const cssClass = iconClass(station, statuses);
+            const iconSrc = iconUrl(station, types ?? []);
+            const cssClass = iconClass(station, statuses ?? []);
             const hasIssues = station.has_gaps || !station.has_stationinfo;
 
             let finalIconSrc = iconSrc;
@@ -385,7 +330,7 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
                 evt.pixel,
                 (f: any) => f,
                 {
-                    hitTolerance: 8,
+                    hitTolerance: 6,
                 },
             ) as Feature<Geometry> | undefined;
 
@@ -440,7 +385,7 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
 
         if (typeof base64Data === "string") {
             clearAllKml();
-            loadSingleKml(base64Data, { fitView: false });
+            loadSingleKml(base64Data, { fitView: false, hidePoints: true });
             return;
         }
 
@@ -474,6 +419,7 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
             loadSingleKml(base64Data.stationMeta.navigation_actual_file, {
                 fitView: false,
                 defaultColor: "black",
+                hidePoints: true,
             });
         } else {
             clearSingleKml();
@@ -565,8 +511,8 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
             for (const ns of nearbyStations) {
                 if (isCancelled) return;
 
-                const iconSrc = iconUrl(ns, types);
-                const cssClass = iconClass(ns, statuses);
+                const iconSrc = iconUrl(ns, types ?? []);
+                const cssClass = iconClass(ns, statuses ?? []);
                 const hasIssues = ns.has_gaps || !ns.has_stationinfo;
 
                 let finalIconSrc = iconSrc;
@@ -641,7 +587,13 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
         const map = mapInstance.current;
 
         const handleClick = (evt: any) => {
-            const feature = map.forEachFeatureAtPixel(evt.pixel, (f: any) => f);
+            const feature = map.forEachFeatureAtPixel(
+                evt.pixel,
+                (f: any) => f,
+                {
+                    hitTolerance: 6,
+                },
+            );
 
             const clusterResult = handleClusterClick(evt, feature);
             if (clusterResult.consumed) {
@@ -657,11 +609,7 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
                     popupOverlay.current?.setPosition(coord);
                     view.animate({
                         center: [coord[0], coord[1] + offsetY],
-                        zoom:
-                            view.getZoom() ??
-                            parseInt(
-                                localStorage.getItem("lastZoomLevel") ?? "8",
-                            ),
+                        zoom: view.getZoom() ?? getLastZoom(),
                         duration: 300,
                     });
                     setSelectedPopupStation(stationData);
@@ -687,9 +635,7 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
                 popupOverlay.current?.setPosition(coord);
                 view.animate({
                     center: [coord[0], coord[1] + offsetY],
-                    zoom:
-                        view.getZoom() ??
-                        parseInt(localStorage.getItem("lastZoomLevel") ?? "8"),
+                    zoom: view.getZoom() ?? getLastZoom(),
                     duration: 300,
                 });
                 setSelectedPopupStation(stationData);
@@ -704,133 +650,8 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
     }, [isMapReady, mapInstance, popupOverlay, handleClusterClick]);
 
     // ---- Helper: capture image with timeout ----
-    const captureImage = useCallback(
-        (timeout: number, callback: (dataUrl: string) => void) => {
-            setTimeout(() => {
-                const container = mapRef.current;
-                if (container) {
-                    domtoimage
-                        .toJpeg(container, {
-                            width: container.clientWidth,
-                            height: container.clientHeight,
-                            quality: 1,
-                        })
-                        .then(callback)
-                        .catch(console.error);
-                }
-            }, timeout);
-        },
-        [],
-    );
-
-    // ---- PDF capture ----
-    useEffect(() => {
-        if (isMapReady && loadPdf && mapInstance.current) {
-            const zoom = mapInstance.current.getView().getZoom() ?? 12;
-            setCurrentZoom(zoom);
-
-            if (Math.abs(zoom - 6) < 0.5 && !zoom6Captured) {
-                setZoom6Captured(true);
-                captureImage(5000, (dataUrl) => {
-                    setStationLocationScreen?.(dataUrl);
-                });
-            }
-
-            if (Math.abs(zoom - 16) < 0.5 && !zoom16Captured) {
-                setZoom16Captured(true);
-                captureImage(6000, (dataUrl) => {
-                    setStationLocationDetailScreen?.(dataUrl);
-                });
-            }
-        }
-    }, [
-        isMapReady,
-        loadPdf,
-        currentZoom,
-        zoom6Captured,
-        zoom16Captured,
-        captureImage,
-        setStationLocationScreen,
-        setStationLocationDetailScreen,
-        mapInstance,
-    ]);
-
-    // ---- PDF zoom sequence ----
-    useEffect(() => {
-        if (!loadPdf || !mapInstance.current) return;
-
-        setLoadedMap(false);
-
-        const map = mapInstance.current;
-        const view = map.getView();
-        const stationCenter = station
-            ? fromLonLat([station.lon, station.lat])
-            : fromLonLat([0, 0]);
-
-        // Wait 1s then start sequence
-        const initialTimeout = setTimeout(() => {
-            if (!mapInstance.current) return;
-
-            // Step 1: Zoom to 6 (overview) after 1s
-            setTimeout(() => {
-                view.animate({
-                    center: stationCenter,
-                    zoom: 6,
-                    duration: 400,
-                });
-                // Trigger zoom state update after animation
-                setTimeout(() => setCurrentZoom(6), 500);
-            }, 1000);
-
-            // Step 2: Zoom to 16 (detail) after 8s
-            setTimeout(() => {
-                view.animate({
-                    center: stationCenter,
-                    zoom: 16,
-                    duration: 400,
-                });
-                // Trigger zoom state update after animation
-                setTimeout(() => setCurrentZoom(16), 500);
-            }, 8000);
-
-            // Step 3: Return to zoom 10 and finish after 17s
-            setTimeout(() => {
-                view.animate({
-                    center: stationCenter,
-                    zoom: 12,
-                    duration: 400,
-                });
-                setTimeout(() => {
-                    setCurrentZoom(12);
-                    setLoadPdf(false);
-                    setLoadedMap(true);
-                    // Reset for next PDF generation
-                    setZoom6Captured(false);
-                    setZoom16Captured(false);
-                }, 500);
-            }, 17000);
-        }, 1000);
-
-        return () => {
-            clearTimeout(initialTimeout);
-        };
-    }, [loadPdf, station, setLoadPdf, setLoadedMap, mapInstance]);
-
     return (
         <div className="z-10 pt-6 w-6/12 flex justify-center">
-            {loadedPdfData === false && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000000]">
-                    <div className="flex flex-col w-[400px] items-center card card-bordered bg-base-200 p-6">
-                        <span className="card-title border-b-2 text-xl mb-4">
-                            Loading data, please wait...
-                        </span>
-                        <div className="card-body">
-                            <Spinner size="lg" />
-                        </div>
-                    </div>
-                </div>
-            )}
-
             <div className="w-full" style={{ position: "relative" }}>
                 <div
                     id="map"
@@ -853,17 +674,14 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
                     )}
                 </div>
 
-                <div style={{ display: loadPdf ? "none" : undefined }}>
-                    <NearbyStationsControl
-                        showNearbyStations={showNearbyStations}
-                        nearbyRadius={nearbyRadius}
-                        setShowNearbyStations={setShowNearbyStations}
-                        setNearbyRadius={setNearbyRadius}
-                    />
-                </div>
+                <NearbyStationsControl
+                    showNearbyStations={showNearbyStations}
+                    nearbyRadius={nearbyRadius}
+                    setShowNearbyStations={setShowNearbyStations}
+                    setNearbyRadius={setNearbyRadius}
+                />
 
                 <div
-                    style={{ display: loadPdf ? "none" : undefined }}
                     onPointerDown={(e) => e.stopPropagation()}
                     onWheel={(e) => e.stopPropagation()}
                 >
@@ -882,7 +700,7 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
                 <Popup
                     popupRef={popupRef}
                     popupOverlay={popupOverlay}
-                    showPopup={isMapReady && !!selectedPopupStation && !loadPdf}
+                    showPopup={isMapReady && !!selectedPopupStation}
                     reload={selectedPopupStation?.api_id !== station?.api_id}
                     fromMain={
                         selectedPopupStation?.api_id === station?.api_id

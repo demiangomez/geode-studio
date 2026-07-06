@@ -11,7 +11,9 @@ from django.conf import settings
 from django.forms.models import model_to_dict
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.renderers import JSONRenderer
 import gzip
+import json
 from django.core.files.base import ContentFile
 import re
 import base64
@@ -21,9 +23,15 @@ import grp
 import os
 from lxml import etree
 import zipfile
-from pgamit import pyOkada, dbConnection
-from pgamit import pyStationInfo, dbConnection, pyDate, pyETM
-from pgamit import Utils as pyUtils
+from geode import pyOkada, dbConnection, pyDate
+from geode import Utils as pyUtils
+from geode.etm.core.etm_config import EtmConfig
+from geode.etm.core.etm_engine import EtmEngine
+from geode.etm.core.data_classes import SolutionOptions
+from geode.etm.core.type_declarations import SolutionType
+from geode.etm.data.etm_params import EtmParams
+from geode.reports.station_report import station_from_db, build_report
+import tempfile
 import dateutil.parser
 from django.http import Http404
 import matplotlib.pyplot as plt
@@ -34,6 +42,41 @@ from django.db import transaction
 from django.db.models import Max
 
 logger = logging.getLogger('django')
+
+
+# --- Supported solution types -------------------------------------------------
+# Single source of truth for which geode solution types the backend exposes and
+# accepts. Every solution type in geode is supported except the ones listed here.
+# To drop a (new) solution type from the API, just add it to this tuple.
+EXCLUDED_SOLUTION_TYPES = (SolutionType.NGL, SolutionType.DRA)
+
+
+def get_supported_solution_types():
+    """geode SolutionType members supported by the backend (all except the excluded ones)."""
+    return tuple(solution_type for solution_type in SolutionType
+                 if solution_type not in EXCLUDED_SOLUTION_TYPES)
+
+
+def get_solution_type(solution):
+    """Resolve a solution name/code (case-insensitive) to its geode SolutionType,
+    or None if it is not a supported solution type."""
+    if not isinstance(solution, str):
+        return None
+    solution = solution.strip().lower()
+    for solution_type in get_supported_solution_types():
+        if solution == solution_type.code:
+            return solution_type
+    return None
+
+
+def is_supported_solution(solution):
+    """True if `solution` (name or code, case-insensitive) is a supported solution type."""
+    return get_solution_type(solution) is not None
+
+
+def get_supported_solutions_message():
+    """Human-readable list of supported solution names, for validation error messages."""
+    return ", ".join(solution_type.name for solution_type in get_supported_solution_types())
 
 
 def get_actual_image(image_obj, request):
@@ -158,9 +201,9 @@ class TimeSeriesConfigUtils:
 
         params["solution"] = params["solution"].strip().upper()
 
-        if params["solution"] not in ("PPP", "GAMIT"):
+        if not is_supported_solution(params["solution"]):
             raise exceptions.CustomValidationErrorExceptionHandler(
-                "'solution' parameter must be either 'PPP' or 'GAMIT'")
+                "'solution' parameter must be one of: " + get_supported_solutions_message() + ".")
 
         if params["solution"] == "GAMIT":
             self._get_required_param(request, params, "stack")
@@ -251,7 +294,7 @@ class TimeSeriesConfigUtils:
 
     def initialize_etm(self, request, solution, check_params, station_api_id):
 
-        if solution not in ("PPP", "GAMIT"):
+        if not is_supported_solution(solution):
             raise exceptions.CustomValidationErrorExceptionHandler(
                 "Invalid solution parameter.")
 
@@ -266,34 +309,58 @@ class TimeSeriesConfigUtils:
 
         try:
 
-            if solution == "GAMIT":
+            solution_type = get_solution_type(solution)
+
+            if solution_type == SolutionType.GAMIT:
 
                 if not check_params:
                     params = self._check_one_param(request, "stack", params)
 
-                polyhedrons = self.cnn.query_float('SELECT "X", "Y", "Z", "Year", "DOY" FROM stacks '
-                                                   'WHERE "name" = \'%s\' AND "NetworkCode" = \'%s\' AND '
-                                                   '"StationCode" = \'%s\' '
-                                                   'ORDER BY "Year", "DOY", "NetworkCode", "StationCode"'
-                                                   % (params["stack"], network_code, station_code))
-
-                soln = pyETM.GamitSoln(
-                    self.cnn, polyhedrons, network_code, station_code, params["stack"])
-
-                etm = pyETM.GamitETM(self.cnn, network_code, station_code, False,
-                                     params["no_model"], gamit_soln=soln, plot_remove_jumps=params["remove_jumps"],
-                                     plot_polynomial_removed=params["remove_polynomial"])
+                solution_options = SolutionOptions(
+                    solution_type=solution_type, stack_name=params["stack"])
             else:
+                solution_options = SolutionOptions(
+                    solution_type=solution_type)
 
-                etm = pyETM.PPPETM(self.cnn, network_code, station_code, False, params["no_model"],
-                                   plot_remove_jumps=params["remove_jumps"],
-                                   plot_polynomial_removed=params["remove_polynomial"])
+            config = EtmConfig(network_code=network_code, station_code=station_code,
+                               cnn=self.cnn, solution_options=solution_options)
+
+            etm = EtmEngine(config, cnn=self.cnn)
 
         except Exception as e:
             raise exceptions.CustomValidationErrorExceptionHandler(
                 e.detail if hasattr(e, 'detail') else str(e))
 
         return etm
+
+    def initialize_etm_params(self, solution, station_api_id):
+        # Lightweight path for endpoints that only read/write the etm_params table
+        # (e.g. set-copy-params). Builds geode's standalone EtmParams from the config
+        # WITHOUT constructing the full EtmEngine, so it never loads the time series and
+        # needs no stack -- not even for GAMIT, since these params are stored per
+        # solution (soln), not per stack.
+        if not is_supported_solution(solution):
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "Invalid solution parameter.")
+
+        network_code, station_code = self._get_station(station_api_id)
+
+        self.cnn = dbConnection.Cnn(settings.CONFIG_FILE_ABSOLUTE_PATH)
+
+        try:
+            solution_options = SolutionOptions(
+                solution_type=get_solution_type(solution))
+
+            config = EtmConfig(network_code=network_code, station_code=station_code,
+                               cnn=self.cnn, solution_options=solution_options)
+
+            etm_params = EtmParams(config, self.cnn)
+
+        except Exception as e:
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                e.detail if hasattr(e, 'detail') else str(e))
+
+        return etm_params
 
     def get_cnn(self):
         return self.cnn
@@ -592,6 +659,28 @@ class StationKMZGenerator:
         return base64.b64encode(kmz_buffer.getvalue()).decode('utf-8')
 
 
+class StationReportGenerator:
+
+    @staticmethod
+    def generate_station_report_html(station):
+        # check if station is of type models.Station
+        if not isinstance(station, models.Stations):
+            raise exceptions.CustomServerErrorExceptionHandler(
+                "station must be an instance of models.Station")
+
+        cnn = dbConnection.Cnn(settings.CONFIG_FILE_ABSOLUTE_PATH)
+
+        # maps are written to a temp dir; build_report embeds them as data URIs,
+        # so the returned html is self-contained and nothing persists on disk
+        with tempfile.TemporaryDirectory() as temp_dir:
+            station_report = station_from_db(
+                cnn, station.network_code.network_code, station.station_code,
+                media_path=settings.MEDIA_ROOT,
+                maps_out_dir=temp_dir)
+
+            return build_report(station_report)
+
+
 class NearbyStations:
     @staticmethod
     def get_nearby_stations(station, distance_km):
@@ -652,7 +741,11 @@ class EarthquakeUtils:
         kml_mask_without_postseismic = base64.b64encode(
             kml_mask_without_postseismic.encode('utf-8')).decode('utf-8')
 
-        coseismic_displacements_dict = {(displacement['NetworkCode'], displacement['StationCode']): displacement for displacement in eq_t.get_coseismic_displacements()}
+        # geode, unlike pgamit, also saves non-fitted jumps to the etms table (params come as NaN):
+        # skip those displacements so the strict JSON encoder does not fail, which gives the same
+        # response pgamit produced (it only saved fitted jumps, so these entries did not exist)
+        coseismic_displacements_dict = {(displacement['NetworkCode'], displacement['StationCode']): displacement for displacement in eq_t.get_coseismic_displacements()
+                                        if not any(displacement[component] is None or math.isnan(displacement[component]) for component in ('n', 'e', 'u'))}
 
         return affected_stations_including_postseismic, affected_stations_without_postseismic, kml_mask_including_postseismic, kml_mask_without_postseismic, coseismic_displacements_dict
 
@@ -750,6 +843,86 @@ class EarthquakeUtils:
         csv_without_postseismic = '\n'.join(csv_content_without_postseismic)
 
         return csv_including_postseismic, csv_without_postseismic
+
+
+class EtmBulkUtils:
+    """Bulk download of ETM JSON (one file per station) for point 8.
+
+    The front already resolves earthquakes/layers/network-station filters and sends the
+    final list of stations; this only generates the PPP ETM JSON for each one and packs
+    them into a ZIP. Mirrors the single-station pipeline in views.TimeSeries.list.
+    """
+
+    @staticmethod
+    def build_etm_json_bytes(cnn, network_code, station_code):
+        """Generate the PPP ETM JSON for a single station and return (filename, json_bytes).
+
+        Uses the same geode pipeline and the same DRF JSON encoder as the single-station
+        download (GET /api/time-series/<id>, "time_series" key), pretty-printed since this
+        is a file the user opens directly rather than a response consumed by the front.
+        """
+        solution_options = SolutionOptions(solution_type=SolutionType.PPP)
+        config = EtmConfig(network_code=network_code, station_code=station_code,
+                           cnn=cnn, solution_options=solution_options)
+
+        etm = EtmEngine(config, cnn=cnn)
+        # defaults try_loading_db/try_save_to_db=True: reuse and persist the adjusted params
+        # in etm_params, so repeated bulk downloads of the same stations are much cheaper.
+        etm.run_adjustment(cnn=cnn)
+
+        etm_dump = etm.save_etm(
+            dump_functions=True, dump_observations=True, dump_model=True, dump_raw_results=True)
+
+        # indent=2 matches the single-station ETM JSON download
+        json_bytes = JSONRenderer().render(etm_dump, renderer_context={'indent': 2})
+        return config.build_filename() + ".json", json_bytes
+
+    @staticmethod
+    def write_bulk_zip(stations, zip_path):
+        """Write one PPP ETM JSON per station into the ZIP at zip_path, plus a manifest.json.
+
+        A single Cnn is reused across all stations. A station that fails (does not exist, no
+        PPP solution, geode error) is recorded in the manifest instead of aborting the whole
+        download. Returns the manifest dict.
+        """
+        cnn = dbConnection.Cnn(settings.CONFIG_FILE_ABSOLUTE_PATH)
+
+        succeeded = []
+        failed = []
+        used_names = {}
+
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for station in stations:
+                network_code = station["network_code"]
+                station_code = station["station_code"]
+                try:
+                    filename, json_bytes = EtmBulkUtils.build_etm_json_bytes(
+                        cnn, network_code, station_code)
+
+                    # two stations could map to the same build_filename(); keep both
+                    seen = used_names.get(filename, 0)
+                    used_names[filename] = seen + 1
+                    if seen:
+                        base, ext = os.path.splitext(filename)
+                        filename = f"{base}_{seen}{ext}"
+
+                    zip_file.writestr(filename, json_bytes)
+                    succeeded.append({"network_code": network_code,
+                                      "station_code": station_code, "filename": filename})
+                except Exception as e:
+                    failed.append({"network_code": network_code, "station_code": station_code,
+                                   "error": e.detail if hasattr(e, 'detail') else str(e)})
+
+            manifest = {
+                "generated_at": datetime.datetime.now().isoformat(),
+                "solution": "PPP",
+                "total": len(stations),
+                "succeeded": succeeded,
+                "failed": failed,
+            }
+            zip_file.writestr("manifest.json", json.dumps(manifest, indent=2))
+
+        return manifest
 
 
 class StationMetaUtils:

@@ -20,14 +20,7 @@ interface OutletContext {
     images: StationImagesData[];
     visits: StationVisitsData[] | undefined;
     photoLoading: boolean;
-    loadPdf: boolean;
-    loadedPdfData: boolean;
-    loadedMap: boolean;
     getStationImages: () => void;
-    setStationLocationScreen: (url: string) => void;
-    setStationLocationDetailScreen: (url: string) => void;
-    setLoadPdf: React.Dispatch<React.SetStateAction<boolean>>;
-    setLoadedMap: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 interface VisitsStates {
@@ -44,13 +37,7 @@ const StationMain = () => {
         images,
         visits,
         photoLoading,
-        loadPdf,
-        loadedPdfData,
         getStationImages,
-        setStationLocationScreen,
-        setStationLocationDetailScreen,
-        setLoadPdf,
-        setLoadedMap,
     } = useOutletContext<OutletContext>();
 
     const [changeMeta, setChangeMeta] = useState<boolean>(false);
@@ -103,8 +90,8 @@ const StationMain = () => {
     useEffect(() => {
         setChangeMeta(
             stationMeta &&
-                stationMeta.navigation_actual_file !== null &&
-                stationMeta.navigation_actual_file !== "",
+            stationMeta.navigation_actual_file !== null &&
+            stationMeta.navigation_actual_file !== "",
         );
     }, [stationMeta]);
 
@@ -120,7 +107,7 @@ const StationMain = () => {
             <div className="flex flex-col items-center justify-center space-y-4 px-2 pb-4">
                 <div className="flex w-full space-x-2 relative">
                     {mapFlicker && (
-                        <div className="absolute z-[100000000] pt-6 w-6/12 h-[55vh]">
+                        <div className="absolute z-[1000] pt-6 w-6/12 h-[55vh]">
                             <MapSkeleton
                                 styles={{
                                     backgroundColor: "rgb(202, 202, 202)",
@@ -135,19 +122,11 @@ const StationMain = () => {
                         station={definitiveStation}
                         base64Data={
                             changeMeta ||
-                            changeKml?.some((visit) => visit.checked)
+                                changeKml?.some((visit) => visit.checked)
                                 ? (visitsAndMeta ?? "")
                                 : ""
                         }
-                        loadPdf={loadPdf}
-                        loadedPdfData={loadedPdfData}
                         visitScrollerProps={routesScrollerProps}
-                        setStationLocationScreen={setStationLocationScreen}
-                        setStationLocationDetailScreen={
-                            setStationLocationDetailScreen
-                        }
-                        setLoadPdf={setLoadPdf}
-                        setLoadedMap={setLoadedMap}
                     />
 
                     <Photo

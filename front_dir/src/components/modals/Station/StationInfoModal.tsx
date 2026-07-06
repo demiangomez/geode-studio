@@ -127,7 +127,7 @@ const StationInfoModal = ({
                                 type: "none",
                             });
                             setStationInfo(lastStationInfo);
-                            setTypeAddition("none-clear");
+                            setTypeAddition(undefined);
                         }}
                     >
                         From file
@@ -361,7 +361,7 @@ const StationInfoModal = ({
     return (
         <Modal
             close={close}
-            modalId={"Information"}
+            modalId={"Instruments"}
             size={size}
             setModalState={setModalState}
             handleCloseModal={refetch}

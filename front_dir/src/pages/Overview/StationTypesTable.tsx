@@ -6,106 +6,76 @@ import {
     TableCard,
 } from "@componentsReact";
 
+import { useQueryClient } from "@tanstack/react-query";
+
 import { useAuth, useApi } from "@hooks";
+import { useMetadata } from "@hooks/queries";
 
 import { showModal } from "@utils";
 
-import { getStationTypesService } from "@services";
-
-import { GetParams, StationTypeData, StationTypeServiceData } from "@types";
+import { GetParams, StationTypeData } from "@types";
 
 const StationTypesTable = () => {
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
-
-    const bParams: GetParams = useMemo(() => {
-        return {
-            limit: 5,
-            offset: 0,
-        };
-    }, []);
+    const queryClient = useQueryClient();
 
     const [modals, setModals] = useState<
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
         | undefined
     >(undefined);
 
-    const [loading, setLoading] = useState<boolean>(true);
-    const [params, setParams] = useState<GetParams>(bParams);
-
-    const [stationTypes, setStationTypes] = useState<StationTypeData[]>([]);
     const [stationType, setStationType] = useState<StationTypeData | undefined>(
         undefined,
     );
 
+    const [params, setParams] = useState<GetParams>({
+        limit: 5,
+        offset: 0,
+    });
+
     const [activePage, setActivePage] = useState<number>(1);
-    const [pages, setPages] = useState<number>(0);
     const PAGES_TO_SHOW = 2;
-    const REGISTERS_PER_PAGE = 5; // Es el mismo que params.limit
 
-    const getStationTypes = async () => {
-        try {
-            setLoading(true);
-            const res = await getStationTypesService<StationTypeServiceData>(
-                api,
-                params,
-            );
-            setStationTypes(res.data);
-            if (bParams.limit) {
-                setPages(Math.ceil(res.total_count / bParams.limit));
-            }
-            res.data && res.data.length === 0 && handlePage(1);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const {
+        types: stationTypes,
+        typesTotal,
+        typesIsFetching,
+        isLoading: loading,
+    } = useMetadata(api, {}, params);
 
-    const paginateStationTypes = async (newParams: GetParams) => {
-        try {
-            setLoading(true);
-            const res = await getStationTypesService<StationTypeServiceData>(
-                api,
-                newParams,
-            );
-            setStationTypes(res.data);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
+    const pages = useMemo(() => {
+        if (typesTotal && params.limit) {
+            return Math.ceil(typesTotal / params.limit);
         }
-    };
+        return 0;
+    }, [typesTotal, params.limit]);
+
+    useEffect(() => {
+        if (
+            !loading &&
+            !typesIsFetching &&
+            stationTypes &&
+            stationTypes.length === 0 &&
+            activePage > 1
+        ) {
+            handlePage(activePage - 1);
+        }
+    }, [stationTypes, activePage, loading, typesIsFetching]); // eslint-disable-line
 
     const handlePage = (page: number) => {
-        if (page < 1 || page > pages) return;
-        let newParams;
-        if (page === 1) {
-            newParams = {
-                ...params,
-                limit: REGISTERS_PER_PAGE * 1,
-                offset: REGISTERS_PER_PAGE * (page - 1),
-            };
-        } else {
-            newParams = {
-                ...params,
-                limit: REGISTERS_PER_PAGE,
-                offset: REGISTERS_PER_PAGE * (page - 1),
-            };
-        }
-
-        setParams(newParams);
         setActivePage(page);
-        paginateStationTypes(newParams);
+        setParams((prev) => ({
+            ...prev,
+            offset: (page - 1) * (params.limit || 5),
+        }));
     };
 
     const reFetch = () => {
-        getStationTypes();
+        queryClient.invalidateQueries({
+            queryKey: ["metadata", "stationTypes"],
+        });
     };
-
-    useEffect(() => {
-        getStationTypes();
-    }, []); // eslint-disable-line
 
     const titles = ["Name", "Image"];
 
@@ -114,9 +84,8 @@ const StationTypesTable = () => {
             ?.sort((a, b) => a.name.localeCompare(b.name))
             .map((st) =>
                 Object.values({
-                    // id: monument.id,
                     name: st.name,
-                    actual_image: st.actual_image,
+                    actual_image: st.image,
                 }),
             );
     }, [stationTypes]);

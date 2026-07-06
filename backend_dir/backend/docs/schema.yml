@@ -4433,6 +4433,130 @@ paths:
           description: ''
         '200':
           description: No response body
+  /api/distinct-antenna-codes:
+    get:
+      operationId: distinct_antenna_codes_list
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      tags:
+      - distinct-antenna-codes
+      security:
+      - jwtAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DistinctAntennaCodesListErrorResponse400'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse401'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: authentication_failed
+                      detail: Incorrect authentication credentials.
+                      attr: null
+                NotAuthenticated:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_authenticated
+                      detail: Authentication credentials were not provided.
+                      attr: null
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse403'
+              examples:
+                PermissionDenied:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: permission_denied
+                      detail: You do not have permission to perform this action.
+                      attr: null
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse405'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: method_not_allowed
+                      detail: Method "get" not allowed.
+                      attr: null
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse406'
+              examples:
+                NotAcceptable:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_acceptable
+                      detail: Could not satisfy the request Accept header.
+                      attr: null
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse415'
+              examples:
+                UnsupportedMediaType:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: unsupported_media_type
+                      detail: Unsupported media type "application/json" in request.
+                      attr: null
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse500'
+              examples:
+                APIException:
+                  value:
+                    type: server_error
+                    errors:
+                    - code: error
+                      detail: A server error occurred.
+                      attr: null
+          description: ''
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDistinctAntennaCodeList'
+          description: ''
   /api/distinct-stack-names/{station_api_id}:
     get:
       operationId: distinct_stack_names_retrieve
@@ -18452,133 +18576,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Network'
           description: ''
-    delete:
-      operationId: networks_destroy
-      parameters:
-      - in: path
-        name: api_id
-        schema:
-          type: integer
-        description: A unique integer value identifying this networks.
-        required: true
-      tags:
-      - networks
-      security:
-      - jwtAuth: []
-      responses:
-        '400':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NetworksDestroyErrorResponse400'
-          description: ''
-        '401':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse401'
-              examples:
-                AuthenticationFailed:
-                  value:
-                    type: client_error
-                    errors:
-                    - code: authentication_failed
-                      detail: Incorrect authentication credentials.
-                      attr: null
-                NotAuthenticated:
-                  value:
-                    type: client_error
-                    errors:
-                    - code: not_authenticated
-                      detail: Authentication credentials were not provided.
-                      attr: null
-          description: ''
-        '403':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse403'
-              examples:
-                PermissionDenied:
-                  value:
-                    type: client_error
-                    errors:
-                    - code: permission_denied
-                      detail: You do not have permission to perform this action.
-                      attr: null
-          description: ''
-        '404':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse404'
-              examples:
-                NotFound:
-                  value:
-                    type: client_error
-                    errors:
-                    - code: not_found
-                      detail: Not found.
-                      attr: null
-          description: ''
-        '405':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse405'
-              examples:
-                MethodNotAllowed:
-                  value:
-                    type: client_error
-                    errors:
-                    - code: method_not_allowed
-                      detail: Method "get" not allowed.
-                      attr: null
-          description: ''
-        '406':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse406'
-              examples:
-                NotAcceptable:
-                  value:
-                    type: client_error
-                    errors:
-                    - code: not_acceptable
-                      detail: Could not satisfy the request Accept header.
-                      attr: null
-          description: ''
-        '415':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse415'
-              examples:
-                UnsupportedMediaType:
-                  value:
-                    type: client_error
-                    errors:
-                    - code: unsupported_media_type
-                      detail: Unsupported media type "application/json" in request.
-                      attr: null
-          description: ''
-        '500':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse500'
-              examples:
-                APIException:
-                  value:
-                    type: server_error
-                    errors:
-                    - code: error
-                      detail: A server error occurred.
-                      attr: null
-          description: ''
-        '204':
-          description: No response body
   /api/people:
     get:
       operationId: people_list
@@ -19497,21 +19494,15 @@ paths:
           description: ''
         '200':
           description: No response body
-  /api/people/has-duplicates/{first_name}/{last_name}:
+  /api/people/{id}/relations:
     get:
-      operationId: people_has_duplicates_retrieve
-      description: Removes leading and trailing spaces and ignores case when checking
-        for duplicates.
+      operationId: people_relations_retrieve
+      description: Gets all relations person has (roles with stations, visits, etc).
       parameters:
       - in: path
-        name: first_name
+        name: id
         schema:
-          type: string
-        required: true
-      - in: path
-        name: last_name
-        schema:
-          type: string
+          type: integer
         required: true
       tags:
       - people
@@ -19522,7 +19513,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PeopleHasDuplicatesRetrieveErrorResponse400'
+                $ref: '#/components/schemas/PeopleRelationsRetrieveErrorResponse400'
           description: ''
         '401':
           content:
@@ -22001,6 +21992,113 @@ paths:
           description: ''
         '204':
           description: No response body
+  /api/remove-earthquakes-affected-stations-cache:
+    post:
+      operationId: remove_earthquakes_affected_stations_cache_create
+      tags:
+      - remove-earthquakes-affected-stations-cache
+      security:
+      - jwtAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoveEarthquakesAffectedStationsCacheCreateErrorResponse400'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse401'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: authentication_failed
+                      detail: Incorrect authentication credentials.
+                      attr: null
+                NotAuthenticated:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_authenticated
+                      detail: Authentication credentials were not provided.
+                      attr: null
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse403'
+              examples:
+                PermissionDenied:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: permission_denied
+                      detail: You do not have permission to perform this action.
+                      attr: null
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse405'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: method_not_allowed
+                      detail: Method "get" not allowed.
+                      attr: null
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse406'
+              examples:
+                NotAcceptable:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_acceptable
+                      detail: Could not satisfy the request Accept header.
+                      attr: null
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse415'
+              examples:
+                UnsupportedMediaType:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: unsupported_media_type
+                      detail: Unsupported media type "application/json" in request.
+                      attr: null
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse500'
+              examples:
+                APIException:
+                  value:
+                    type: server_error
+                    errors:
+                    - code: error
+                      detail: A server error occurred.
+                      attr: null
+          description: ''
+        '200':
+          description: No response body
   /api/rinex:
     get:
       operationId: rinex_list
@@ -22021,6 +22119,14 @@ paths:
         description: The initial index from which to return the results.
         schema:
           type: integer
+      - in: query
+        name: receiver_serial
+        schema:
+          type: string
+      - in: query
+        name: receiver_type
+        schema:
+          type: string
       - in: query
         name: station_code
         schema:
@@ -31109,6 +31215,14 @@ paths:
         schema:
           type: integer
       - in: query
+        name: receiver_code
+        schema:
+          type: string
+      - in: query
+        name: receiver_serial
+        schema:
+          type: string
+      - in: query
         name: station_code
         schema:
           type: string
@@ -36998,6 +37112,140 @@ paths:
               schema:
                 $ref: '#/components/schemas/Station'
           description: ''
+  /api/stations-with-rinex-on-date/{from_date}/{to_date}:
+    get:
+      operationId: stations_with_rinex_on_date_retrieve
+      description: Get api_ids of stations with at least one rinex in a given date
+        range (YYYY-MM-DD)
+      parameters:
+      - in: path
+        name: from_date
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: to_date
+        schema:
+          type: string
+        required: true
+      tags:
+      - stations-with-rinex-on-date
+      security:
+      - jwtAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StationsWithRinexOnDateRetrieveErrorResponse400'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse401'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: authentication_failed
+                      detail: Incorrect authentication credentials.
+                      attr: null
+                NotAuthenticated:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_authenticated
+                      detail: Authentication credentials were not provided.
+                      attr: null
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse403'
+              examples:
+                PermissionDenied:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: permission_denied
+                      detail: You do not have permission to perform this action.
+                      attr: null
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse404'
+              examples:
+                NotFound:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_found
+                      detail: Not found.
+                      attr: null
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse405'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: method_not_allowed
+                      detail: Method "get" not allowed.
+                      attr: null
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse406'
+              examples:
+                NotAcceptable:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_acceptable
+                      detail: Could not satisfy the request Accept header.
+                      attr: null
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse415'
+              examples:
+                UnsupportedMediaType:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: unsupported_media_type
+                      detail: Unsupported media type "application/json" in request.
+                      attr: null
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse500'
+              examples:
+                APIException:
+                  value:
+                    type: server_error
+                    errors:
+                    - code: error
+                      detail: A server error occurred.
+                      attr: null
+          description: ''
+        '200':
+          description: Array of station api_ids
   /api/stations/{api_id}:
     get:
       operationId: stations_retrieve
@@ -38913,6 +39161,281 @@ paths:
           description: ''
         '201':
           description: No response body
+  /api/time-series-config/{station_api_id}/{solution}/set-copy-params:
+    get:
+      operationId: time_series_config_set_copy_params_list
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      - in: path
+        name: solution
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: station_api_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - time-series-config
+      security:
+      - jwtAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesConfigSetCopyParamsListErrorResponse400'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse401'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: authentication_failed
+                      detail: Incorrect authentication credentials.
+                      attr: null
+                NotAuthenticated:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_authenticated
+                      detail: Authentication credentials were not provided.
+                      attr: null
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse403'
+              examples:
+                PermissionDenied:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: permission_denied
+                      detail: You do not have permission to perform this action.
+                      attr: null
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse404'
+              examples:
+                NotFound:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_found
+                      detail: Not found.
+                      attr: null
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse405'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: method_not_allowed
+                      detail: Method "get" not allowed.
+                      attr: null
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse406'
+              examples:
+                NotAcceptable:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_acceptable
+                      detail: Could not satisfy the request Accept header.
+                      attr: null
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse415'
+              examples:
+                UnsupportedMediaType:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: unsupported_media_type
+                      detail: Unsupported media type "application/json" in request.
+                      attr: null
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse500'
+              examples:
+                APIException:
+                  value:
+                    type: server_error
+                    errors:
+                    - code: error
+                      detail: A server error occurred.
+                      attr: null
+          description: ''
+        '200':
+          description: No response body
+    post:
+      operationId: time_series_config_set_copy_params_create
+      parameters:
+      - in: path
+        name: solution
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: station_api_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - time-series-config
+      security:
+      - jwtAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesConfigSetCopyParamsCreateErrorResponse400'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse401'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: authentication_failed
+                      detail: Incorrect authentication credentials.
+                      attr: null
+                NotAuthenticated:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_authenticated
+                      detail: Authentication credentials were not provided.
+                      attr: null
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse403'
+              examples:
+                PermissionDenied:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: permission_denied
+                      detail: You do not have permission to perform this action.
+                      attr: null
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse404'
+              examples:
+                NotFound:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_found
+                      detail: Not found.
+                      attr: null
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse405'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: method_not_allowed
+                      detail: Method "get" not allowed.
+                      attr: null
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse406'
+              examples:
+                NotAcceptable:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_acceptable
+                      detail: Could not satisfy the request Accept header.
+                      attr: null
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse415'
+              examples:
+                UnsupportedMediaType:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: unsupported_media_type
+                      detail: Unsupported media type "application/json" in request.
+                      attr: null
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse500'
+              examples:
+                APIException:
+                  value:
+                    type: server_error
+                    errors:
+                    - code: error
+                      detail: A server error occurred.
+                      attr: null
+          description: ''
+        '201':
+          description: No response body
   /api/time-series-config/{station_api_id}/{solution}/set-jumps:
     get:
       operationId: time_series_config_set_jumps_list
@@ -39187,6 +39710,137 @@ paths:
                       attr: null
           description: ''
         '201':
+          description: No response body
+    put:
+      operationId: time_series_config_set_jumps_update
+      parameters:
+      - in: path
+        name: solution
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: station_api_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - time-series-config
+      security:
+      - jwtAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesConfigSetJumpsUpdateErrorResponse400'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse401'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: authentication_failed
+                      detail: Incorrect authentication credentials.
+                      attr: null
+                NotAuthenticated:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_authenticated
+                      detail: Authentication credentials were not provided.
+                      attr: null
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse403'
+              examples:
+                PermissionDenied:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: permission_denied
+                      detail: You do not have permission to perform this action.
+                      attr: null
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse404'
+              examples:
+                NotFound:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_found
+                      detail: Not found.
+                      attr: null
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse405'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: method_not_allowed
+                      detail: Method "get" not allowed.
+                      attr: null
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse406'
+              examples:
+                NotAcceptable:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_acceptable
+                      detail: Could not satisfy the request Accept header.
+                      attr: null
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse415'
+              examples:
+                UnsupportedMediaType:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: unsupported_media_type
+                      detail: Unsupported media type "application/json" in request.
+                      attr: null
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse500'
+              examples:
+                APIException:
+                  value:
+                    type: server_error
+                    errors:
+                    - code: error
+                      detail: A server error occurred.
+                      attr: null
+          description: ''
+        '200':
           description: No response body
   /api/time-series-config/{station_api_id}/{solution}/set-periodic:
     get:
@@ -39738,6 +40392,115 @@ paths:
           description: ''
         '201':
           description: No response body
+  /api/time-series-config/adjustment-options:
+    get:
+      operationId: time_series_config_adjustment_options_retrieve
+      description: Returns least squares adjustment options (strategies and covariance
+        models) from the geode library.
+      tags:
+      - time-series-config
+      security:
+      - jwtAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesConfigAdjustmentOptionsRetrieveErrorResponse400'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse401'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: authentication_failed
+                      detail: Incorrect authentication credentials.
+                      attr: null
+                NotAuthenticated:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_authenticated
+                      detail: Authentication credentials were not provided.
+                      attr: null
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse403'
+              examples:
+                PermissionDenied:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: permission_denied
+                      detail: You do not have permission to perform this action.
+                      attr: null
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse405'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: method_not_allowed
+                      detail: Method "get" not allowed.
+                      attr: null
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse406'
+              examples:
+                NotAcceptable:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_acceptable
+                      detail: Could not satisfy the request Accept header.
+                      attr: null
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse415'
+              examples:
+                UnsupportedMediaType:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: unsupported_media_type
+                      detail: Unsupported media type "application/json" in request.
+                      attr: null
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse500'
+              examples:
+                APIException:
+                  value:
+                    type: server_error
+                    errors:
+                    - code: error
+                      detail: A server error occurred.
+                      attr: null
+          description: ''
+        '200':
+          description: Object with adjustment_models and covariance_functions arrays
   /api/time-series-config/available-jump-types:
     get:
       operationId: time_series_config_available_jump_types_retrieve
@@ -39846,6 +40609,223 @@ paths:
           description: ''
         '200':
           description: Array of jump types with id and type properties
+  /api/time-series-config/mode-obs-types:
+    get:
+      operationId: time_series_config_mode_obs_types_retrieve
+      description: Returns the available mode_obs values (geode EtmSolutionType) for
+        the time-series coordinates query.
+      tags:
+      - time-series-config
+      security:
+      - jwtAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesConfigModeObsTypesRetrieveErrorResponse400'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse401'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: authentication_failed
+                      detail: Incorrect authentication credentials.
+                      attr: null
+                NotAuthenticated:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_authenticated
+                      detail: Authentication credentials were not provided.
+                      attr: null
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse403'
+              examples:
+                PermissionDenied:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: permission_denied
+                      detail: You do not have permission to perform this action.
+                      attr: null
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse405'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: method_not_allowed
+                      detail: Method "get" not allowed.
+                      attr: null
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse406'
+              examples:
+                NotAcceptable:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_acceptable
+                      detail: Could not satisfy the request Accept header.
+                      attr: null
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse415'
+              examples:
+                UnsupportedMediaType:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: unsupported_media_type
+                      detail: Unsupported media type "application/json" in request.
+                      attr: null
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse500'
+              examples:
+                APIException:
+                  value:
+                    type: server_error
+                    errors:
+                    - code: error
+                      detail: A server error occurred.
+                      attr: null
+          description: ''
+        '200':
+          description: Array of mode_obs types with id, type and description properties
+  /api/time-series-config/solution-types:
+    get:
+      operationId: time_series_config_solution_types_retrieve
+      description: Returns available ETM solution types from the geode library.
+      tags:
+      - time-series-config
+      security:
+      - jwtAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesConfigSolutionTypesRetrieveErrorResponse400'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse401'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: authentication_failed
+                      detail: Incorrect authentication credentials.
+                      attr: null
+                NotAuthenticated:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_authenticated
+                      detail: Authentication credentials were not provided.
+                      attr: null
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse403'
+              examples:
+                PermissionDenied:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: permission_denied
+                      detail: You do not have permission to perform this action.
+                      attr: null
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse405'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: method_not_allowed
+                      detail: Method "get" not allowed.
+                      attr: null
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse406'
+              examples:
+                NotAcceptable:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_acceptable
+                      detail: Could not satisfy the request Accept header.
+                      attr: null
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse415'
+              examples:
+                UnsupportedMediaType:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: unsupported_media_type
+                      detail: Unsupported media type "application/json" in request.
+                      attr: null
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse500'
+              examples:
+                APIException:
+                  value:
+                    type: server_error
+                    errors:
+                    - code: error
+                      detail: A server error occurred.
+                      attr: null
+          description: ''
+        '200':
+          description: Array of solution types with id and type properties
   /api/time-series/{station_api_id}:
     get:
       operationId: time_series_list
@@ -39989,6 +40969,261 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedRinexList'
           description: ''
+  /api/time-series/{station_api_id}/coordinates:
+    get:
+      operationId: time_series_coordinates_retrieve
+      description: Returns the station position for a given epoch, as ECEF XYZ and
+        lat/lon/height, derived from the ETM model (mode_obs=MODEL) or from the observations
+        (mode_obs=OBSERVATION). Requires solution (+stack if GAMIT), mode_obs and
+        date_format (gregorian -> year/month/day, doy -> year/doy).
+      parameters:
+      - in: path
+        name: station_api_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - time-series
+      security:
+      - jwtAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesCoordinatesRetrieveErrorResponse400'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse401'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: authentication_failed
+                      detail: Incorrect authentication credentials.
+                      attr: null
+                NotAuthenticated:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_authenticated
+                      detail: Authentication credentials were not provided.
+                      attr: null
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse403'
+              examples:
+                PermissionDenied:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: permission_denied
+                      detail: You do not have permission to perform this action.
+                      attr: null
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse404'
+              examples:
+                NotFound:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_found
+                      detail: Not found.
+                      attr: null
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse405'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: method_not_allowed
+                      detail: Method "get" not allowed.
+                      attr: null
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse406'
+              examples:
+                NotAcceptable:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_acceptable
+                      detail: Could not satisfy the request Accept header.
+                      attr: null
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse415'
+              examples:
+                UnsupportedMediaType:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: unsupported_media_type
+                      detail: Unsupported media type "application/json" in request.
+                      attr: null
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse500'
+              examples:
+                APIException:
+                  value:
+                    type: server_error
+                    errors:
+                    - code: error
+                      detail: A server error occurred.
+                      attr: null
+          description: ''
+        '200':
+          description: Object with xyz, lla, source and sigmas
+  /api/time-series/bulk-download:
+    post:
+      operationId: time_series_bulk_download_create
+      description: Genera un ZIP con el ETM JSON (PPP) de cada estación enviada (punto
+        8). El front manda la lista final de estaciones; sismos, capas y filtros de
+        network/station code se resuelven en el front. Una estación que falla queda
+        registrada en manifest.json sin abortar la descarga.
+      tags:
+      - time-series
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkDownloadTimeSeriesRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BulkDownloadTimeSeriesRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkDownloadTimeSeriesRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesBulkDownloadCreateErrorResponse400'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse401'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: authentication_failed
+                      detail: Incorrect authentication credentials.
+                      attr: null
+                NotAuthenticated:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_authenticated
+                      detail: Authentication credentials were not provided.
+                      attr: null
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse403'
+              examples:
+                PermissionDenied:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: permission_denied
+                      detail: You do not have permission to perform this action.
+                      attr: null
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse405'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: method_not_allowed
+                      detail: Method "get" not allowed.
+                      attr: null
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse406'
+              examples:
+                NotAcceptable:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: not_acceptable
+                      detail: Could not satisfy the request Accept header.
+                      attr: null
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse415'
+              examples:
+                UnsupportedMediaType:
+                  value:
+                    type: client_error
+                    errors:
+                    - code: unsupported_media_type
+                      detail: Unsupported media type "application/json" in request.
+                      attr: null
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse500'
+              examples:
+                APIException:
+                  value:
+                    type: server_error
+                    errors:
+                    - code: error
+                      detail: A server error occurred.
+                      attr: null
+          description: ''
+        '200':
+          description: ZIP (application/zip) con un ETM JSON (solución PPP) por estación,
+            más un manifest.json con las estaciones exitosas y las fallidas.
   /api/token:
     post:
       operationId: token_create
@@ -46914,6 +48149,18 @@ components:
       - attr
       - code
       - detail
+    BulkDownloadTimeSeriesRequest:
+      type: object
+      description: |-
+        Body for POST /api/time-series/bulk-download. The front sends the final list of
+        stations (earthquakes/layers/filters are already resolved on the front).
+      properties:
+        stations:
+          type: array
+          items:
+            $ref: '#/components/schemas/StationRef'
+      required:
+      - stations
     Campaign:
       type: object
       properties:
@@ -48714,6 +49961,21 @@ components:
       required:
       - errors
       - type
+    DistinctAntennaCode:
+      type: object
+      properties:
+        antenna_code:
+          type: string
+          maxLength: 22
+      required:
+      - antenna_code
+    DistinctAntennaCodesListErrorResponse400:
+      oneOf:
+      - $ref: '#/components/schemas/ParseErrorResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          client_error: '#/components/schemas/ParseErrorResponse'
     DistinctStackNamesRetrieveErrorResponse400:
       oneOf:
       - $ref: '#/components/schemas/ParseErrorResponse'
@@ -66318,13 +67580,6 @@ components:
       required:
       - errors
       - type
-    NetworksDestroyErrorResponse400:
-      oneOf:
-      - $ref: '#/components/schemas/ParseErrorResponse'
-      discriminator:
-        propertyName: type
-        mapping:
-          client_error: '#/components/schemas/ParseErrorResponse'
     NetworksListErrorResponse400:
       oneOf:
       - $ref: '#/components/schemas/ParseErrorResponse'
@@ -66638,6 +67893,23 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DataSource'
+    PaginatedDistinctAntennaCodeList:
+      type: object
+      properties:
+        count:
+          type: integer
+          example: 10
+          description: the number of objects retrieved AFTER pagination (if required)
+            and AFTER filtering
+        total_count:
+          type: integer
+          example: 10
+          description: the number of objects BEFORE pagination (if required) and AFTER
+            filtering
+        result:
+          type: array
+          items:
+            $ref: '#/components/schemas/DistinctAntennaCode'
     PaginatedEarthquakesList:
       type: object
       properties:
@@ -69194,7 +70466,9 @@ components:
           type: integer
           maximum: 2147483647
           minimum: -2147483648
-          nullable: true
+        person:
+          type: string
+          readOnly: true
     PatchedVisit:
       type: object
       properties:
@@ -69229,6 +70503,9 @@ components:
           type: string
           readOnly: true
         station_station_code:
+          type: string
+          readOnly: true
+        people_info:
           type: string
           readOnly: true
         date:
@@ -69659,13 +70936,6 @@ components:
         propertyName: type
         mapping:
           client_error: '#/components/schemas/ParseErrorResponse'
-    PeopleHasDuplicatesRetrieveErrorResponse400:
-      oneOf:
-      - $ref: '#/components/schemas/ParseErrorResponse'
-      discriminator:
-        propertyName: type
-        mapping:
-          client_error: '#/components/schemas/ParseErrorResponse'
     PeopleListErrorResponse400:
       oneOf:
       - $ref: '#/components/schemas/ParseErrorResponse'
@@ -70043,6 +71313,13 @@ components:
       required:
       - errors
       - type
+    PeopleRelationsRetrieveErrorResponse400:
+      oneOf:
+      - $ref: '#/components/schemas/ParseErrorResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          client_error: '#/components/schemas/ParseErrorResponse'
     PeopleRetrieveErrorResponse400:
       oneOf:
       - $ref: '#/components/schemas/ParseErrorResponse'
@@ -73060,6 +74337,53 @@ components:
       required:
       - errors
       - type
+    RemoveEarthquakesAffectedStationsCacheCreateError:
+      oneOf:
+      - $ref: '#/components/schemas/RemoveEarthquakesAffectedStationsCacheCreateNonFieldErrorsErrorComponent'
+      discriminator:
+        propertyName: attr
+        mapping:
+          non_field_errors: '#/components/schemas/RemoveEarthquakesAffectedStationsCacheCreateNonFieldErrorsErrorComponent'
+    RemoveEarthquakesAffectedStationsCacheCreateErrorResponse400:
+      oneOf:
+      - $ref: '#/components/schemas/RemoveEarthquakesAffectedStationsCacheCreateValidationError'
+      - $ref: '#/components/schemas/ParseErrorResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          validation_error: '#/components/schemas/RemoveEarthquakesAffectedStationsCacheCreateValidationError'
+          client_error: '#/components/schemas/ParseErrorResponse'
+    RemoveEarthquakesAffectedStationsCacheCreateNonFieldErrorsErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - non_field_errors
+          type: string
+          description: '* `non_field_errors` - non_field_errors'
+        code:
+          enum:
+          - invalid
+          type: string
+          description: '* `invalid` - invalid'
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
+    RemoveEarthquakesAffectedStationsCacheCreateValidationError:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/ValidationErrorEnum'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/RemoveEarthquakesAffectedStationsCacheCreateError'
+      required:
+      - errors
+      - type
     Rinex:
       type: object
       properties:
@@ -73843,11 +75167,15 @@ components:
       oneOf:
       - $ref: '#/components/schemas/RinexListNetworkCodeErrorComponent'
       - $ref: '#/components/schemas/RinexListStationCodeErrorComponent'
+      - $ref: '#/components/schemas/RinexListReceiverTypeErrorComponent'
+      - $ref: '#/components/schemas/RinexListReceiverSerialErrorComponent'
       discriminator:
         propertyName: attr
         mapping:
           network_code: '#/components/schemas/RinexListNetworkCodeErrorComponent'
           station_code: '#/components/schemas/RinexListStationCodeErrorComponent'
+          receiver_type: '#/components/schemas/RinexListReceiverTypeErrorComponent'
+          receiver_serial: '#/components/schemas/RinexListReceiverSerialErrorComponent'
     RinexListErrorResponse400:
       oneOf:
       - $ref: '#/components/schemas/RinexListValidationError'
@@ -73865,6 +75193,44 @@ components:
           - network_code
           type: string
           description: '* `network_code` - network_code'
+        code:
+          enum:
+          - null_characters_not_allowed
+          type: string
+          description: '* `null_characters_not_allowed` - null_characters_not_allowed'
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
+    RinexListReceiverSerialErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - receiver_serial
+          type: string
+          description: '* `receiver_serial` - receiver_serial'
+        code:
+          enum:
+          - null_characters_not_allowed
+          type: string
+          description: '* `null_characters_not_allowed` - null_characters_not_allowed'
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
+    RinexListReceiverTypeErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - receiver_type
+          type: string
+          description: '* `receiver_type` - receiver_type'
         code:
           enum:
           - null_characters_not_allowed
@@ -82195,6 +83561,34 @@ components:
         propertyName: type
         mapping:
           client_error: '#/components/schemas/ParseErrorResponse'
+    StationInfoCreateAntennaAzimuthErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - antenna_azimuth
+          type: string
+          description: '* `antenna_azimuth` - antenna_azimuth'
+        code:
+          enum:
+          - invalid
+          - max_decimal_places
+          - max_digits
+          - max_string_length
+          - max_whole_digits
+          type: string
+          description: |-
+            * `invalid` - invalid
+            * `max_decimal_places` - max_decimal_places
+            * `max_digits` - max_digits
+            * `max_string_length` - max_string_length
+            * `max_whole_digits` - max_whole_digits
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
     StationInfoCreateAntennaCodeErrorComponent:
       type: object
       properties:
@@ -82430,6 +83824,7 @@ components:
       - $ref: '#/components/schemas/StationInfoCreateAntennaHeightErrorComponent'
       - $ref: '#/components/schemas/StationInfoCreateAntennaNorthErrorComponent'
       - $ref: '#/components/schemas/StationInfoCreateAntennaEastErrorComponent'
+      - $ref: '#/components/schemas/StationInfoCreateAntennaAzimuthErrorComponent'
       - $ref: '#/components/schemas/StationInfoCreateHeightCodeErrorComponent'
       - $ref: '#/components/schemas/StationInfoCreateRadomeCodeErrorComponent'
       - $ref: '#/components/schemas/StationInfoCreateDateStartErrorComponent'
@@ -82450,6 +83845,7 @@ components:
           antenna_height: '#/components/schemas/StationInfoCreateAntennaHeightErrorComponent'
           antenna_north: '#/components/schemas/StationInfoCreateAntennaNorthErrorComponent'
           antenna_east: '#/components/schemas/StationInfoCreateAntennaEastErrorComponent'
+          antenna_azimuth: '#/components/schemas/StationInfoCreateAntennaAzimuthErrorComponent'
           height_code: '#/components/schemas/StationInfoCreateHeightCodeErrorComponent'
           radome_code: '#/components/schemas/StationInfoCreateRadomeCodeErrorComponent'
           date_start: '#/components/schemas/StationInfoCreateDateStartErrorComponent'
@@ -82746,11 +84142,15 @@ components:
       oneOf:
       - $ref: '#/components/schemas/StationInfoListNetworkCodeErrorComponent'
       - $ref: '#/components/schemas/StationInfoListStationCodeErrorComponent'
+      - $ref: '#/components/schemas/StationInfoListReceiverCodeErrorComponent'
+      - $ref: '#/components/schemas/StationInfoListReceiverSerialErrorComponent'
       discriminator:
         propertyName: attr
         mapping:
           network_code: '#/components/schemas/StationInfoListNetworkCodeErrorComponent'
           station_code: '#/components/schemas/StationInfoListStationCodeErrorComponent'
+          receiver_code: '#/components/schemas/StationInfoListReceiverCodeErrorComponent'
+          receiver_serial: '#/components/schemas/StationInfoListReceiverSerialErrorComponent'
     StationInfoListErrorResponse400:
       oneOf:
       - $ref: '#/components/schemas/StationInfoListValidationError'
@@ -82768,6 +84168,44 @@ components:
           - network_code
           type: string
           description: '* `network_code` - network_code'
+        code:
+          enum:
+          - null_characters_not_allowed
+          type: string
+          description: '* `null_characters_not_allowed` - null_characters_not_allowed'
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
+    StationInfoListReceiverCodeErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - receiver_code
+          type: string
+          description: '* `receiver_code` - receiver_code'
+        code:
+          enum:
+          - null_characters_not_allowed
+          type: string
+          description: '* `null_characters_not_allowed` - null_characters_not_allowed'
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
+    StationInfoListReceiverSerialErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - receiver_serial
+          type: string
+          description: '* `receiver_serial` - receiver_serial'
         code:
           enum:
           - null_characters_not_allowed
@@ -82817,6 +84255,34 @@ components:
         propertyName: type
         mapping:
           client_error: '#/components/schemas/ParseErrorResponse'
+    StationInfoUpdateAntennaAzimuthErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - antenna_azimuth
+          type: string
+          description: '* `antenna_azimuth` - antenna_azimuth'
+        code:
+          enum:
+          - invalid
+          - max_decimal_places
+          - max_digits
+          - max_string_length
+          - max_whole_digits
+          type: string
+          description: |-
+            * `invalid` - invalid
+            * `max_decimal_places` - max_decimal_places
+            * `max_digits` - max_digits
+            * `max_string_length` - max_string_length
+            * `max_whole_digits` - max_whole_digits
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
     StationInfoUpdateAntennaCodeErrorComponent:
       type: object
       properties:
@@ -83052,6 +84518,7 @@ components:
       - $ref: '#/components/schemas/StationInfoUpdateAntennaHeightErrorComponent'
       - $ref: '#/components/schemas/StationInfoUpdateAntennaNorthErrorComponent'
       - $ref: '#/components/schemas/StationInfoUpdateAntennaEastErrorComponent'
+      - $ref: '#/components/schemas/StationInfoUpdateAntennaAzimuthErrorComponent'
       - $ref: '#/components/schemas/StationInfoUpdateHeightCodeErrorComponent'
       - $ref: '#/components/schemas/StationInfoUpdateRadomeCodeErrorComponent'
       - $ref: '#/components/schemas/StationInfoUpdateDateStartErrorComponent'
@@ -83072,6 +84539,7 @@ components:
           antenna_height: '#/components/schemas/StationInfoUpdateAntennaHeightErrorComponent'
           antenna_north: '#/components/schemas/StationInfoUpdateAntennaNorthErrorComponent'
           antenna_east: '#/components/schemas/StationInfoUpdateAntennaEastErrorComponent'
+          antenna_azimuth: '#/components/schemas/StationInfoUpdateAntennaAzimuthErrorComponent'
           height_code: '#/components/schemas/StationInfoUpdateHeightCodeErrorComponent'
           radome_code: '#/components/schemas/StationInfoUpdateRadomeCodeErrorComponent'
           date_start: '#/components/schemas/StationInfoUpdateDateStartErrorComponent'
@@ -84721,6 +86189,19 @@ components:
         propertyName: type
         mapping:
           client_error: '#/components/schemas/ParseErrorResponse'
+    StationRef:
+      type: object
+      description: |-
+        A single station reference (network_code + station_code). Casing is kept as-is
+        because geode looks up the station with the exact DB casing.
+      properties:
+        network_code:
+          type: string
+        station_code:
+          type: string
+      required:
+      - network_code
+      - station_code
     StationRole:
       type: object
       properties:
@@ -86675,6 +88156,14 @@ components:
           exclusiveMaximum: true
           exclusiveMinimum: true
           nullable: true
+        antenna_azimuth:
+          type: number
+          format: double
+          maximum: 100
+          minimum: -100
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          nullable: true
         height_code:
           type: string
         radome_code:
@@ -88485,6 +89974,185 @@ components:
       required:
       - errors
       - type
+    StationsWithRinexOnDateRetrieveErrorResponse400:
+      oneOf:
+      - $ref: '#/components/schemas/ParseErrorResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          client_error: '#/components/schemas/ParseErrorResponse'
+    TimeSeriesBulkDownloadCreateError:
+      oneOf:
+      - $ref: '#/components/schemas/TimeSeriesBulkDownloadCreateNonFieldErrorsErrorComponent'
+      - $ref: '#/components/schemas/TimeSeriesBulkDownloadCreateStationsNonFieldErrorsErrorComponent'
+      - $ref: '#/components/schemas/TimeSeriesBulkDownloadCreateStationsINDEXNonFieldErrorsErrorComponent'
+      - $ref: '#/components/schemas/TimeSeriesBulkDownloadCreateStationsINDEXNetworkCodeErrorComponent'
+      - $ref: '#/components/schemas/TimeSeriesBulkDownloadCreateStationsINDEXStationCodeErrorComponent'
+      discriminator:
+        propertyName: attr
+        mapping:
+          non_field_errors: '#/components/schemas/TimeSeriesBulkDownloadCreateNonFieldErrorsErrorComponent'
+          stations.non_field_errors: '#/components/schemas/TimeSeriesBulkDownloadCreateStationsNonFieldErrorsErrorComponent'
+          stations.INDEX.non_field_errors: '#/components/schemas/TimeSeriesBulkDownloadCreateStationsINDEXNonFieldErrorsErrorComponent'
+          stations.INDEX.network_code: '#/components/schemas/TimeSeriesBulkDownloadCreateStationsINDEXNetworkCodeErrorComponent'
+          stations.INDEX.station_code: '#/components/schemas/TimeSeriesBulkDownloadCreateStationsINDEXStationCodeErrorComponent'
+    TimeSeriesBulkDownloadCreateErrorResponse400:
+      oneOf:
+      - $ref: '#/components/schemas/TimeSeriesBulkDownloadCreateValidationError'
+      - $ref: '#/components/schemas/ParseErrorResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          validation_error: '#/components/schemas/TimeSeriesBulkDownloadCreateValidationError'
+          client_error: '#/components/schemas/ParseErrorResponse'
+    TimeSeriesBulkDownloadCreateNonFieldErrorsErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - non_field_errors
+          type: string
+          description: '* `non_field_errors` - non_field_errors'
+        code:
+          enum:
+          - invalid
+          type: string
+          description: '* `invalid` - invalid'
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
+    TimeSeriesBulkDownloadCreateStationsINDEXNetworkCodeErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - stations.INDEX.network_code
+          type: string
+          description: '* `stations.INDEX.network_code` - stations.INDEX.network_code'
+        code:
+          enum:
+          - blank
+          - invalid
+          - 'null'
+          - null_characters_not_allowed
+          - required
+          - surrogate_characters_not_allowed
+          type: string
+          description: |-
+            * `blank` - blank
+            * `invalid` - invalid
+            * `null` - null
+            * `null_characters_not_allowed` - null_characters_not_allowed
+            * `required` - required
+            * `surrogate_characters_not_allowed` - surrogate_characters_not_allowed
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
+    TimeSeriesBulkDownloadCreateStationsINDEXNonFieldErrorsErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - stations.INDEX.non_field_errors
+          type: string
+          description: '* `stations.INDEX.non_field_errors` - stations.INDEX.non_field_errors'
+        code:
+          enum:
+          - invalid
+          - 'null'
+          - required
+          type: string
+          description: |-
+            * `invalid` - invalid
+            * `null` - null
+            * `required` - required
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
+    TimeSeriesBulkDownloadCreateStationsINDEXStationCodeErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - stations.INDEX.station_code
+          type: string
+          description: '* `stations.INDEX.station_code` - stations.INDEX.station_code'
+        code:
+          enum:
+          - blank
+          - invalid
+          - 'null'
+          - null_characters_not_allowed
+          - required
+          - surrogate_characters_not_allowed
+          type: string
+          description: |-
+            * `blank` - blank
+            * `invalid` - invalid
+            * `null` - null
+            * `null_characters_not_allowed` - null_characters_not_allowed
+            * `required` - required
+            * `surrogate_characters_not_allowed` - surrogate_characters_not_allowed
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
+    TimeSeriesBulkDownloadCreateStationsNonFieldErrorsErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - stations.non_field_errors
+          type: string
+          description: '* `stations.non_field_errors` - stations.non_field_errors'
+        code:
+          enum:
+          - empty
+          - not_a_list
+          - 'null'
+          - required
+          type: string
+          description: |-
+            * `empty` - empty
+            * `not_a_list` - not_a_list
+            * `null` - null
+            * `required` - required
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
+    TimeSeriesBulkDownloadCreateValidationError:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/ValidationErrorEnum'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeSeriesBulkDownloadCreateError'
+      required:
+      - errors
+      - type
+    TimeSeriesConfigAdjustmentOptionsRetrieveErrorResponse400:
+      oneOf:
+      - $ref: '#/components/schemas/ParseErrorResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          client_error: '#/components/schemas/ParseErrorResponse'
     TimeSeriesConfigAvailableJumpTypesRetrieveErrorResponse400:
       oneOf:
       - $ref: '#/components/schemas/ParseErrorResponse'
@@ -88540,6 +90208,13 @@ components:
       - errors
       - type
     TimeSeriesConfigDeleteJumpListErrorResponse400:
+      oneOf:
+      - $ref: '#/components/schemas/ParseErrorResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          client_error: '#/components/schemas/ParseErrorResponse'
+    TimeSeriesConfigModeObsTypesRetrieveErrorResponse400:
       oneOf:
       - $ref: '#/components/schemas/ParseErrorResponse'
       discriminator:
@@ -88708,6 +90383,60 @@ components:
         propertyName: type
         mapping:
           client_error: '#/components/schemas/ParseErrorResponse'
+    TimeSeriesConfigSetCopyParamsCreateError:
+      oneOf:
+      - $ref: '#/components/schemas/TimeSeriesConfigSetCopyParamsCreateNonFieldErrorsErrorComponent'
+      discriminator:
+        propertyName: attr
+        mapping:
+          non_field_errors: '#/components/schemas/TimeSeriesConfigSetCopyParamsCreateNonFieldErrorsErrorComponent'
+    TimeSeriesConfigSetCopyParamsCreateErrorResponse400:
+      oneOf:
+      - $ref: '#/components/schemas/TimeSeriesConfigSetCopyParamsCreateValidationError'
+      - $ref: '#/components/schemas/ParseErrorResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          validation_error: '#/components/schemas/TimeSeriesConfigSetCopyParamsCreateValidationError'
+          client_error: '#/components/schemas/ParseErrorResponse'
+    TimeSeriesConfigSetCopyParamsCreateNonFieldErrorsErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - non_field_errors
+          type: string
+          description: '* `non_field_errors` - non_field_errors'
+        code:
+          enum:
+          - invalid
+          type: string
+          description: '* `invalid` - invalid'
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
+    TimeSeriesConfigSetCopyParamsCreateValidationError:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/ValidationErrorEnum'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeSeriesConfigSetCopyParamsCreateError'
+      required:
+      - errors
+      - type
+    TimeSeriesConfigSetCopyParamsListErrorResponse400:
+      oneOf:
+      - $ref: '#/components/schemas/ParseErrorResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          client_error: '#/components/schemas/ParseErrorResponse'
     TimeSeriesConfigSetJumpsCreateError:
       oneOf:
       - $ref: '#/components/schemas/TimeSeriesConfigSetJumpsCreateNonFieldErrorsErrorComponent'
@@ -88762,6 +90491,53 @@ components:
         propertyName: type
         mapping:
           client_error: '#/components/schemas/ParseErrorResponse'
+    TimeSeriesConfigSetJumpsUpdateError:
+      oneOf:
+      - $ref: '#/components/schemas/TimeSeriesConfigSetJumpsUpdateNonFieldErrorsErrorComponent'
+      discriminator:
+        propertyName: attr
+        mapping:
+          non_field_errors: '#/components/schemas/TimeSeriesConfigSetJumpsUpdateNonFieldErrorsErrorComponent'
+    TimeSeriesConfigSetJumpsUpdateErrorResponse400:
+      oneOf:
+      - $ref: '#/components/schemas/TimeSeriesConfigSetJumpsUpdateValidationError'
+      - $ref: '#/components/schemas/ParseErrorResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          validation_error: '#/components/schemas/TimeSeriesConfigSetJumpsUpdateValidationError'
+          client_error: '#/components/schemas/ParseErrorResponse'
+    TimeSeriesConfigSetJumpsUpdateNonFieldErrorsErrorComponent:
+      type: object
+      properties:
+        attr:
+          enum:
+          - non_field_errors
+          type: string
+          description: '* `non_field_errors` - non_field_errors'
+        code:
+          enum:
+          - invalid
+          type: string
+          description: '* `invalid` - invalid'
+        detail:
+          type: string
+      required:
+      - attr
+      - code
+      - detail
+    TimeSeriesConfigSetJumpsUpdateValidationError:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/ValidationErrorEnum'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeSeriesConfigSetJumpsUpdateError'
+      required:
+      - errors
+      - type
     TimeSeriesConfigSetPeriodicCreateError:
       oneOf:
       - $ref: '#/components/schemas/TimeSeriesConfigSetPeriodicCreateNonFieldErrorsErrorComponent'
@@ -88864,6 +90640,20 @@ components:
       - errors
       - type
     TimeSeriesConfigSetPolynomialListErrorResponse400:
+      oneOf:
+      - $ref: '#/components/schemas/ParseErrorResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          client_error: '#/components/schemas/ParseErrorResponse'
+    TimeSeriesConfigSolutionTypesRetrieveErrorResponse400:
+      oneOf:
+      - $ref: '#/components/schemas/ParseErrorResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          client_error: '#/components/schemas/ParseErrorResponse'
+    TimeSeriesCoordinatesRetrieveErrorResponse400:
       oneOf:
       - $ref: '#/components/schemas/ParseErrorResponse'
       discriminator:
@@ -89176,10 +90966,13 @@ components:
           type: integer
           maximum: 2147483647
           minimum: -2147483648
-          nullable: true
+        person:
+          type: string
+          readOnly: true
       required:
       - id
       - password
+      - person
       - role
       - username
     UsersCreateAddressErrorComponent:
@@ -89224,12 +91017,14 @@ components:
           - max_string_length
           - max_value
           - min_value
+          - 'null'
           type: string
           description: |-
             * `invalid` - invalid
             * `max_string_length` - max_string_length
             * `max_value` - max_value
             * `min_value` - min_value
+            * `null` - null
         detail:
           type: string
       required:
@@ -89617,12 +91412,14 @@ components:
           - max_string_length
           - max_value
           - min_value
+          - 'null'
           type: string
           description: |-
             * `invalid` - invalid
             * `max_string_length` - max_string_length
             * `max_value` - max_value
             * `min_value` - min_value
+            * `null` - null
         detail:
           type: string
       required:
@@ -90010,12 +91807,14 @@ components:
           - max_string_length
           - max_value
           - min_value
+          - 'null'
           type: string
           description: |-
             * `invalid` - invalid
             * `max_string_length` - max_string_length
             * `max_value` - max_value
             * `min_value` - min_value
+            * `null` - null
         detail:
           type: string
       required:
@@ -90388,6 +92187,9 @@ components:
         station_station_code:
           type: string
           readOnly: true
+        people_info:
+          type: string
+          readOnly: true
         date:
           type: string
           format: date
@@ -90427,6 +92229,7 @@ components:
       - navigation_file_delete
       - observation_file_count
       - other_file_count
+      - people_info
       - station
       - station_network_code
       - station_station_code

@@ -7,6 +7,8 @@ import {
     getStationVisitsImagesByIdService,
     patchVisitImagesDescription,
 } from "@services";
+import { downloadFromBase64 } from "@utils";
+import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 
 import {
     StationImagesData,
@@ -60,6 +62,8 @@ const ImageModal = ({
         StationImagesData | undefined
     >(undefined);
 
+    const [downloadingFull, setDownloadingFull] = useState<boolean>(false);
+
     const [globalDescription, setGlobalDescription] = useState<
         string | undefined
     >(undefined);
@@ -89,6 +93,30 @@ const ImageModal = ({
             console.error(err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const downloadFullQuality = async () => {
+        try {
+            setDownloadingFull(true);
+            const service = visit
+                ? getStationVisitsImagesByIdService
+                : getStationImageByIdService;
+            const res = await service<StationImagesData>(
+                api,
+                photo?.id ?? 0,
+                true,
+            );
+            if (res.actual_image) {
+                downloadFromBase64(
+                    res.actual_image,
+                    res.filename || res.name || `photo_${photo?.id}`,
+                );
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setDownloadingFull(false);
         }
     };
 
@@ -180,6 +208,22 @@ const ImageModal = ({
                 ) : (
                     originalPhoto?.name && (
                         <div className="space-y-4">
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm gap-1"
+                                    title="Download original quality"
+                                    disabled={downloadingFull}
+                                    onClick={downloadFullQuality}
+                                >
+                                    {downloadingFull ? (
+                                        <span className="loading loading-spinner loading-xs"></span>
+                                    ) : (
+                                        <ArrowDownTrayIcon className="size-4" />
+                                    )}
+                                    Original quality
+                                </button>
+                            </div>
                             <img
                                 className="w-full h-fit object-contain"
                                 src={
@@ -236,7 +280,7 @@ const ImageModal = ({
                 )}
             </Modal>
         );
-    }, [originalPhoto, loading, globalDescription]);
+    }, [originalPhoto, loading, globalDescription, downloadingFull]); // eslint-disable-line react-hooks/exhaustive-deps
     return image;
 };
 

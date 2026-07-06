@@ -95,8 +95,8 @@ const PopupChildren = ({
                 },
                 signal,
             );
-            setFirstRinex(firstRes.data[0]);
-            setLastRinex(lastRes.data[0]);
+            setFirstRinex(firstRes?.data?.[0]);
+            setLastRinex(lastRes?.data?.[0]);
         } catch (err) {
             if (!axios.isCancel(err)) {
                 console.error("Error fetching rinex: ", err);
@@ -159,7 +159,7 @@ const PopupChildren = ({
 
     return (
         <div
-            className={`flex flex-col self-start space-y-2 max-h-82 overflow-y-auto pr-4 md:w-[400px] lg:w-[450px] `}
+            className={`flex flex-col self-start space-y-2 max-h-[60vh] overflow-y-auto pr-4 w-[450px] lg:w-[470px] scrollbar-thin scrollbar-webkit`}
         >
             <span className="w-full bg-green-400 px-4 py-1 text-center font-bold self-center">
                 {fromMain

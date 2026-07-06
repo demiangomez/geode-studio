@@ -3,105 +3,68 @@ import { MonumentModal, Pagination, Table, TableCard } from "@componentsReact";
 
 import { useAuth, useApi } from "@hooks";
 
-import { getMonumentsTypesService } from "@services";
 import { showModal } from "@utils";
 
-import { GetParams, MonumentTypes, MonumentTypesServiceData } from "@types";
+import { GetParams, MonumentTypes } from "@types";
+import { useQueryClient } from "@tanstack/react-query";
+import { useMetadata } from "@hooks/queries";
 
 const MonumentsTable = () => {
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
 
-    const bParams: GetParams = useMemo(() => {
-        return {
-            limit: 5,
-            offset: 0,
-        };
-    }, []);
+    const queryClient = useQueryClient();
 
     const [modals, setModals] = useState<
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
         | undefined
     >(undefined);
 
-    const [loading, setLoading] = useState<boolean>(true);
-    const [params, setParams] = useState<GetParams>(bParams);
+    const [params, setParams] = useState<GetParams>({
+        limit: 5,
+        offset: 0,
+    });
 
-    const [monuments, setMonuments] = useState<MonumentTypes[]>([]);
     const [monument, setMonument] = useState<MonumentTypes | undefined>(
         undefined,
     );
 
     const [activePage, setActivePage] = useState<number>(1);
-    const [pages, setPages] = useState<number>(0);
     const PAGES_TO_SHOW = 2;
-    const REGISTERS_PER_PAGE = 5; // Es el mismo que params.limit
 
-    const getMonuments = async () => {
-        try {
-            setLoading(true);
-            const res =
-                await getMonumentsTypesService<MonumentTypesServiceData>(
-                    api,
-                    params,
-                );
-            setMonuments(res.data);
-            if (bParams.limit) {
-                setPages(Math.ceil(res.total_count / bParams.limit));
-            }
-            res.data && res.data.length === 0 && handlePage(1);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const {
+        monuments,
+        monumentsTotal,
+        monumentsIsFetching,
+        isLoading: loading,
+    } = useMetadata(api, {}, params);
 
-    const paginateMonuments = async (newParams: GetParams) => {
-        try {
-            setLoading(true);
-            const res =
-                await getMonumentsTypesService<MonumentTypesServiceData>(
-                    api,
-                    newParams,
-                );
-            setMonuments(res.data);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
+    const pages = useMemo(() => {
+        if (monumentsTotal && params.limit) {
+            return Math.ceil(monumentsTotal / params.limit);
         }
-    };
+        return 0;
+    }, [monumentsTotal, params.limit]);
+
+    useEffect(() => {
+        if (!loading && !monumentsIsFetching && monuments && monuments.length === 0 && activePage > 1) {
+            handlePage(activePage - 1);
+        }
+    }, [monuments, activePage, loading, monumentsIsFetching]); // eslint-disable-line
 
     const handlePage = (page: number) => {
-        if (page < 1 || page > pages) return;
-        let newParams;
-        if (page === 1) {
-            newParams = {
-                ...params,
-                limit: REGISTERS_PER_PAGE * 1,
-                offset: REGISTERS_PER_PAGE * (page - 1),
-            };
-        } else {
-            newParams = {
-                ...params,
-                limit: REGISTERS_PER_PAGE,
-                offset: REGISTERS_PER_PAGE * (page - 1),
-            };
-        }
-
-        setParams(newParams);
         setActivePage(page);
-        paginateMonuments(newParams);
+        setParams((prev) => ({
+            ...prev,
+            offset: (page - 1) * (params.limit || 5),
+        }));
     };
 
     const reFetch = () => {
-        getMonuments();
+        queryClient.invalidateQueries({
+            queryKey: ["metadata", "monumentsTypes"],
+        });
     };
-
-    useEffect(() => {
-        getMonuments();
-    }, []); // eslint-disable-line
 
     const titles = ["Name", "Photo"];
 

@@ -1,6 +1,5 @@
 import { CountriesData, NetworkData, DropdownState } from "@types";
-import { useState } from "react";
-
+import { useState, useMemo } from "react";
 
 interface DropdownProps {
     position?: string;
@@ -11,6 +10,7 @@ interface DropdownProps {
     setDataSelected: React.Dispatch<React.SetStateAction<string>>;
     setDropdown: React.Dispatch<React.SetStateAction<DropdownState>>;
 }
+
 const Dropdown = ({
     position,
     type,
@@ -23,53 +23,79 @@ const Dropdown = ({
     const [countryInput, setCountryInput] = useState("");
     const [networkInput, setNetworkInput] = useState("");
 
-    const filteredCountriesData = data?.filter((country: CountriesData) => {
-        if (countryInput !== "") {
-            return (
+    const filteredCountriesData = useMemo(() => {
+        if (!data) return [];
+        if (!countryInput) return data;
+        const lowerInput = countryInput.toLowerCase();
+        return data.filter(
+            (country: CountriesData) =>
                 country?.three_digits_code
                     ?.toLowerCase()
-                    .includes(countryInput?.toLowerCase()) ||
-                country?.name
-                    ?.toLowerCase()
-                    .includes(countryInput?.toLowerCase())
-            );
-        }
-    });
+                    .includes(lowerInput) ||
+                country?.name?.toLowerCase().includes(lowerInput),
+        );
+    }, [data, countryInput]);
 
-    const filteredNetworksData = data?.filter((nc: NetworkData) => {
-        if (networkInput !== "") {
-            return (
-                nc?.network_code
-                    ?.toLowerCase()
-                    .includes(networkInput?.toLowerCase().trim()) ||
-                nc?.network_name
-                    ?.toLowerCase()
-                    .includes(networkInput?.toLowerCase().trim())
+    const filteredNetworksData = useMemo(() => {
+        if (!data) return [];
+        let filtered = data;
+        if (networkInput) {
+            const lowerInput = networkInput.toLowerCase().trim();
+            filtered = data.filter(
+                (nc: NetworkData) =>
+                    nc?.network_code?.toLowerCase().includes(lowerInput) ||
+                    nc?.network_name?.toLowerCase().includes(lowerInput),
             );
         }
-    });
+        return [...filtered].sort((a: NetworkData, b: NetworkData) => {
+            if (a?.network_code?.includes("?")) return 1;
+            if (b?.network_code?.includes("?")) return -1;
+            return a.network_code?.localeCompare(b.network_code) ?? 0;
+        });
+    }, [data, networkInput]);
 
     const buttonStyles =
         position === "first"
-            ? "whitespace-nowrap  h-full bg-gray-800 shadow-sm rounded-l-md flex items-center justify-center w-full px-4 py-2 text-sm font-medium text-white hover:bg-gray-50 hover:bg-gray-500 focus:outline-none"
-            : "whitespace-nowrap  h-full bg-gray-800 shadow-sm flex items-center justify-center w-full px-4 py-2 text-sm font-medium text-white hover:bg-gray-50 hover:bg-gray-500 focus:outline-none";
+            ? "whitespace-nowrap  h-full bg-gray-800 shadow-sm rounded-l-md flex items-center justify-center w-[70px] py-2 text-sm font-medium text-white hover:bg-gray-50 hover:bg-gray-500 focus:outline-none"
+            : "whitespace-nowrap  h-full bg-gray-800 shadow-sm flex items-center justify-center w-[70px] py-2 text-sm font-medium text-white hover:bg-gray-50 hover:bg-gray-500 focus:outline-none";
+
+    const handleItemSelect = (code: string) => {
+        setDataSelected(code);
+        setDropdown({
+            dropdown: false,
+            type: undefined,
+        });
+        setCountryInput("");
+        setNetworkInput("");
+    };
 
     return (
-        <div className="dropdown dropdown-end">
+        <div
+            className="dropdown dropdown-end"
+            onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setDropdown((prev) => {
+                        if (prev.type === type) {
+                            return { type: undefined, dropdown: false };
+                        }
+                        return prev;
+                    });
+                }
+            }}
+        >
             <div
                 tabIndex={0}
                 role="button"
                 className={buttonStyles}
                 id="options-menu"
                 title={"Select " + type}
-                onClick={(event) => {
-                    if (event.detail === 0) return;
-                    setTimeout(() => {
-                        setDropdown({
-                            type: type,
-                            dropdown: !dropdown.dropdown,
-                        });
-                    }, 50);
+                onClick={() => {
+                    setDropdown((prev) => {
+                        if (prev.dropdown && prev.type === type) {
+                            return { type: undefined, dropdown: false };
+                        }
+                        return { type: type, dropdown: true };
+                    });
                 }}
             >
                 {type === "country" && !dataSelected
@@ -92,7 +118,7 @@ const Dropdown = ({
             type === "country" ? (
                 <ul
                     tabIndex={0}
-                    className="dropdown-content z-30 p-2 shadow bg-gray-800 
+                    className="dropdown-content z-[200000] p-2 shadow bg-gray-800 
                     max-h-[500px] overflow-y-auto sidebar scrollbar-thin scrollbar-webkit rounded-box w-52"
                 >
                     <div className="text-white">
@@ -110,6 +136,7 @@ const Dropdown = ({
                             placeholder="Search Country"
                             aria-label="country"
                             aria-describedby="addon-wrapping"
+                            value={countryInput}
                             onChange={(e) => setCountryInput(e.target.value)}
                         />
                         <label
@@ -122,73 +149,35 @@ const Dropdown = ({
                         </label>
                     </div>
                     <li>
-                        {data && filteredCountriesData.length > 0
-                            ? filteredCountriesData?.map(
-                                  (code: CountriesData) => (
-                                      <a
-                                          key={code.id}
-                                          className="flex items-center 
-                                          justify-around py-2  
-                                          hover:rounded-md  text-gray-100 
-                                          hover:text-white hover:bg-gray-600 cursor-pointer"
-                                          role="menuitem"
-                                          onClick={() => {
-                                              setDataSelected(
-                                                  code.three_digits_code,
-                                              );
-                                              setDropdown({
-                                                  dropdown: false,
-                                                  type: undefined,
-                                              });
-                                          }}
-                                      >
-                                          <img
-                                              width={50}
-                                              height={50}
-                                              src={`https://flagcdn.com/${code?.two_digits_code?.toLowerCase()}.svg`}
-                                          />
-
-                                          <strong>
-                                              {code.three_digits_code}
-                                          </strong>
-                                      </a>
-                                  ),
-                              )
-                            : data &&
-                              filteredCountriesData.length <= 0 &&
-                              data?.map(
-                                  (code: CountriesData, index: number) => (
-                                      <a
-                                          key={code.id + "index" + index}
-                                          className="flex items-center justify-around 
-                                          py-2  hover:rounded-md 
-                                           text-gray-100 hover:text-white
-                                           hover:bg-gray-600 cursor-pointer"
-                                          role="menuitem"
-                                          onClick={() => {
-                                              setDataSelected(
-                                                  code.three_digits_code,
-                                              );
-                                              setDropdown({
-                                                  dropdown: false,
-                                                  type: undefined,
-                                              });
-                                          }}
-                                      >
-                                          <img
-                                              width={50}
-                                              height={50}
-                                              src={`https://flagcdn.com/${code?.two_digits_code?.toLowerCase()}.svg`}
-                                          />
-
-                                          <strong>
-                                              {code.three_digits_code}
-                                          </strong>
-                                      </a>
-                                  ),
-                              )}
+                        {filteredCountriesData.length > 0 ? (
+                            filteredCountriesData.map((code: CountriesData) => (
+                                <button
+                                    type="button"
+                                    key={code.id}
+                                    className="flex items-center w-full
+                                    justify-around py-2  
+                                    hover:rounded-md  text-gray-100 
+                                    hover:text-white hover:bg-gray-600 cursor-pointer"
+                                    role="menuitem"
+                                    onClick={() =>
+                                        handleItemSelect(code.three_digits_code)
+                                    }
+                                >
+                                    <img
+                                        width={50}
+                                        height={50}
+                                        src={`https://flagcdn.com/${code?.two_digits_code?.toLowerCase()}.svg`}
+                                        alt={code.three_digits_code}
+                                    />
+                                    <strong>{code.three_digits_code}</strong>
+                                </button>
+                            ))
+                        ) : (
+                            <div className="p-4 text-center text-gray-400">
+                                No results found
+                            </div>
+                        )}
                     </li>
-                    {/* Aquí va el contenido del dropdown */}
                 </ul>
             ) : (
                 dropdown.dropdown &&
@@ -214,6 +203,7 @@ const Dropdown = ({
                                 placeholder="Search Network Code"
                                 aria-label="Network Code"
                                 aria-describedby="addon-wrapping"
+                                value={networkInput}
                                 onChange={(e) =>
                                     setNetworkInput(e.target.value)
                                 }
@@ -227,84 +217,34 @@ const Dropdown = ({
                                 Search Network Code
                             </label>
                         </div>
-                        {data && filteredNetworksData.length > 0
-                            ? filteredNetworksData
-                                  ?.sort((a: NetworkData, b: NetworkData) => {
-                                      if (a?.network_code?.includes("?"))
-                                          return 1;
-                                      if (b?.network_code?.includes("?"))
-                                          return -1;
-
-                                      return (
-                                          a.network_code.localeCompare(
-                                              b.network_code,
-                                          ) ?? 0
-                                      );
-                                  })
-                                  .map((n: NetworkData) => (
-                                      <li key={n.network_code}>
-                                          <a
-                                              key={n?.api_id}
-                                              className="flex items-center justify-center py-2
-                                          hover:rounded-md 
-                                          text-gray-100 hover:text-white
-                                          hover:bg-gray-600 cursor-pointer"
-                                              role="menuitem"
-                                              onClick={() => {
-                                                  setDataSelected(
-                                                      n?.network_code?.toUpperCase(),
-                                                  );
-                                                  setDropdown({
-                                                      dropdown: false,
-                                                      type: undefined,
-                                                  });
-                                              }}
-                                          >
-                                              <strong>
-                                                  {n?.network_code?.toUpperCase()}
-                                              </strong>
-                                          </a>
-                                      </li>
-                                  ))
-                            : data &&
-                              filteredNetworksData.length <= 0 &&
-                              data
-                                  ?.sort((a: NetworkData, b: NetworkData) => {
-                                      if (a?.network_code?.includes("?"))
-                                          return 1;
-                                      if (b?.network_code?.includes("?"))
-                                          return -1;
-                                      return (
-                                          a?.network_code?.localeCompare(
-                                              b.network_code,
-                                          ) ?? 0
-                                      );
-                                  })
-                                  .map((n: NetworkData) => (
-                                      <li key={n.network_code}>
-                                          <a
-                                              key={n?.api_id}
-                                              className="flex items-center justify-center py-2
-                                          hover:rounded-md 
-                                          text-gray-100 hover:text-white
-                                          hover:bg-gray-600 cursor-pointer"
-                                              role="menuitem"
-                                              onClick={() => {
-                                                  setDataSelected(
-                                                      n?.network_code?.toUpperCase(),
-                                                  );
-                                                  setDropdown({
-                                                      dropdown: false,
-                                                      type: undefined,
-                                                  });
-                                              }}
-                                          >
-                                              <strong>
-                                                  {n?.network_code?.toUpperCase()}
-                                              </strong>
-                                          </a>
-                                      </li>
-                                  ))}
+                        {filteredNetworksData.length > 0 ? (
+                            filteredNetworksData.map((n: NetworkData) => (
+                                <li key={n.api_id || n.network_code}>
+                                    <button
+                                        type="button"
+                                        className="flex items-center w-full justify-center py-2
+                                        hover:rounded-md 
+                                        text-gray-100 hover:text-white
+                                        hover:bg-gray-600 cursor-pointer"
+                                        role="menuitem"
+                                        onClick={() =>
+                                            handleItemSelect(
+                                                n?.network_code?.toUpperCase() ??
+                                                    "",
+                                            )
+                                        }
+                                    >
+                                        <strong>
+                                            {n?.network_code?.toUpperCase()}
+                                        </strong>
+                                    </button>
+                                </li>
+                            ))
+                        ) : (
+                            <div className="p-4 text-center text-gray-400">
+                                No results found
+                            </div>
+                        )}
                     </ul>
                 )
             )}

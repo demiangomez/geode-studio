@@ -1,13 +1,13 @@
 import axios, { AxiosError, AxiosInstance } from "axios";
 import { useMemo } from "react";
-import { useUser } from "@hooks";
+import { useUser } from "./user/userInfo.context";
 import { Errors } from "@types";
 
 const BASEURL: string = import.meta.env.VITE_API_URL;
 
 export default function useApi(
     token: string | null,
-    logout: (href: boolean) => void,
+    logout: () => void,
 ): AxiosInstance {
     const { dispatch: userDispatch } = useUser();
 
@@ -42,7 +42,7 @@ export default function useApi(
             (error: AxiosError) => {
                 const status = error.response ? error.response.status : null;
                 if (error && status === 401) {
-                    logout(false);
+                    logout();
                 }
                 if (error && status === 403 && error.config) {
                     userDispatch({
@@ -64,6 +64,9 @@ export default function useApi(
                     }, 50);
                 }
                 const requestResponse: XMLHttpRequest = error.request;
+                // cambiar a promise.reject
+                // esto va a hacer que la respuesta pase x catch y se maneje bien
+                // no como ahora..
                 return {
                     data: {
                         msg: error.message,

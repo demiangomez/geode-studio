@@ -8,6 +8,7 @@ import {
 } from "@componentsReact";
 import useApi from "@hooks/useApi";
 import { useAuth } from "@hooks/useAuth";
+import useClickOutside from "@hooks/useClickOutside";
 import {
     getTraceReceiverByRinex,
     getTraceReceiverByStationInfo,
@@ -108,6 +109,9 @@ const TraceReceiverModal = ({
     const [showMenu, setShowMenu] = useState<
         { type: string; show: boolean } | undefined
     >(undefined);
+
+    const openMenuRef = useRef<HTMLDivElement>(null);
+    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
 
     const [searched, setSearched] = useState(false);
 
@@ -573,7 +577,14 @@ const TraceReceiverModal = ({
                         Receiver Type (optional)
                     </span>
                 </label>
-                <div className="relative">
+                <div
+                    className="relative"
+                    ref={
+                        showMenu?.show && showMenu.type === "receiver_type"
+                            ? openMenuRef
+                            : undefined
+                    }
+                >
                     <div className="relative">
                         <input
                             id="receiverType"

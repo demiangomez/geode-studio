@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { useOutletContext } from "react-router-dom";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Rnd } from "react-rnd";
 
 import {
@@ -319,8 +319,8 @@ const Rinex = () => {
                     operatorSelected === "<"
                         ? "LESS_THAN"
                         : operatorSelected === ">"
-                          ? "GREATER_THAN"
-                          : "EQUAL",
+                            ? "GREATER_THAN"
+                            : "EQUAL",
                 completion: filtersObj.completion,
                 interval: filtersObj.interval,
                 offset: 0,
@@ -647,50 +647,8 @@ const Rinex = () => {
         rinexGroup ?? singleRinex ?? [],
     );
 
-    // FAL: 16-04-2025 Sidebar observer to not use show state
-
-    const [sidebarWidth, setSidebarWidth] = useState<number>();
-
-    const onResize = useCallback<ResizeObserverCallback>((entries) => {
-        const [entry] = entries;
-        if (entry) {
-            setSidebarWidth(entry.contentRect.width);
-        }
-    }, []);
-
-    // Set up resize observer for the sidebar
-    useEffect(() => {
-        const resizeObserver = new ResizeObserver(onResize);
-        const sidebar = document.querySelector(".sidebar") as HTMLElement;
-
-        if (sidebar) {
-            resizeObserver.observe(sidebar);
-        }
-
-        return () => {
-            if (sidebar) {
-                resizeObserver.unobserve(sidebar);
-            }
-            resizeObserver.disconnect();
-        };
-    }, [onResize]);
-
-    const containerWidth = useMemo(() => {
-        const defaultW = "w-[calc(100vw-10rem)]";
-        const maxW = "w-[calc(100vw-20rem)]";
-        const sidebarElement = document.querySelector(".sidebar");
-        if (!sidebarElement) return defaultW;
-
-        if (sidebarElement.classList.contains("w-32")) {
-            return defaultW;
-        } else if (sidebarElement.classList.contains("w-72")) {
-            return maxW;
-        }
-        return defaultW;
-    }, [sidebarWidth]);
-
     return (
-        <div className="flex flex-col items-center justify-center">
+        <div className="flex flex-col items-center justify-center w-full min-w-0">
             {/* Manual actions panel */}
             {actionsManual && (
                 <Rnd
@@ -706,10 +664,8 @@ const Rinex = () => {
             )}
 
             <h1 className="text-2xl font-base text-center">RINEX</h1>
-            <div
-                className={`flex justify-center pr-2 px-2 pb-4 transition-all duration-100 ${containerWidth}`}
-            >
-                <CardContainer title="" titlePosition="start">
+            <div className="w-full min-w-0 flex justify-center px-2 pb-4">
+                <CardContainer title="" height={false} titlePosition="start">
                     <TableCard title={""} size="100%">
                         <div className="w-full flex">
                             <div className="w-2/4 flex justify-start">
@@ -788,11 +744,7 @@ const Rinex = () => {
                         </div>
 
                         <RinexTable
-                            titles={
-                                paginatedRinexs && paginatedRinexs.length > 0
-                                    ? titles
-                                    : []
-                            }
+                            titles={titles}
                             loading={loading}
                             sameGroup={sameGroup}
                             fullData={rinex ?? []}
@@ -865,7 +817,7 @@ const Rinex = () => {
                     setModalState={setModals}
                 />
             )}
-            {modals?.show && modals.title === "Information" && (
+            {modals?.show && modals.title === "Instruments" && (
                 <StationInfoModal
                     close={false}
                     station={station}

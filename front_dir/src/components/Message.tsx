@@ -3,9 +3,11 @@ import { useEffect, useState } from "react";
 interface MessageProps {
     error: boolean | undefined;
     msg: string | undefined;
+    duration?: number;
+    onClose?: () => void;
 }
 
-const Message = ({ error, msg }: MessageProps) => {
+const Message = ({ error, msg, duration = 3000, onClose }: MessageProps) => {
     const [value, setValue] = useState(0);
     const [show, setShow] = useState(true);
 
@@ -16,30 +18,38 @@ const Message = ({ error, msg }: MessageProps) => {
     const closeToast = () => {
         setShow(false);
         setValue(0);
+        if (onClose) onClose();
     };
 
     const MAX = 100;
+    // Tick frequency in ms
+    const tickMs = 20; 
 
     useEffect(() => {
         setValue(0);
         setShow(true);
 
+        const totalTicks = duration / tickMs;
+        const step = MAX / totalTicks;
+
+        // Visual progress interval
         const interval = setInterval(() => {
-            setValue((prevValue) => {
-                const newValue = prevValue + MAX / 145;
-                if (newValue >= MAX) {
-                    clearInterval(interval);
-                    closeToast();
-                    return MAX;
-                }
-                return newValue;
-            });
-        }, 45);
+            setValue((prev) => (prev < MAX ? prev + step : MAX));
+        }, tickMs);
 
-        return () => clearInterval(interval);
-    }, [msg]); //eslint-disable-line
+        // Closure timeout
+        const timeout = setTimeout(() => {
+            clearInterval(interval);
+            closeToast();
+        }, duration);
 
-    if (!show) {
+        return () => {
+            clearInterval(interval);
+            clearTimeout(timeout);
+        };
+    }, [msg, duration]);
+
+    if (!show || !msg) {
         return null;
     }
 
@@ -62,7 +72,7 @@ const Message = ({ error, msg }: MessageProps) => {
                     </svg>
                     <span className="sr-only">icon</span>
                 </div>
-                <div className="ml-3 text-sm font-normal whitespace-pre-line">
+                <div className="ml-3 text-sm font-normal whitespace-pre-line text-left flex-1">
                     {msg}
                 </div>
                 <button

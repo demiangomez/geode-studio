@@ -1,4 +1,5 @@
-import { Nav } from "@componentsReact";
+import Nav from "@components/Nav";
+import ServerStatusToast from "@components/ServerStatusToast";
 import { useAuth } from "@hooks/useAuth";
 import { ReactNode } from "react";
 
@@ -14,6 +15,7 @@ const Layout = ({ children }: LayoutProps) => {
     return (
         <>
             {token && <Nav />}
+            {token && <ServerStatusToast />}
             <div className={containerDiv}>{children}</div>
 
             {/* {token && (

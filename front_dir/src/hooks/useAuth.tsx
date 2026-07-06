@@ -7,10 +7,11 @@ import {
     useState,
 } from "react";
 
-import { Navigate } from "react-router-dom";
-
-import { useLocalStorage } from "@hooks/useLocalStorage";
-import { useApi, useUser } from "@hooks";
+import { useLocalStorage } from "./useLocalStorage";
+import useApi from "./useApi";
+import { useUser } from "./user/userInfo.context";
+import { queryClient } from "@queryClient";
+import { useMapStore } from "@store";
 
 import { jwtDeserializer } from "@utils";
 import { getUserPhotoService, getUserService } from "@services";
@@ -25,7 +26,7 @@ interface AuthContextProps {
     user: UsersData | null;
     clusteringDistance: number | undefined;
     login: (token: string | null, nav?: boolean, lastPath?: string) => void;
-    logout: (href: boolean) => void;
+    logout: () => void;
     getRole: (role: string) => void;
     getUserPhoto: () => void;
     loginRefresh: (token: string | null) => void;
@@ -71,19 +72,30 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     const login = (token: string | null, nav?: boolean) => {
         if (token) {
+            // Limpiar estado del usuario anterior
+            userDispatch({ type: "CLEAR_ALL" });
+            // Limpiar cache de React Query del usuario anterior
+            queryClient.clear();
+            // Limpiar datos de usuario anterior
+            setUser(null);
+            setUserPhoto(null);
+
+            // Los filtros de país/red del SearchInput no se arrastran entre
+            // sesiones: resetearlos al (re)loguear —incluido el re-login por
+            // refresh token— manteniendo el resto del estado del mapa.
+            useMapStore.getState().setParams((p) => ({
+                ...p,
+                country_code: "",
+                network_code: "",
+            }));
+
             setToken(token);
             setRefresh(null);
-            userDispatch({
-                type: "CLEAR_ALL",
-            });
-
-            <Navigate to="/" replace />;
         }
         if (token && nav) {
             setToken(token);
             setRefresh(null);
             window.history.back();
-            // navigate(lastPath);
         }
     };
 
@@ -93,18 +105,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
     };
 
-    const logout = (href: boolean) => {
+    const logout = () => {
         setToken(null);
         setRefreshToken(null);
         setRefresh(null);
         setRole(null);
         setUserPhoto(null);
-        // Esto es para que al cambiar de usuario se reseteen los permisos
-        userDispatch({
-            type: "CLEAR_ALL",
-        });
+        setUser(null);
+        // Limpiar permisos del usuario anterior para evitar bugs de roels
+        userDispatch({ type: "CLEAR_ALL" });
+        // Limpiar cache de React Query
+        queryClient.clear();
 
-        if (href) <Navigate to="/auth/login" />;
+        // La navegación a /auth/login la maneja ProtectedRoute
+        // al detectar token === null
     };
 
     const getRole = (role: string) => {
@@ -171,7 +185,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
     };
 
-    const parsedDistance = user?.clustering_distance ? Number(user.clustering_distance) : undefined;
+    const parsedDistance = user?.clustering_distance
+        ? Number(user.clustering_distance)
+        : undefined;
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -186,12 +202,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 if (tokenDeserialized.exp < currentTime) {
                     setRefresh(true);
                     setToken(null);
-
-                    // logout(true);
                 }
             }
             if (tokenTest === null && refreshTest === null) {
-                logout(true);
+                logout();
             }
             if (tokenTest !== null && refreshTest === null) {
                 setRefresh(false);

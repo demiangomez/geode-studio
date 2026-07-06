@@ -6,105 +6,70 @@ import {
     TableCard,
 } from "@componentsReact";
 
-import { useAuth, useApi } from "@hooks";
+import { useQueryClient } from "@tanstack/react-query";
 
-import { getStationRolesService } from "@services";
+import { useAuth, useApi } from "@hooks";
+import { useMetadata } from "@hooks/queries";
+
 import { showModal } from "@utils";
 
-import { GetParams, StationStatus, StationStatusServiceData } from "@types";
+import { GetParams, StationStatus } from "@types";
 
 const StationRolesTable = () => {
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
-
-    const bParams: GetParams = useMemo(() => {
-        return {
-            limit: 5,
-            offset: 0,
-        };
-    }, []);
+    const queryClient = useQueryClient();
 
     const [modals, setModals] = useState<
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
         | undefined
     >(undefined);
 
-    const [loading, setLoading] = useState<boolean>(true);
-    const [params, setParams] = useState<GetParams>(bParams);
-
-    const [stationRoles, setStationRoles] = useState<StationStatus[]>([]);
     const [stationRole, setStationRole] = useState<StationStatus | undefined>(
         undefined,
     );
 
+    const [params, setParams] = useState<GetParams>({
+        limit: 5,
+        offset: 0,
+    });
+
     const [activePage, setActivePage] = useState<number>(1);
-    const [pages, setPages] = useState<number>(0);
     const PAGES_TO_SHOW = 2;
-    const REGISTERS_PER_PAGE = 5; // Es el mismo que params.limit
 
-    const getStationRoles = async () => {
-        try {
-            setLoading(true);
-            const res = await getStationRolesService<StationStatusServiceData>(
-                api,
-                params,
-            );
-            setStationRoles(res.data);
-            if (bParams.limit) {
-                setPages(Math.ceil(res.total_count / bParams.limit));
-            }
-            res.data && res.data.length === 0 && handlePage(1);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const {
+        roles: stationRoles,
+        rolesTotal,
+        rolesIsFetching,
+        isLoading: loading,
+    } = useMetadata(api, {}, params);
 
-    const paginateMonuments = async (newParams: GetParams) => {
-        try {
-            setLoading(true);
-            const res = await getStationRolesService<StationStatusServiceData>(
-                api,
-                newParams,
-            );
-            setStationRoles(res.data);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
+    const pages = useMemo(() => {
+        if (rolesTotal && params.limit) {
+            return Math.ceil(rolesTotal / params.limit);
         }
-    };
+        return 0;
+    }, [rolesTotal, params.limit]);
+
+    useEffect(() => {
+        if (!loading && !rolesIsFetching && stationRoles && stationRoles.length === 0 && activePage > 1) {
+            handlePage(activePage - 1);
+        }
+    }, [stationRoles, activePage, loading, rolesIsFetching]); // eslint-disable-line
 
     const handlePage = (page: number) => {
-        if (page < 1 || page > pages) return;
-        let newParams;
-        if (page === 1) {
-            newParams = {
-                ...params,
-                limit: REGISTERS_PER_PAGE * 1,
-                offset: REGISTERS_PER_PAGE * (page - 1),
-            };
-        } else {
-            newParams = {
-                ...params,
-                limit: REGISTERS_PER_PAGE,
-                offset: REGISTERS_PER_PAGE * (page - 1),
-            };
-        }
-
-        setParams(newParams);
         setActivePage(page);
-        paginateMonuments(newParams);
+        setParams((prev) => ({
+            ...prev,
+            offset: (page - 1) * (params.limit || 5),
+        }));
     };
 
     const reFetch = () => {
-        getStationRoles();
+        queryClient.invalidateQueries({
+            queryKey: ["metadata", "stationRoles"],
+        });
     };
-
-    useEffect(() => {
-        getStationRoles();
-    }, []); // eslint-disable-line
 
     const titles = ["Name"];
 

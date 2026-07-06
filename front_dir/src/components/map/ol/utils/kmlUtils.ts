@@ -3,10 +3,15 @@ import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
 import Feature from "ol/Feature";
 import Icon from "ol/style/Icon";
+
 import { Fill, Stroke, Style } from "ol/style";
+
 import JSZip from "jszip";
 import { kml } from "@tmcw/togeojson";
+
+import star from "@assets/images/star.png";
 import { hexToRgba } from "./coordinateUtils";
+
 import type { Geometry } from "ol/geom";
 
 export type KmlLayerOptions = {
@@ -53,9 +58,7 @@ export const parseKmlFromBase64 = async (
 };
 
 const createKmlPointStyle = (properties: Record<string, unknown>): Style => {
-    const iconUrlVal =
-        (properties.icon as string) ||
-        "https://maps.google.com/mapfiles/kml/shapes/star.png";
+    const iconUrlVal = (properties.icon as string) || star;
     const iconScale =
         properties["icon-scale"] !== undefined
             ? parseFloat(properties["icon-scale"] as string)
@@ -75,10 +78,10 @@ const createKmlPointStyle = (properties: Record<string, unknown>): Style => {
                 src: iconUrlVal,
                 scale: scaledSize / 64,
                 opacity: iconOpacity,
-                anchor: [0.5, 0.5],
                 crossOrigin: "anonymous",
                 color: iconColor.startsWith("#") ? iconColor : undefined,
             }),
+            zIndex: 10,
         });
     }
 
@@ -87,9 +90,9 @@ const createKmlPointStyle = (properties: Record<string, unknown>): Style => {
             src: iconUrlVal,
             scale: scaledSize / 32,
             opacity: iconOpacity,
-            anchor: [0.5, 0.5],
             crossOrigin: "anonymous",
         }),
+        zIndex: 10,
     });
 };
 
@@ -123,6 +126,7 @@ const createKmlPolygonStyle = (properties: Record<string, unknown>): Style => {
     return new Style({
         stroke: new Stroke({ color: strokeRGBA, width: strokeWidth }),
         fill: new Fill({ color: fillRGBA }),
+        zIndex: 1,
     });
 };
 
@@ -138,6 +142,7 @@ const createKmlLineStyle = (properties: Record<string, unknown>): Style => {
 
     return new Style({
         stroke: new Stroke({ color: strokeRGBA, width: 2 }),
+        zIndex: 2,
     });
 };
 
@@ -161,24 +166,38 @@ export const createKmlLayer = (
             const geometry = feature.getGeometry();
             const properties = feature.getProperties();
             const type = geometry?.getType();
+            const customColor = feature.get("customColor") as
+                | string
+                | undefined;
+            const activeColor = customColor || defaultColor;
 
             if (type === "Polygon" || type === "MultiPolygon") {
-                if (defaultColor) {
+                if (activeColor) {
+                    const fill = activeColor.includes("rgba")
+                        ? activeColor.replace(/[\d.]+\)$/g, "0.2)")
+                        : activeColor
+                              .replace("rgb", "rgba")
+                              .replace(")", ", 0.2)");
                     return new Style({
-                        stroke: new Stroke({ color: defaultColor, width: 2 }),
-                        fill: new Fill({
-                            color: defaultColor
-                                .replace("rgb", "rgba")
-                                .replace(")", ", 0.2)"),
-                        }),
+                        stroke: new Stroke({ color: activeColor, width: 2 }),
+                        fill: new Fill({ color: fill }),
+                        zIndex: 1,
                     });
+                }
+                const featureStyle =
+                    feature instanceof Feature
+                        ? (feature as any).getStyle()
+                        : null;
+                if (featureStyle && typeof featureStyle !== "function") {
+                    return featureStyle as Style;
                 }
                 return createKmlPolygonStyle(properties);
             }
             if (type === "LineString" || type === "MultiLineString") {
-                if (defaultColor) {
+                if (activeColor) {
                     return new Style({
-                        stroke: new Stroke({ color: defaultColor, width: 2 }),
+                        stroke: new Stroke({ color: activeColor, width: 2 }),
+                        zIndex: 2,
                     });
                 }
                 return createKmlLineStyle(properties);

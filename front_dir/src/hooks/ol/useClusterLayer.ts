@@ -226,6 +226,12 @@ export const useClusterLayer = ({
                 const member = clusterMembers[i];
                 const pos = positions[i];
 
+                const origStyle = member.getStyle() as Style;
+                // If station is hidden (empty style), skip it entirely
+                if (!origStyle || !origStyle.getImage()) {
+                    continue;
+                }
+
                 // Leg line
                 const leg = new Feature<Geometry>({
                     geometry: new LineString([center, center]),
@@ -243,22 +249,17 @@ export const useClusterLayer = ({
                     spiderfyPos: pos,
                 });
 
-                const origStyle = member.getStyle() as Style;
-                if (origStyle) {
-                    const origIcon = origStyle.getImage() as Icon;
-                    stationFeat.setStyle(
-                        new Style({
-                            image: origIcon
-                                ? new Icon({
-                                      src: origIcon.getSrc() ?? "",
-                                      scale: origIcon.getScale() as number,
-                                      //   anchor: [0.5, 0.5],
-                                      crossOrigin: "anonymous",
-                                  })
-                                : undefined,
+                const origIcon = origStyle.getImage() as Icon;
+                stationFeat.setStyle(
+                    new Style({
+                        image: new Icon({
+                            src: origIcon.getSrc() ?? "",
+                            scale: origIcon.getScale() as number,
+                            opacity: origIcon.getOpacity(), // Copy opacity (for grayed-out effect)
+                            crossOrigin: "anonymous",
                         }),
-                    );
-                }
+                    }),
+                );
                 spiderFeatures.push(stationFeat);
             }
 

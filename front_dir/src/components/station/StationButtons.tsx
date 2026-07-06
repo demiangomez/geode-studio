@@ -9,12 +9,7 @@ import {
 } from "@heroicons/react/24/outline";
 
 import { hasDifferences } from "@utils";
-import {
-    Errors,
-    StationData,
-    StationMetadataServiceData,
-    StationVisitsData,
-} from "@types";
+import { Errors, StationData } from "@types";
 
 interface Props {
     functions: {
@@ -24,10 +19,6 @@ interface Props {
                 msg: string;
                 errors?: Errors;
             }>
-        >;
-        setLoadPdf: React.Dispatch<React.SetStateAction<boolean>>;
-        setLoadedPdfData: React.Dispatch<
-            React.SetStateAction<boolean | undefined>
         >;
         getButtonClasses: () => string;
         getKmzBalloon: () => void;
@@ -47,13 +38,7 @@ interface Props {
         station: StationData | undefined;
         reLoading: boolean;
         reStation: StationData | undefined;
-        stationMeta: StationMetadataServiceData | undefined;
-        visits: StationVisitsData[] | undefined;
-        loadPdf: boolean;
-        loadedMap: boolean | undefined;
         errorMessages: string[];
-        stationLocationScreen: string;
-        stationLocationDetailScreen: string;
     };
 }
 
@@ -64,26 +49,13 @@ const StationButtons = ({ functions, constants }: Props) => {
 
     const {
         setMessage,
-        setLoadPdf,
-        setLoadedPdfData,
         getButtonClasses,
         getKmzBalloon,
         getReStation,
         setModals,
     } = functions;
 
-    const {
-        station,
-        reLoading,
-        reStation,
-        stationMeta,
-        visits,
-        loadPdf,
-        loadedMap,
-        errorMessages,
-        stationLocationScreen,
-        stationLocationDetailScreen,
-    } = constants;
+    const { station, reLoading, reStation, errorMessages } = constants;
 
     const definitiveStation =
         station && reStation && hasDifferences(station, reStation)
@@ -96,18 +68,7 @@ const StationButtons = ({ functions, constants }: Props) => {
                 <>
                     <PdfContainer
                         station={definitiveStation}
-                        stationMeta={stationMeta}
-                        visits={visits}
-                        loadPdf={loadPdf}
-                        stationLocationScreen={stationLocationScreen}
-                        stationLocationDetailScreen={
-                            stationLocationDetailScreen
-                        }
-                        loadedMap={loadedMap}
-                        // loadPdfdata={loadPdfData}
                         setMessage={setMessage}
-                        setLoadPdf={setLoadPdf}
-                        setLoadedPdfData={setLoadedPdfData}
                     />
                     <button
                         className={

@@ -6,77 +6,69 @@ import {
     StationStatusModal,
 } from "@componentsReact";
 
+import { useQueryClient } from "@tanstack/react-query";
+
 import { useAuth, useApi } from "@hooks";
 import { showModal } from "@utils";
 
+import { useMetadata } from "@hooks/queries";
+
+import { getStationStatusColorsService } from "@services";
+
 import {
-    getStationStatusService,
-    getStationStatusColorsService,
-} from "@services";
-import {
-    GetParams,
     StationStatusData,
-    StationStatusServiceData,
     ColorServiceData,
     ColorData,
+    GetParams,
 } from "@types";
 
 const StationStatusTable = () => {
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
-
-    const bParams: GetParams = useMemo(() => {
-        return {
-            limit: 5,
-            offset: 0,
-        };
-    }, []);
+    const queryClient = useQueryClient();
 
     const [modals, setModals] = useState<
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
         | undefined
     >(undefined);
 
-    const [stationStatus, setStationStatus] = useState<
-        StationStatusData[] | undefined
-    >(undefined);
     const [status, setStatus] = useState<StationStatusData | undefined>(
         undefined,
     );
 
-    const [loading, setLoading] = useState<boolean>(true);
-    const [params, setParams] = useState<GetParams>(bParams);
+    const [params, setParams] = useState<GetParams>({
+        limit: 5,
+        offset: 0,
+    });
     const [colores, setColores] = useState<ColorData[]>([
         { id: 1, color: "green-icon" },
     ]);
 
     const [activePage, setActivePage] = useState<number>(1);
-    const [pages, setPages] = useState<number>(0);
     const PAGES_TO_SHOW = 2;
-    const REGISTERS_PER_PAGE = 5; // Es el mismo que params.limit
 
-    const getStationStatus = async () => {
-        try {
-            setLoading(true);
-            const res = await getStationStatusService<StationStatusServiceData>(
-                api,
-                params,
-            );
-            setStationStatus(res.data);
-            if (bParams.limit) {
-                setPages(Math.ceil(res.total_count / bParams.limit));
-            }
-            res.data && res.data.length === 0 && handlePage(1);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
+    const {
+        statuses: stationStatus,
+        statusesTotal,
+        statusesIsFetching,
+        isLoading: loading,
+    } = useMetadata(api, {}, params);
+
+    const pages = useMemo(() => {
+        if (statusesTotal && params.limit) {
+            return Math.ceil(statusesTotal / params.limit);
         }
-    };
+        return 0;
+    }, [statusesTotal, params.limit]);
+
+    useEffect(() => {
+        if (!loading && !statusesIsFetching && stationStatus && stationStatus.length === 0 && activePage > 1) {
+            handlePage(activePage - 1);
+        }
+    }, [stationStatus, activePage, loading, statusesIsFetching]); // eslint-disable-line
 
     const getStationsStatusColors = async () => {
         try {
-            setLoading(true);
             const res =
                 await getStationStatusColorsService<ColorServiceData>(api);
             if (res.data) {
@@ -84,46 +76,15 @@ const StationStatusTable = () => {
             }
         } catch (err) {
             console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const paginateStationStatus = async (newParams: GetParams) => {
-        try {
-            setLoading(true);
-            const res = await getStationStatusService<StationStatusServiceData>(
-                api,
-                newParams,
-            );
-            setStationStatus(res.data);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
         }
     };
 
     const handlePage = (page: number) => {
-        if (page < 1 || page > pages) return;
-        let newParams;
-        if (page === 1) {
-            newParams = {
-                ...params,
-                limit: REGISTERS_PER_PAGE * 1,
-                offset: REGISTERS_PER_PAGE * (page - 1),
-            };
-        } else {
-            newParams = {
-                ...params,
-                limit: REGISTERS_PER_PAGE,
-                offset: REGISTERS_PER_PAGE * (page - 1),
-            };
-        }
-
-        setParams(newParams);
         setActivePage(page);
-        paginateStationStatus(newParams);
+        setParams((prev) => ({
+            ...prev,
+            offset: (page - 1) * (params.limit || 5),
+        }));
     };
 
     const titles = ["Name", "Color"];
@@ -133,19 +94,19 @@ const StationStatusTable = () => {
             ?.sort((a, b) => a.name.localeCompare(b.name))
             .map((st) =>
                 Object.values({
-                    // id: monument.id,
                     name: st.name,
-                    color_name: st.color_name,
+                    color_name: st.color,
                 }),
             );
     }, [stationStatus]);
 
     const reFetch = () => {
-        getStationStatus();
+        queryClient.invalidateQueries({
+            queryKey: ["metadata", "stationStatuses"],
+        });
     };
 
     useEffect(() => {
-        getStationStatus();
         getStationsStatusColors();
     }, []); // eslint-disable-line
 

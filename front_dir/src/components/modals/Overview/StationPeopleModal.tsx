@@ -13,7 +13,7 @@ import {
     patchPeopleService,
     postPeopleService,
 } from "@services";
-import { useAuth, useApi, useFormReducer } from "@hooks";
+import { useAuth, useApi, useClickOutside, useFormReducer } from "@hooks";
 import { apiOkStatuses, showModal } from "@utils";
 import {
     Errors,
@@ -76,6 +76,7 @@ const StationPeopleModal = ({
               msg: string;
               errors?: Errors;
               rinex_other_errors?: { [key: string]: string[] } | undefined;
+              scope?: "form" | "action";
           }
         | undefined
     >(undefined);
@@ -87,11 +88,16 @@ const StationPeopleModal = ({
         | undefined
     >(undefined);
 
+    const isSuccess = apiOkStatuses.includes(Number(msg?.status));
+
     const [checks, setChecks] = useState<{ photo: boolean }>({ photo: false });
 
     const [showMenu, setShowMenu] = useState<
         { type: string; show: boolean } | undefined
     >(undefined);
+
+    const openMenuRef = useRef<HTMLDivElement>(null);
+    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
 
     const { formState, dispatch } = useFormReducer({
         id: "",
@@ -158,11 +164,13 @@ const StationPeopleModal = ({
                     status: res.statusCode,
                     msg: res.response.type,
                     errors: res.response,
+                    scope: "form",
                 });
             } else {
                 setMsg({
                     status: res.statusCode,
                     msg: "Person added successfully",
+                    scope: "form",
                 });
             }
         } catch (err) {
@@ -210,11 +218,13 @@ const StationPeopleModal = ({
                     status: res.statusCode,
                     msg: res.response.type,
                     errors: res.response,
+                    scope: "form",
                 });
             } else {
                 setMsg({
                     status: res.statusCode,
                     msg: "Person edited successfully",
+                    scope: "form",
                 });
             }
         } catch (err) {
@@ -236,12 +246,14 @@ const StationPeopleModal = ({
                 setMsg({
                     status: res.statusCode,
                     msg: res.msg,
+                    scope: "action",
                 });
             } else {
                 setMsg({
                     status: res.statusCode,
                     msg: res.response.type,
                     errors: res.response,
+                    scope: "action",
                 });
             }
         } catch (err) {
@@ -366,7 +378,15 @@ const StationPeopleModal = ({
                             !!duplicateError &&
                             (key === "first_name" || key === "last_name");
                         return (
-                            <div className="flex flex-col" key={key + index}>
+                            <div
+                                className="flex flex-col"
+                                key={key + index}
+                                ref={
+                                    showMenu?.show && showMenu.type === key
+                                        ? openMenuRef
+                                        : undefined
+                                }
+                            >
                                 {key === "photo_actual_file" ? (
                                     <div className="flex gap-2 items-center w-full">
                                         <input
@@ -529,7 +549,7 @@ const StationPeopleModal = ({
                         );
                     })}
                 </div>
-                <Alert msg={msg} />
+                {msg?.scope !== "action" && <Alert msg={msg} />}
 
                 {loading && (
                     <div className="w-full text-center">
@@ -541,17 +561,15 @@ const StationPeopleModal = ({
                         <button
                             className="btn btn-error w-5/12"
                             type="button"
-                            disabled={
-                                apiOkStatuses.includes(Number(msg?.status)) ||
-                                loading
-                            }
-                            onClick={() =>
+                            disabled={isSuccess || loading}
+                            onClick={() => {
+                                setMsg(undefined);
                                 setModals({
                                     show: true,
                                     title: "ConfirmDelete",
                                     type: "edit",
-                                })
-                            }
+                                });
+                            }}
                         >
                             Remove
                         </button>
@@ -559,10 +577,7 @@ const StationPeopleModal = ({
                     <button
                         type="submit"
                         className="btn btn-success w-5/12"
-                        disabled={
-                            apiOkStatuses.includes(Number(msg?.status)) ||
-                            loading
-                        }
+                        disabled={isSuccess || loading}
                     >
                         Submit
                     </button>
@@ -574,11 +589,8 @@ const StationPeopleModal = ({
                     loading={loading}
                     confirmRemove={() => delPerson()}
                     closeModal={() => {
-                        setModals({
-                            show: false,
-                            title: "",
-                            type: "edit",
-                        });
+                        setModals(undefined);
+                        if (isSuccess) handleCloseModal();
                     }}
                 />
             )}

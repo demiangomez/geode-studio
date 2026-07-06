@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Alert, Menu, MenuButton, MenuContent, Modal } from "@componentsReact";
 
-import { useApi, useAuth, useFormReducer } from "@hooks";
+import { useApi, useAuth, useClickOutside, useFormReducer } from "@hooks";
 import { patchStationVisitService } from "@services";
 
 import { ErrorResponse, Errors, People as PeopleType } from "@types";
 import { apiOkStatuses } from "@utils/index";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Props {
     people: PeopleType[];
@@ -39,6 +39,9 @@ const AddPeopleModal = ({ people, visit, reFetch, setStateModal }: Props) => {
     const [showMenu, setShowMenu] = useState<
         { type: string; show: boolean } | undefined
     >(undefined);
+
+    const openMenuRef = useRef<HTMLDivElement>(null);
+    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
 
     const { formState, dispatch } = useFormReducer(visit);
 
@@ -170,7 +173,14 @@ const AddPeopleModal = ({ people, visit, reFetch, setStateModal }: Props) => {
                 </h3>
             </div>
             <form className="form-control space-y-4" onSubmit={handleSubmit}>
-                <div className="form-control space-y-2">
+                <div
+                    className="form-control space-y-2"
+                    ref={
+                        showMenu?.show && showMenu.type === "name"
+                            ? openMenuRef
+                            : undefined
+                    }
+                >
                     <>
                         <label
                             className={`w-full input input-bordered flex items-center gap-2 ${errorBadge?.includes("people") ? "input-error" : ""}`}

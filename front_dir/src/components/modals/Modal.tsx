@@ -76,6 +76,15 @@ const Modal = ({
                 )}
                 {children}
             </div>
+            {/* Mount point para popups (p.ej. el calendario de react-datepicker):
+                deben escapar el overflow + transform del .modal-box (que los recorta y
+                scrollea) pero seguir dentro del <dialog> para verse en el top layer.
+                position:absolute (fuera del grid de .modal) → el modal-box no se mueve
+                al abrir el popup; el calendario se posiciona solo (floating-ui). */}
+            <div
+                id={modalId + "-dp-portal"}
+                className="absolute left-0 top-0"
+            />
             {!close && (
                 <form method="dialog" className="modal-backdrop ">
                     <button

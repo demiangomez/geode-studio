@@ -12,91 +12,83 @@ import { StationData } from "@types";
 export const CLUSTER_MAX_ZOOM = 10;
 export const CLUSTER_MIN_DISTANCE = 7;
 
+// 1. Caché globales
+const clusterStyleCache = new Map<number, Style>(); // Clave: tamaño del cluster y si tiene problemas
+
+// Estilo base por defecto instanciado UNA sola vez
+const CAUTION_STYLE = new Style({
+    image: new Icon({
+        src: caution,
+        scale: 0.6,
+    }),
+});
+
 export const clusterMemberStyle = (clusterMember: Feature<Geometry>): Style => {
     const existingStyle = clusterMember.getStyle();
     if (existingStyle) {
-        return new Style({
-            geometry: clusterMember.getGeometry(),
-            image: (existingStyle as Style).getImage() ?? undefined,
-        });
+        return existingStyle as Style;
     }
-    return new Style({
-        geometry: clusterMember.getGeometry(),
-        image: new Icon({
-            src: caution,
-            scale: 0.6,
-        }),
-    });
+    return CAUTION_STYLE;
 };
 
 export const clusterStyle = (feature: Feature<Geometry>): Style => {
     const size = feature.get("features").length;
-    if (size > 1) {
-        const clusterMembers = feature.get("features");
-        const hasProblems = clusterMembers.some((memberFeature: Feature) => {
-            const station = memberFeature.get("station") as StationData;
-            return station && (!station.has_stationinfo || station.has_gaps);
-        });
-
-        const clusterColor = hasProblems
-            ? "rgba(255, 59, 48, 0.85)"
-            : "rgba(52, 199, 89, 0.85)";
-
-        return new Style({
-            image: new CircleStyle({
-                radius: 15,
-                fill: new Fill({ color: clusterColor }),
-                stroke: new Stroke({
-                    color: "rgba(255, 255, 255, 0.8)",
-                    width: 2,
-                }),
-            }),
-            text: new Text({
-                text: size.toString(),
-                fill: new Fill({ color: "#fff" }),
-                stroke: new Stroke({
-                    color: "rgba(0,0,0,0.2)",
-                    width: 1,
-                }),
-                font: "bold 16px Arial",
-                textAlign: "center",
-                textBaseline: "middle",
-                offsetY: 0,
-            }),
-        });
+    if (size === 1) {
+        return clusterMemberStyle(feature.get("features")[0]);
     }
 
-    const individualFeature = feature.get("features")[0];
-    const existingStyle = individualFeature.getStyle();
-    if (existingStyle) {
-        return existingStyle as Style;
+    const clusterMembers = feature.get("features");
+    const hasProblems = clusterMembers.some((memberFeature: Feature) => {
+        const station = memberFeature.get("station") as StationData;
+        return station && (!station.has_stationinfo || station.has_gaps);
+    });
+
+    const cacheKey = size * (hasProblems ? -1 : 1);
+
+    if (clusterStyleCache.has(cacheKey)) {
+        return clusterStyleCache.get(cacheKey)!;
     }
-    return new Style({
-        image: new Icon({
-            src: caution,
-            scale: 0.6,
+
+    const clusterColor = hasProblems
+        ? "rgba(255, 59, 48, 0.85)"
+        : "rgba(52, 199, 89, 0.85)";
+
+    const newClusterStyle = new Style({
+        image: new CircleStyle({
+            radius: 15,
+            fill: new Fill({ color: clusterColor }),
+            stroke: new Stroke({
+                color: "rgba(255, 255, 255, 0.8)",
+                width: 2,
+            }),
+        }),
+        text: new Text({
+            text: size.toString(),
+            fill: new Fill({ color: "#fff" }),
+            stroke: new Stroke({
+                color: "rgba(0,0,0,0.2)",
+                width: 1,
+            }),
+            font: "bold 16px Arial",
+            textAlign: "center",
+            textBaseline: "middle",
+            offsetY: 0,
         }),
     });
+
+    clusterStyleCache.set(cacheKey, newClusterStyle);
+    return newClusterStyle;
 };
 
-export const earthquakeStyle = new Style({
-    image: new Icon({
-        src: star,
-        scale: 0.4,
-        anchor: [0.5, 0.5],
-        crossOrigin: "anonymous",
-    }),
-});
-
 export const earthquakeSelectedStyle = (
-    _size: [number, number],
-    colorClass: string,
+    isChosen: boolean,
+    scale?: number,
 ): Style => {
-    const isSelected = colorClass === "light-red-icon";
+    const iconScale = (scale ?? isChosen) ? 0.55 : 0.4;
     return new Style({
         image: new Icon({
             src: star,
-            scale: isSelected ? 0.55 : 0.4,
+            scale: iconScale,
             crossOrigin: "anonymous",
         }),
     });
@@ -111,12 +103,7 @@ export const clusterStyleFn = (feature: Feature<Geometry>): Style | void => {
     if (members.length === 1) {
         const existing = members[0].getStyle();
         if (existing) return existing as Style;
-        return new Style({
-            image: new Icon({
-                src: caution,
-                scale: 0.6,
-            }),
-        });
+        return CAUTION_STYLE;
     }
 
     const hasProblems = members.some((f) => {
@@ -124,11 +111,17 @@ export const clusterStyleFn = (feature: Feature<Geometry>): Style | void => {
         return s && (!s.has_stationinfo || s.has_gaps);
     });
 
+    const cacheKey = members.length * (hasProblems ? -1 : 1);
+
+    if (clusterStyleCache.has(cacheKey)) {
+        return clusterStyleCache.get(cacheKey)!;
+    }
+
     const clusterColor = hasProblems
         ? "rgba(255, 59, 48, 0.85)"
         : "rgba(52, 199, 89, 0.85)";
 
-    return new Style({
+    const newClusterStyle = new Style({
         image: new CircleStyle({
             radius: 15,
             fill: new Fill({ color: clusterColor }),
@@ -145,6 +138,9 @@ export const clusterStyleFn = (feature: Feature<Geometry>): Style | void => {
             textBaseline: "middle",
         }),
     });
+
+    clusterStyleCache.set(cacheKey, newClusterStyle);
+    return newClusterStyle;
 };
 
 export const createClusterHoverStyle = (

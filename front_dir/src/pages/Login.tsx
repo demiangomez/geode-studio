@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Toast, Modal } from "@componentsReact";
+import Modal from "@components/modals/Modal";
+import Toast from "@components/Message";
 import { AxiosError } from "axios";
 
 import osupng from "@assets/images/logo-osu-01.png";

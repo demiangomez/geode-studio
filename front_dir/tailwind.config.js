@@ -24,6 +24,9 @@ export default {
     ],
     theme: {
         extend: {
+            fontFamily: {
+                montserrat: ["Montserrat", "sans-serif"],
+            },
             margin: {
                 sidebar: "18rem",
                 nosidebar: "8rem",

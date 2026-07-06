@@ -1,4 +1,38 @@
-import { FilterState, GapData, StationData, TokenPayload } from "@types";
+import {
+    FilterState,
+    GapData,
+    StationData,
+    TokenPayload,
+    EarthquakeData,
+    EarthQuakeFormState,
+} from "@types";
+
+export * from "./lazyRetry";
+export * from "./coordinateConversion";
+
+export const downloadFromBase64 = (
+    base64: string,
+    filename: string,
+    mimeType = "application/octet-stream",
+) => {
+    const link = document.createElement("a");
+    link.href = `data:${mimeType};base64,${base64}`;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
+export const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+};
 
 export const modalSizes = {
     sm: "500px",
@@ -14,6 +48,18 @@ export const apiMethods = ["get", "post", "put", "patch", "delete"];
 export const apiOkStatuses = [200, 201, 204];
 
 export const apiErrorStatuses = [400, 401, 403, 404, 405, 406, 415, 500];
+
+export const validateCatalogFields = (
+    formState: Record<string, any>,
+    catalogs: Record<string, string[]>,
+): { code: string; attr: string; detail: string }[] =>
+    Object.entries(catalogs).flatMap(([attr, codes]) => {
+        const value = String(formState[attr] ?? "").trim();
+        if (value === "" || codes.includes(value)) return [];
+        return [
+            { code: "invalid", attr, detail: "Select a value from the list" },
+        ];
+    });
 
 export const findLimits = (coordinates: any) => {
     const longitudes = coordinates.map((coordinate: any) => coordinate[1]);
@@ -81,6 +127,13 @@ export const datesFormatOpt: Intl.DateTimeFormatOptions = {
     timeZone: "UTC",
 };
 
+export const datesFormatOptShort: Intl.DateTimeFormatOptions = {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+};
+
 export const getRandomColor = (index: number) => {
     const chosenColor = possibleColors[index];
     return chosenColor;
@@ -97,12 +150,15 @@ export const possibleColors = [
     "#631d76",
 ];
 
-export const formattedDates = (date: Date | string | undefined) => {
+export const formattedDates = (
+    date: Date | string | undefined,
+    short: boolean = false,
+) => {
     if (!date) return;
 
     const formattedDate = new Intl.DateTimeFormat(
         "en-US",
-        datesFormatOpt,
+        short ? datesFormatOptShort : datesFormatOpt,
     ).format(new Date(date));
     return formattedDate;
 };
@@ -112,17 +168,6 @@ export const adjustToLocalTimezone = (dateString: string) => {
     const timezoneOffset = localDate.getTimezoneOffset();
     const adjustedDate = new Date(localDate.getTime() + timezoneOffset * 60000);
     return adjustedDate;
-};
-
-export const validateFields = (
-    object: Record<string, string | number | boolean | null>,
-) => {
-    for (const i in object) {
-        if (object[i] === "" || object[i] === null || object[i] === undefined) {
-            return false;
-        }
-    }
-    return true;
 };
 
 export const isValidNumber = (num: string) => {
@@ -237,6 +282,123 @@ export const dayFromDate = (date: Date | string) => {
     //           ) + 1
     //         : dayOfYear
     // }`;
+};
+
+/**
+ * Converts a JavaScript Date to a fractional year number.
+ * e.g. 2021-01-01 → 2021.0, 2021-07-02 → ~2021.499
+ * This matches the format used in StationData.date_start / date_end.
+ */
+export const dateToFractionalYear = (date: Date): number => {
+    const year = date.getUTCFullYear();
+    const startOfYear = Date.UTC(year, 0, 1);
+    const startOfNextYear = Date.UTC(year + 1, 0, 1);
+    const daysInYear = (startOfNextYear - startOfYear) / 86400000;
+    const dayOfYear = (date.getTime() - startOfYear) / 86400000 + 1;
+    return year + (dayOfYear - 1) / daysInYear;
+};
+
+/**
+ * Clamps a fractional year value within global bounds and relative range bounds.
+ * @param val The value to clamp (fractional year)
+ * @param isStart Whether this is the start or end of the range
+ * @param min Global minimum
+ * @param max Global maximum
+ * @param other Boundary from the other side of the range (start or end)
+ */
+export const clampDateRange = (
+    val: number,
+    isStart: boolean,
+    min: number,
+    max: number,
+    other: number,
+): { val: number; wasClamped: boolean } => {
+    let clampedVal = val;
+    let wasClamped = false;
+
+    if (clampedVal < min) {
+        clampedVal = min;
+        wasClamped = true;
+    }
+    if (clampedVal > max) {
+        clampedVal = max;
+        wasClamped = true;
+    }
+
+    if (isStart && clampedVal > other) {
+        clampedVal = other;
+        wasClamped = true;
+    } else if (!isStart && clampedVal < other) {
+        clampedVal = other;
+        wasClamped = true;
+    }
+
+    return { val: clampedVal, wasClamped };
+};
+
+/**
+ * Converts a fractional year number back to a JavaScript Date.
+ * e.g. 2021.5 → approx 2021-07-02
+ */
+export const fractionalYearToDate = (fy: number): Date => {
+    const year = Math.floor(fy);
+    const startOfYear = Date.UTC(year, 0, 1);
+    const startOfNextYear = Date.UTC(year + 1, 0, 1);
+    const daysInYear = (startOfNextYear - startOfYear) / 86400000;
+    const dayOffset = (fy - year) * daysInYear;
+    // Redondear al ms más cercano: new Date(float) trunca hacia cero y el error
+    // de coma flotante del round-trip restaba hasta 1ms, bajando un segundo entero.
+    return new Date(Math.round(startOfYear + dayOffset * 86400000));
+};
+
+export const getTemporalBounds = (stations: StationData[] | undefined) => {
+    const nowFractional = dateToFractionalYear(new Date());
+    let minYear = nowFractional - 20;
+    let maxYear = nowFractional;
+
+    if (stations && stations.length > 0) {
+        const starts = stations
+            .map((s) => s.date_start)
+            .filter((d): d is number => !!d && d > 0);
+        const ends = stations
+            .map((s) => s.date_end)
+            .filter((d): d is number => !!d && d > 0);
+        const all = [...starts, ...ends];
+        if (all.length > 0) {
+            minYear = Math.min(...all);
+            maxYear = Math.max(Math.max(...all), nowFractional);
+        }
+    }
+    return { minYear, maxYear };
+};
+
+/**
+ * Returns true if a station has data within the given temporal window.
+ * Rules:
+ *  - Basta con que alguna datestart o dateend esta dentro del rango de fechas para que aparezca
+ *  */
+export const isStationInTemporalWindow = (
+    station: StationData,
+    windowStart: number | null,
+    windowEnd: number | null,
+): boolean => {
+    const sStart = station.date_start;
+    const sEnd = station.date_end;
+
+    if (windowStart !== null && windowEnd !== null) {
+        return (
+            sStart !== null &&
+            sStart <= windowEnd &&
+            sEnd !== null &&
+            sEnd >= windowStart
+        );
+    } else if (windowEnd !== null) {
+        return sStart !== null && sStart <= windowEnd;
+    } else if (windowStart !== null) {
+        return sEnd !== null && sEnd >= windowStart;
+    }
+
+    return true; // no window specified
 };
 
 export const isStationFiltered = (
@@ -392,6 +554,84 @@ export const isStationFiltered = (
     }
 };
 
+export const handleEarthquakeLimits = (
+    earthquake: EarthquakeData,
+    formState: EarthQuakeFormState,
+) => {
+    const { max_lattitude, min_lattitude, max_longitude, min_longitude } = {
+        max_lattitude: Number(formState.max_latitude),
+        min_lattitude: Number(formState.min_latitude),
+        max_longitude: Number(formState.max_longitude),
+        min_longitude: Number(formState.min_longitude),
+    };
+
+    if (max_lattitude && min_lattitude && max_longitude && min_longitude) {
+        return (
+            earthquake.lat <= max_lattitude &&
+            earthquake.lat >= min_lattitude &&
+            earthquake.lon <= max_longitude &&
+            earthquake.lon >= min_longitude
+        );
+    } else if (max_lattitude && min_lattitude && max_longitude) {
+        return (
+            earthquake.lat <= max_lattitude &&
+            earthquake.lat >= min_lattitude &&
+            earthquake.lon <= max_longitude
+        );
+    } else if (max_lattitude && min_lattitude && min_longitude) {
+        return (
+            earthquake.lat <= max_lattitude &&
+            earthquake.lat >= min_lattitude &&
+            earthquake.lon >= min_longitude
+        );
+    } else if (max_lattitude && max_longitude && min_longitude) {
+        return (
+            earthquake.lat <= max_lattitude &&
+            earthquake.lon <= max_longitude &&
+            earthquake.lon >= min_longitude
+        );
+    } else if (min_lattitude && max_longitude && min_longitude) {
+        return (
+            earthquake.lat >= min_lattitude &&
+            earthquake.lon <= max_longitude &&
+            earthquake.lon >= min_longitude
+        );
+    } else if (max_lattitude && min_lattitude) {
+        return (
+            earthquake.lat <= max_lattitude && earthquake.lat >= min_lattitude
+        );
+    } else if (max_longitude && min_longitude) {
+        return (
+            earthquake.lon <= max_longitude && earthquake.lon >= min_longitude
+        );
+    } else if (max_lattitude && max_longitude) {
+        return (
+            earthquake.lat <= max_lattitude && earthquake.lon <= max_longitude
+        );
+    } else if (max_lattitude && min_longitude) {
+        return (
+            earthquake.lat <= max_lattitude && earthquake.lon >= min_longitude
+        );
+    } else if (min_lattitude && max_longitude) {
+        return (
+            earthquake.lat >= min_lattitude && earthquake.lon <= max_longitude
+        );
+    } else if (min_lattitude && min_longitude) {
+        return (
+            earthquake.lat >= min_lattitude && earthquake.lon >= min_longitude
+        );
+    } else if (max_lattitude) {
+        return earthquake.lat <= max_lattitude;
+    } else if (min_lattitude) {
+        return earthquake.lat >= min_lattitude;
+    } else if (max_longitude) {
+        return earthquake.lon <= max_longitude;
+    } else if (min_longitude) {
+        return earthquake.lon >= min_longitude;
+    }
+    return false;
+};
+
 export const generateErrorMessages = (station: StationData) => {
     const errorMessages: string[] = [];
 
@@ -513,30 +753,6 @@ export const formatValue = (
         return "-";
     }
 };
-
-export function removeMarkersFromKml(base64Kml: string): string {
-    const decodedXml = atob(base64Kml);
-
-    const parser = new DOMParser();
-
-    const xmlDoc = parser.parseFromString(decodedXml, "application/xml");
-
-    const placemarks = Array.from(xmlDoc.getElementsByTagName("Placemark"));
-
-    placemarks.forEach((placemark) => {
-        if (placemark.getElementsByTagName("Point").length > 0) {
-            placemark.parentNode?.removeChild(placemark);
-        }
-    });
-
-    const serializer = new XMLSerializer();
-
-    const updatedXml = serializer.serializeToString(xmlDoc);
-
-    const base64UpdatedXml = btoa(updatedXml);
-
-    return base64UpdatedXml;
-}
 
 export const rinexMockup = {
     data: [

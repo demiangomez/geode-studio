@@ -31,7 +31,10 @@
             "@services": ["./services/index.ts"],
             "@utils": ["./utils/index.ts"],
             "@types": ["./interfaces/index.d.ts"],
-            "@hooks": ["./hooks/index.ts"]
+            "@hooks": ["./hooks/index.ts"],
+            "@store": ["./store/index.ts"],
+            "@store/*": ["./store/*"],
+            "@queryClient": ["./queryClient.ts"]
         },
         "typeRoots": ["node_modules/@types", "./types", "./src/types"],
 

@@ -18,6 +18,8 @@ export { default as useResize } from "./useResize";
 
 export { default as useFormReducer } from "./useFormReducer";
 
+export { usePageTitle } from "./usePageTitle";
+
 export { default as useFormValidation } from "./useFormValidation";
 
 export { default as useResizeObserver } from "./useResizeObserver";
@@ -28,11 +30,19 @@ export { default as useWaitCursor } from "./useWaitCursor";
 
 export { default as useEscape } from "./useEscape";
 
+export { default as useClickOutside } from "./useClickOutside";
+
 export { default as useDebounce } from "./useDebounce";
+
+export { default as useClipboard } from "./useClipboard";
 
 // OpenLayers hooks
 
 export { useMapInit } from "./ol/useMapInit";
+
+export type { MapLayerState } from "./ol/useMapInit";
+
+export type { MapProjectionState } from "./ol/useMapInit";
 
 export { useStationLayer } from "./ol/useStationLayer";
 
@@ -43,3 +53,5 @@ export { useTooltip } from "./ol/useTooltip";
 export { usePopup as useOlPopup } from "./ol/usePopup";
 
 export { useClusterLayer } from "./ol/useClusterLayer";
+
+export { useCesiumGlobe } from "./ol/useCesiumGlobe";

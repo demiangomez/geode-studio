@@ -7,6 +7,14 @@ types {
     application/javascript                           js mjs;
     application/atom+xml                             atom;
     application/rss+xml                              rss;
+    application/json                                 json;
+    application/wasm                                 wasm;
+
+    # Cesium & 3D Formats
+    model/gltf+json                                  gltf;
+    model/gltf-binary                                glb;
+    application/octet-stream                         b3dm i3dm pnts cmpt terrain;
+    application/vnd.quantized-mesh                   terrain;
 
     text/mathml                                      mml;
     text/plain                                       txt;
@@ -28,7 +36,6 @@ types {
     font/woff2                                       woff2;
 
     application/java-archive                         jar war ear;
-    application/json                                 json;
     application/mac-binhex40                         hqx;
     application/msword                               doc;
     application/pdf                                  pdf;
@@ -51,7 +58,6 @@ types {
     application/vnd.openxmlformats-officedocument.wordprocessingml.document
                                                      docx;
     application/vnd.wap.wmlc                         wmlc;
-    application/wasm                                 wasm;
     application/x-7z-compressed                      7z;
     application/x-cocoa                              cco;
     application/x-java-archive-diff                  jardiff;
