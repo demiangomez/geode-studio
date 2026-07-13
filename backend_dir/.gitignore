@@ -3,3 +3,6 @@ db/.env
 db/venv
 backend/update_gaps_status_client/__pycache__
 .env
+
+# Claude Code local (personal) settings — no versionar
+.claude/settings.local.json

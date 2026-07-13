@@ -205,7 +205,7 @@ class TimeSeriesConfigUtils:
             raise exceptions.CustomValidationErrorExceptionHandler(
                 "'solution' parameter must be one of: " + get_supported_solutions_message() + ".")
 
-        if params["solution"] == "GAMIT":
+        if params["solution"] != "PPP":
             self._get_required_param(request, params, "stack")
 
         return params
@@ -311,16 +311,16 @@ class TimeSeriesConfigUtils:
 
             solution_type = get_solution_type(solution)
 
-            if solution_type == SolutionType.GAMIT:
+            if solution_type == SolutionType.PPP:
+                solution_options = SolutionOptions(
+                    solution_type=solution_type)
+            else:
 
                 if not check_params:
                     params = self._check_one_param(request, "stack", params)
 
                 solution_options = SolutionOptions(
                     solution_type=solution_type, stack_name=params["stack"])
-            else:
-                solution_options = SolutionOptions(
-                    solution_type=solution_type)
 
             config = EtmConfig(network_code=network_code, station_code=station_code,
                                cnn=self.cnn, solution_options=solution_options)

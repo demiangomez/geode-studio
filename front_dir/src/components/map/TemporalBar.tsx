@@ -182,8 +182,6 @@ const dayBoundaryFy = (
 const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
     const temporalFilter = useMapStore((s) => s.temporalFilter);
     const setTemporalFilter = useMapStore((s) => s.setTemporalFilter);
-    const selectedEarthquakes = useMapStore((s) => s.selectedEarthquakes);
-    const isMultiEq = selectedEarthquakes.length > 1;
 
     const [doyMode, setDoyMode] = useState(false);
     const [doyInputStart, setDoyInputStart] = useState("");
@@ -297,39 +295,8 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
     );
 
     const handleToggleEnabled = useCallback(() => {
-        setTemporalFilter((prev) => {
-            if (isMultiEq)
-                return {
-                    ...prev,
-                    enabled: !prev.enabled,
-                };
-
-            const enabled = !prev.enabled;
-
-            let newDateStart = prev.dateStart;
-            let newDateEnd = prev.dateEnd;
-
-            // Initialize on first open if they are null
-            if (enabled && prev.dateStart === null && prev.dateEnd === null) {
-                newDateStart = minYear;
-                newDateEnd = maxYear;
-
-                const ds = fractionalYearToDate(minYear);
-                const de = fractionalYearToDate(maxYear);
-                setSelectedDateStart(ds);
-                setSelectedDateEnd(de);
-                setDoyInputStart(formatDoyInput(ds));
-                setDoyInputEnd(formatDoyInput(de));
-            }
-
-            return {
-                ...prev,
-                enabled,
-                dateStart: newDateStart,
-                dateEnd: newDateEnd,
-            };
-        });
-    }, [setTemporalFilter, minYear, maxYear]);
+        setTemporalFilter((prev) => ({ ...prev, enabled: !prev.enabled }));
+    }, [setTemporalFilter]);
 
     const handleReset = useCallback(() => {
         updateFilter({
@@ -423,8 +390,8 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
                     ? maxYear
                     : minYear
                 : isStart
-                  ? sliderEnd
-                  : sliderStart,
+                    ? sliderEnd
+                    : sliderStart,
         );
 
         const finalDate = fractionalYearToDate(fy);
@@ -469,8 +436,8 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
                         ? maxYear
                         : minYear
                     : isStart
-                      ? sliderEnd
-                      : sliderStart,
+                        ? sliderEnd
+                        : sliderStart,
             );
 
             const finalDate = fractionalYearToDate(fy);
@@ -491,6 +458,19 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
             updateFilter(isStart ? { dateStart: null } : { dateEnd: null });
         }
     };
+
+    const hasActiveFilter =
+        temporalFilter.dateStart !== null ||
+        (!temporalFilter.exactDate && temporalFilter.dateEnd !== null);
+
+    const filterLabel = !hasActiveFilter
+        ? "Temporal Filter"
+        : temporalFilter.exactDate
+          ? formattedDates(
+                fractionalYearToDate(temporalFilter.dateStart ?? minYear),
+                true,
+            )
+          : `${formattedDates(fractionalYearToDate(temporalFilter.dateStart ?? minYear), true)} - ${formattedDates(fractionalYearToDate(temporalFilter.dateEnd ?? maxYear), true)}`;
 
     if (loading && temporalFilter.enabled) {
         return <TemporalBarSkeleton />;
@@ -535,7 +515,7 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
 
             {!temporalFilter.enabled ? (
                 <button
-                    className={`flex items-center gap-2 text-sm font-medium transition-colors ${temporalFilter.dateStart !== null ? "text-[#ED8936]" : "text-gray-300"} cursor-default`}
+                    className={`flex items-center gap-2 text-sm font-medium transition-colors ${hasActiveFilter ? "text-[#ED8936]" : "text-gray-300"} cursor-default`}
                 >
                     <div
                         className={`absolute -top-6 left-1/2 -translate-x-1/2 rounded-t-lg px-6 py-1 transition-colors shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] bg-[#2D3748] cursor-pointer hover:bg-[#4A5568] text-gray-300`}
@@ -544,14 +524,7 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
                     >
                         <ChevronUpIcon className="size-4" />
                     </div>
-                    {temporalFilter.dateStart === null
-                        ? "Temporal Filter"
-                        : temporalFilter.exactDate
-                          ? `${formattedDates(
-                                fractionalYearToDate(temporalFilter.dateStart),
-                                true,
-                            )}`
-                          : `${formattedDates(fractionalYearToDate(temporalFilter.dateStart), true)} - ${formattedDates(fractionalYearToDate(temporalFilter.dateEnd ?? maxYear), true)}`}
+                    {filterLabel}
                 </button>
             ) : (
                 <>
@@ -621,12 +594,12 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
                                             <span>
                                                 {selectedDateStart
                                                     ? formattedDates(
-                                                          selectedDateStart,
-                                                          true,
-                                                      )
+                                                        selectedDateStart,
+                                                        true,
+                                                    )
                                                     : temporalFilter.exactDate
-                                                      ? "Exact Date"
-                                                      : "Start Date"}
+                                                        ? "Exact Date"
+                                                        : "Start Date"}
                                             </span>
                                             <CalendarDateRangeIcon className="size-3.5 flex-shrink-0" />
                                         </button>
@@ -678,9 +651,9 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
                                                 <span>
                                                     {selectedDateEnd
                                                         ? formattedDates(
-                                                              selectedDateEnd,
-                                                              true,
-                                                          )
+                                                            selectedDateEnd,
+                                                            true,
+                                                        )
                                                         : "End Date"}
                                                 </span>
                                                 <CalendarDateRangeIcon className="size-3.5 flex-shrink-0" />
@@ -763,7 +736,7 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
                                             temporalFilter.dateStart !== null &&
                                             temporalFilter.dateEnd !== null &&
                                             temporalFilter.dateStart >
-                                                temporalFilter.dateEnd
+                                            temporalFilter.dateEnd
                                         ) {
                                             updates.dateEnd =
                                                 temporalFilter.dateStart;

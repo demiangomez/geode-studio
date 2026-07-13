@@ -420,7 +420,7 @@ class TimeSeries(CustomListAPIView):
             raise exceptions.CustomValidationErrorExceptionHandler(
                 "'solution' parameter must be one of: " + utils.get_supported_solutions_message() + ".")
 
-        if params["solution"] == "GAMIT":
+        if params["solution"] != "PPP":
             self._get_required_param(request, params, "stack")
 
         return params
@@ -562,11 +562,11 @@ class TimeSeries(CustomListAPIView):
         cnn = dbConnection.Cnn(settings.CONFIG_FILE_ABSOLUTE_PATH)
         try:
             solution_type = utils.get_solution_type(params["solution"])
-            if solution_type == SolutionType.GAMIT:
+            if solution_type == SolutionType.PPP:
+                solution_options = SolutionOptions(solution_type=solution_type)
+            else:
                 solution_options = SolutionOptions(
                     solution_type=solution_type, stack_name=params["stack"])
-            else:
-                solution_options = SolutionOptions(solution_type=solution_type)
 
             config = EtmConfig(network_code=network_code, station_code=station_code,
                                cnn=cnn, solution_options=solution_options)
@@ -721,7 +721,7 @@ class TimeSeriesCoordinates(APIView):
     @extend_schema(
         description="Returns the station position for a given epoch, as ECEF XYZ and "
                     "lat/lon/height, derived from the ETM model (mode_obs=MODEL) or from the "
-                    "observations (mode_obs=OBSERVATION). Requires solution (+stack if GAMIT), "
+                    "observations (mode_obs=OBSERVATION). Requires solution (+stack unless PPP), "
                     "mode_obs and date_format (gregorian -> year/month/day, doy -> year/doy).",
         responses={200: OpenApiResponse(
             description="Object with xyz, lla, source and sigmas")}
@@ -736,7 +736,7 @@ class TimeSeriesCoordinates(APIView):
 
         solution = solution.strip().upper()
 
-        if utils.get_solution_type(solution) == SolutionType.GAMIT:
+        if utils.get_solution_type(solution) != SolutionType.PPP:
             if 'stack' not in request.query_params:
                 raise exceptions.CustomValidationErrorExceptionHandler(
                     "stack parameter is required.")
