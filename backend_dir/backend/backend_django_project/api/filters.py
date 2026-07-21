@@ -34,6 +34,13 @@ class GamitHtcFilter(filters.FilterSet):
         fields = ['antenna_code']
 
 
+class AntennasFilter(filters.FilterSet):
+
+    class Meta:
+        model = models.Antennas
+        fields = ['antenna_code']
+
+
 class RinexFilter(filters.FilterSet):
 
     class Meta:

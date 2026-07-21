@@ -1574,10 +1574,15 @@ export async function getAntennasService<T>(api: AxiosInstance): Promise<T> {
     }
 }
 
-// Radomes
-export async function getRadomesService<T>(api: AxiosInstance): Promise<T> {
+export async function getRadomesService<T>(
+    api: AxiosInstance,
+    params?: GetParams,
+): Promise<T> {
     try {
-        const response = await api.get(`api/distinct-radome-codes`);
+        const paramsArr = params ? transformParams(params) : "";
+        const response = await api.get(
+            `api/distinct-radome-codes${paramsArr.length > 0 ? `?${paramsArr}` : ""}`
+        );
         return response.data as Promise<T>;
     } catch (error) {
         return Promise.reject(error);

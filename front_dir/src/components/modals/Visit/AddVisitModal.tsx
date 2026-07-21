@@ -129,26 +129,28 @@ const AddVisitModal = ({
 
     const inputRefCampaign = useRef<HTMLInputElement>(null);
 
+    const appliedCampaignRef = useRef<string | null>(null);
+
     const inputRefPeople = useRef<HTMLInputElement>(null);
 
     const selectRef = (key: string) => {
         return key === "campaign"
             ? inputRefCampaign
             : key === "people"
-              ? inputRefPeople
-              : null;
+                ? inputRefPeople
+                : null;
     };
 
     const formattedState = {
         ...VISIT_STATE,
         campaign: campaignB
             ? "(" +
-              campaignB?.name +
-              ")" +
-              " " +
-              campaignB?.start_date +
-              " - " +
-              campaignB?.end_date
+            campaignB?.name +
+            ")" +
+            " " +
+            campaignB?.start_date +
+            " - " +
+            campaignB?.end_date
             : "",
         station: String(station?.api_id),
     };
@@ -397,33 +399,35 @@ const AddVisitModal = ({
     }, [showMenu]);
 
     useEffect(() => {
-        if (formState.campaign) {
-            const campaignSelected = campaigns?.find(
-                (campaign) =>
-                    formState.campaign ===
-                    "(" +
-                        campaign.name +
-                        ")" +
-                        " " +
-                        campaign.start_date +
-                        " - " +
-                        campaign.end_date,
-            );
-
-            if (campaignSelected && campaignSelected.default_people) {
-                const peopleIds = campaignSelected.default_people;
-                const selectedPeople = peopleIds
-                    .map((id) => {
-                        return people.find((person) => person.id === id);
-                    })
-                    .filter(
-                        (person): person is PeopleType => person !== undefined,
-                    );
-
-                setPeopleSelected(selectedPeople);
-            }
+        if (!formState.campaign) {
+            appliedCampaignRef.current = null;
+            return;
         }
-    }, [formState, campaigns, people]);
+        if (appliedCampaignRef.current === formState.campaign) return;
+        if (people.length === 0) return;
+
+        const campaignSelected = campaigns?.find(
+            (campaign) =>
+                formState.campaign ===
+                "(" +
+                campaign.name +
+                ")" +
+                " " +
+                campaign.start_date +
+                " - " +
+                campaign.end_date,
+        );
+        if (!campaignSelected) return;
+
+        appliedCampaignRef.current = formState.campaign;
+
+        const selectedPeople = (campaignSelected.default_people ?? [])
+            .map((id) => people.find((person) => person.id === id))
+            .filter((person): person is PeopleType => person !== undefined);
+
+        setPeopleSelected(selectedPeople);
+    }, [formState.campaign, campaigns, people]);
+
 
     return (
         <Modal
@@ -522,10 +526,10 @@ const AddVisitModal = ({
                                                 {optionalFields.includes(
                                                     key,
                                                 ) && (
-                                                    <span className="badge badge-secondary">
-                                                        Optional
-                                                    </span>
-                                                )}
+                                                        <span className="badge badge-secondary">
+                                                            Optional
+                                                        </span>
+                                                    )}
                                             </div>
                                         </div>
                                     ) : key === "comments" ? (
@@ -582,10 +586,10 @@ const AddVisitModal = ({
                                                         )
                                                             ? "date"
                                                             : inputsToFile.includes(
-                                                                    key,
-                                                                )
-                                                              ? "file"
-                                                              : "text"
+                                                                key,
+                                                            )
+                                                                ? "file"
+                                                                : "text"
                                                     }
                                                     ref={selectRef(key)}
                                                     name={key}
@@ -593,8 +597,8 @@ const AddVisitModal = ({
                                                         key === "station"
                                                             ? station?.api_id
                                                             : (formState[
-                                                                  key as keyof typeof formState
-                                                              ] ?? "")
+                                                                key as keyof typeof formState
+                                                            ] ?? "")
                                                     }
                                                     onChange={(e) => {
                                                         handleChange(e.target);
@@ -628,14 +632,14 @@ const AddVisitModal = ({
 
                                                 {(key === "campaign" ||
                                                     key === "people") && (
-                                                    <MenuButton
-                                                        setShowMenu={
-                                                            setShowMenu
-                                                        }
-                                                        showMenu={showMenu}
-                                                        typeKey={key}
-                                                    />
-                                                )}
+                                                        <MenuButton
+                                                            setShowMenu={
+                                                                setShowMenu
+                                                            }
+                                                            showMenu={showMenu}
+                                                            typeKey={key}
+                                                        />
+                                                    )}
 
                                                 {key === "people" && (
                                                     <button
@@ -689,11 +693,11 @@ const AddVisitModal = ({
                                         )}
 
                                     {showMenu?.show &&
-                                    showMenu.type === key &&
-                                    key === "campaign" ? (
+                                        showMenu.type === key &&
+                                        key === "campaign" ? (
                                         <Menu>
                                             {(matchingCampaigns &&
-                                            matchingCampaigns.length > 0
+                                                matchingCampaigns.length > 0
                                                 ? matchingCampaigns
                                                 : campaigns
                                             )?.map((campaign) => (
@@ -723,7 +727,7 @@ const AddVisitModal = ({
                                         key === "people" && (
                                             <Menu>
                                                 {(matchingPeople &&
-                                                matchingPeople.length > 0
+                                                    matchingPeople.length > 0
                                                     ? matchingPeople
                                                     : people
                                                 )?.map((ppl) => {
@@ -781,9 +785,9 @@ const AddVisitModal = ({
                                                                         (
                                                                             prev,
                                                                         ) => [
-                                                                            ...prev,
-                                                                            targetPerson,
-                                                                        ],
+                                                                                ...prev,
+                                                                                targetPerson,
+                                                                            ],
                                                                     );
                                                                 }
                                                             }}
@@ -827,25 +831,25 @@ const AddVisitModal = ({
                             >
                                 {images
                                     ? images?.map((img) => (
-                                          <div
-                                              key={img.id}
-                                              className="flex flex-col items-center break-words pb-2 rounded-md"
-                                          >
-                                              <img
-                                                  src={`data:image/*;base64,${img.actual_image ?? ""}`}
-                                                  alt={img.name}
-                                                  className="size-60 object-cover rounded-md"
-                                              />
-                                              <span className="text-md font-medium mt-2 mx-auto w-auto">
-                                                  {img.name}
-                                              </span>
-                                              {img.description && (
-                                                  <span className="text-sm mt-2 mx-auto w-full">
-                                                      {img.description}
-                                                  </span>
-                                              )}
-                                          </div>
-                                      ))
+                                        <div
+                                            key={img.id}
+                                            className="flex flex-col items-center break-words pb-2 rounded-md"
+                                        >
+                                            <img
+                                                src={`data:image/*;base64,${img.actual_image ?? ""}`}
+                                                alt={img.name}
+                                                className="size-60 object-cover rounded-md"
+                                            />
+                                            <span className="text-md font-medium mt-2 mx-auto w-auto">
+                                                {img.name}
+                                            </span>
+                                            {img.description && (
+                                                <span className="text-sm mt-2 mx-auto w-full">
+                                                    {img.description}
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))
                                     : null}
                             </div>
                         </div>
@@ -887,11 +891,11 @@ const AddVisitModal = ({
                                             >
                                                 {(!gnssFiles ||
                                                     gnssFiles.length === 0) && (
-                                                    <div className="text-center text-neutral text-2xl font-bold w-full rounded-md bg-neutral-content p-4">
-                                                        There are no Observation
-                                                        Files
-                                                    </div>
-                                                )}
+                                                        <div className="text-center text-neutral text-2xl font-bold w-full rounded-md bg-neutral-content p-4">
+                                                            There are no Observation
+                                                            Files
+                                                        </div>
+                                                    )}
                                                 {gnssFiles &&
                                                     gnssFiles.length > 0 &&
                                                     gnssFiles.map((f) => {
@@ -962,10 +966,10 @@ const AddVisitModal = ({
                                             >
                                                 {(!files ||
                                                     files.length === 0) && (
-                                                    <div className="text-center text-neutral text-2xl font-bold w-full rounded-md bg-neutral-content p-4">
-                                                        There are no other files
-                                                    </div>
-                                                )}
+                                                        <div className="text-center text-neutral text-2xl font-bold w-full rounded-md bg-neutral-content p-4">
+                                                            There are no other files
+                                                        </div>
+                                                    )}
                                                 {files &&
                                                     files.length > 0 &&
                                                     files.map((f) => {
@@ -1019,8 +1023,8 @@ const AddVisitModal = ({
                                 step === 2
                                     ? setStep(step + 1)
                                     : step === 3
-                                      ? closeModal()
-                                      : null;
+                                        ? closeModal()
+                                        : null;
                             }}
                             disabled={
                                 loading ||
@@ -1031,8 +1035,8 @@ const AddVisitModal = ({
                             {step === 1
                                 ? "Create"
                                 : step === 3
-                                  ? "Finish"
-                                  : "Continue"}
+                                    ? "Finish"
+                                    : "Continue"}
                         </button>
                     </div>
                     <div className="w-4/12 flex items-end justify-end">

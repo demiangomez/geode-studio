@@ -682,13 +682,20 @@ export const hasDifferences = (one: object, second: object) => {
 
 export const transformParams = (params: any) => {
     return Object.entries(params)
-        .map(([key, value]) => `${key}=${value}`)
+        .map(
+            ([key, value]) =>
+                `${encodeURIComponent(key)}=${encodeURIComponent(value as string)}`,
+        )
         .join("&");
 };
 
 export const transformParamsForFilter = (params: any) => {
     return Object.entries(params)
-        .map(([key, value]) => (value !== undefined ? `${key}=${value}` : null))
+        .map(([key, value]) =>
+            value !== undefined
+                ? `${encodeURIComponent(key)}=${encodeURIComponent(value as string)}`
+                : null,
+        )
         .filter((el: any) => el !== null)
         .join("&");
 };

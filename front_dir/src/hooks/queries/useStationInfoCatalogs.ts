@@ -57,12 +57,16 @@ export const useAntennas = (api: AxiosInstance) => {
     });
 };
 
-export const useRadomes = (api: AxiosInstance) => {
+export const useRadomes = (api: AxiosInstance, antennaCode: string) => {
     return useQuery({
-        queryKey: ["radomeCodes"],
+        queryKey: ["radomeCodes", antennaCode],
         queryFn: async () => {
             const res = check(
-                await getRadomesService<RadomesServiceData>(api),
+                await getRadomesService<RadomesServiceData>(api, {
+                    limit: 0,
+                    offset: 0,
+                    antenna_code: antennaCode,
+                }),
             );
             return res.data.filter((r) => r.radome_code.trim() !== "");
         },
@@ -76,7 +80,7 @@ export const useHeightCodes = (api: AxiosInstance, antennaCode: string) => {
         queryFn: async () => {
             const res = check(
                 await getHeightCodesService<GamitHTCServiceData>(api, {
-                    limit: antennaCode ? 5 : 0,
+                    limit: 0,
                     offset: 0,
                     antenna_code: antennaCode,
                 }),

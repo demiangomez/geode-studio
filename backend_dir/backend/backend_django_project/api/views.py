@@ -1829,6 +1829,17 @@ class GamitHtcList(CustomListCreateAPIView):
     filter_backends = [DjangoFilterBackend]
     filterset_class = filters.GamitHtcFilter
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # django-filter treats an empty string as "no filter" (EMPTY_VALUES),
+        # but antenna_code='' is a real sentinel antenna with its own height
+        # codes. Honor an explicitly-provided empty antenna_code as an exact
+        # match; DjangoFilterBackend still handles any non-empty value, and a
+        # missing param still lists all records.
+        if self.request.query_params.get('antenna_code') == '':
+            queryset = queryset.filter(antenna_code='')
+        return queryset
+
 
 class GamitHtcDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = models.GamitHtc.objects.all()
@@ -2977,6 +2988,8 @@ class DistinctRadomeCodes(CustomListAPIView):
     queryset = models.Antennas.objects.values(
         'radome_code').distinct().order_by('radome_code')
     serializer_class = serializers.DistinctRadomeCodeSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = filters.AntennasFilter
 
 
 class DistinctStackNames(APIView):

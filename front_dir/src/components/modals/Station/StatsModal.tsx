@@ -86,6 +86,15 @@ const MENU_BUTTON_FIELDS = [
     "height_code",
 ];
 
+// DHARP: height code que por requerimiento siempre debe estar disponible en la lista
+const DHARP_HEIGHT_CODE: GamitHTCData = {
+    antenna_code: "",
+    api_id: 0,
+    h_offset: 0,
+    height_code: "DHARP",
+    v_offset: 0,
+};
+
 // layout
 const FIELD_LAYOUT: { key: string; label: string }[][] = [
     // L1 – Receptor
@@ -118,9 +127,7 @@ const FIELD_LAYOUT: { key: string; label: string }[][] = [
         { key: "date_end", label: "DATE END" },
     ],
     // Otros
-    [
-        { key: "comments", label: "COMMENTS" },
-    ],
+    [{ key: "comments", label: "COMMENTS" }],
 ];
 
 const EditStatsModal = ({
@@ -149,10 +156,8 @@ const EditStatsModal = ({
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
         | undefined
     >(undefined);
-
     const { data: receivers = [] } = useReceivers(api);
     const { data: antennas = [] } = useAntennas(api);
-    const { data: radomes = [] } = useRadomes(api);
 
     // height codes solo con una antena concreta, no con texto parcial
     const selectedAntennaCode = antennas.some(
@@ -160,7 +165,77 @@ const EditStatsModal = ({
     )
         ? formState.antenna_code
         : "";
-    const { data: heightcodes = [] } = useHeightCodes(api, selectedAntennaCode);
+    const { data: heightcodes = [], isFetching: isFetchingHeight } =
+        useHeightCodes(api, selectedAntennaCode);
+    const { data: radomes = [], isFetching: isFetchingRadome } = useRadomes(
+        api,
+        selectedAntennaCode,
+    );
+
+    // DHARP siempre debe estar en la lista de height codes, aunque el back no lo
+    // devuelva para esta antena (requerimiento)
+    const heightCodeOptions = heightcodes.some(
+        (h) => h.height_code === "DHARP",
+    )
+        ? heightcodes
+        : [DHARP_HEIGHT_CODE, ...heightcodes];
+
+    const prevAntennaCode = useRef<string>(selectedAntennaCode);
+
+    useEffect(() => {
+        if (
+            prevAntennaCode.current !== selectedAntennaCode &&
+            !isFetchingHeight &&
+            !isFetchingRadome
+        ) {
+            // Al cambiar de antena, radome_code y height_code se limpian siempre
+            const isInitialLoad = prevAntennaCode.current === "";
+
+            if (!isInitialLoad) {
+                if (formState.radome_code !== "") {
+                    dispatch({
+                        type: "change_value",
+                        payload: { inputName: "radome_code", inputValue: "" },
+                    });
+                }
+                if (formState.height_code !== "") {
+                    dispatch({
+                        type: "change_value",
+                        payload: { inputName: "height_code", inputValue: "" },
+                    });
+                }
+            }
+
+            prevAntennaCode.current = selectedAntennaCode;
+        }
+    }, [
+        selectedAntennaCode,
+        isFetchingHeight,
+        isFetchingRadome,
+        formState.radome_code,
+        formState.height_code,
+        dispatch,
+    ]);
+
+    // El Trace Receiver autocompleta antena + radome + height como un conjunto
+    // coherente. Al setear la antena sincronizamos prev para que el efecto de
+    // cambio de antena no lo interprete como cambio manual y vacíe radome/height.
+    const traceDispatch: React.Dispatch<any> = (action) => {
+        if (
+            action?.type === "change_value" &&
+            action.payload?.inputName === "antenna_code"
+        ) {
+
+            const nextCode = action.payload.inputValue ?? "";
+
+            prevAntennaCode.current = antennas.some(
+                (a) => a.antenna_code === nextCode,
+            )
+                ? nextCode
+                : "";
+        }
+        dispatch(action); // cambia el formState por ende el selectedAntennaCode
+    };
 
     const [matchingReceivers, setMatchingReceivers] = useState<ReceiversData[]>(
         [],
@@ -186,7 +261,11 @@ const EditStatsModal = ({
     >(undefined);
 
     const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     useEffect(() => {
         if (stationInfo && (modalType === "edit" || modalType === "none")) {
@@ -249,14 +328,12 @@ const EditStatsModal = ({
         }
         if (name === "radome_code") {
             const match = radomes.filter((radome) =>
-                radome.radome_code
-                    .toLowerCase()
-                    .includes(value.toLowerCase()),
+                radome.radome_code.toLowerCase().includes(value.toLowerCase()),
             );
             setMatchingRadomes(match);
         }
         if (name === "height_code") {
-            const match = heightcodes.filter((hc) =>
+            const match = heightCodeOptions.filter((hc) =>
                 hc.height_code.toLowerCase().includes(value.toLowerCase()),
             );
             setMatchingHeightcodes(match);
@@ -366,13 +443,16 @@ const EditStatsModal = ({
             receiver_code: receivers.map((r) => r.receiver_code),
             antenna_code: antennas.map((a) => a.antenna_code),
             radome_code: radomes.map((r) => r.radome_code),
-            height_code: heightcodes.map((h) => h.height_code),
+            height_code: heightCodeOptions.map((h) => h.height_code),
         });
         if (invalidFields.length > 0) {
             setMsg({
                 status: 400,
                 msg: "Some fields must be selected from their list",
-                errors: { type: "validation_error", errors: invalidFields as Errors["errors"] },
+                errors: {
+                    type: "validation_error",
+                    errors: invalidFields as Errors["errors"],
+                },
             });
             return;
         }
@@ -464,9 +544,7 @@ const EditStatsModal = ({
                 }
             >
                 <div className="flex items-end justify-between gap-1 px-1 min-h-[1.25rem]">
-                    <span className="font-bold text-xs truncate">
-                        {label}
-                    </span>
+                    <span className="font-bold text-xs truncate">{label}</span>
                     {errorBadge && (
                         <span
                             className="badge badge-error badge-sm shrink-0"
@@ -492,13 +570,13 @@ const EditStatsModal = ({
                                     ? doyCheck?.[key]?.check
                                         ? doyCheck[key].input.trim() !== ""
                                             ? doyCheck[key].input
-                                            : (dayFromDate(
+                                            : dayFromDate(
                                                 formState?.[key],
                                             )?.trim() !== ""
                                                 ? (dayFromDate(
                                                     formState?.[key],
                                                 ) ?? "")
-                                                : "")
+                                                : ""
                                         : formState[key] !== "" &&
                                             formState[key] !== null
                                             ? formattedDates(
@@ -510,8 +588,7 @@ const EditStatsModal = ({
                             onChange={(e) => {
                                 const inputValue = e.target.value;
                                 const hasDoy =
-                                    isDatePicker &&
-                                    doyCheck?.[key]?.check;
+                                    isDatePicker && doyCheck?.[key]?.check;
 
                                 setShowMenu({ type: key, show: true });
 
@@ -524,9 +601,7 @@ const EditStatsModal = ({
                                         },
                                     });
                                     const dateValue = inputValue
-                                        ? dateFromDay(
-                                            inputValue,
-                                        )?.toISOString()
+                                        ? dateFromDay(inputValue)?.toISOString()
                                         : null;
                                     if (dateValue === null) {
                                         if (key === "date_start") {
@@ -548,9 +623,7 @@ const EditStatsModal = ({
                             }}
                             className="grow w-full min-w-0"
                             autoComplete="off"
-                            readOnly={
-                                isDatePicker && !doyCheck?.[key]?.check
-                            }
+                            readOnly={isDatePicker && !doyCheck?.[key]?.check}
                             placeholder={
                                 isDatePicker && doyCheck?.[key]?.check
                                     ? "YYYY DDD HH MM SS"
@@ -603,9 +676,8 @@ const EditStatsModal = ({
                                         [key]: {
                                             check: !doyCheck?.[key]?.check,
                                             input:
-                                                dayFromDate(
-                                                    formState?.[key],
-                                                ) ?? "",
+                                                dayFromDate(formState?.[key]) ??
+                                                "",
                                         },
                                     });
                                 }}
@@ -642,9 +714,7 @@ const EditStatsModal = ({
                                     : antennas
                                 ).map((ant) => (
                                     <MenuContent
-                                        key={
-                                            ant.api_id + ant.antenna_code
-                                        }
+                                        key={ant.api_id + ant.antenna_code}
                                         typeKey={key}
                                         value={ant.antenna_code}
                                         dispatch={dispatch}
@@ -673,7 +743,7 @@ const EditStatsModal = ({
                             <Menu>
                                 {(matchingHeightcodes.length > 0
                                     ? matchingHeightcodes
-                                    : heightcodes
+                                    : heightCodeOptions
                                 ).map((hc) => (
                                     <MenuContent
                                         key={hc.api_id + hc.height_code}
@@ -700,7 +770,6 @@ const EditStatsModal = ({
             setModalState={setStateModal}
         >
             <div>
-
                 <button
                     className="btn absolute left-6 top-6"
                     onClick={() =>
@@ -711,8 +780,7 @@ const EditStatsModal = ({
                         })
                     }
                 >
-                    Trace Receiver{" "}
-                    <MagnifyingGlassIcon className="size-5" />
+                    Trace Receiver <MagnifyingGlassIcon className="size-5" />
                 </button>
 
                 <h3 className="font-bold text-center text-2xl my-2 w-full">
@@ -835,7 +903,7 @@ const EditStatsModal = ({
                                 type: "none",
                             });
                         }}
-                        parentDispatch={dispatch}
+                        parentDispatch={traceDispatch}
                     />
                 )}
             </form>

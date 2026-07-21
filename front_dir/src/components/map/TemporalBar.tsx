@@ -466,11 +466,11 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
     const filterLabel = !hasActiveFilter
         ? "Temporal Filter"
         : temporalFilter.exactDate
-          ? formattedDates(
+            ? formattedDates(
                 fractionalYearToDate(temporalFilter.dateStart ?? minYear),
                 true,
             )
-          : `${formattedDates(fractionalYearToDate(temporalFilter.dateStart ?? minYear), true)} - ${formattedDates(fractionalYearToDate(temporalFilter.dateEnd ?? maxYear), true)}`;
+            : `${formattedDates(fractionalYearToDate(temporalFilter.dateStart ?? minYear), true)} - ${formattedDates(fractionalYearToDate(temporalFilter.dateEnd ?? maxYear), true)}`;
 
     if (loading && temporalFilter.enabled) {
         return <TemporalBarSkeleton />;

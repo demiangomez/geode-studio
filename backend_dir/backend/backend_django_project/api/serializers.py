@@ -273,15 +273,27 @@ class StationinfoSerializer(serializers.ModelSerializer):
     def validate(self, data):
         """
             Check that antenna_code and height_code exist in 'gamit_htc' table,
+            and that antenna_code and radome_code exist in 'antennas' table,
             since Django doesn't support composite foreign keys.
             Also check date_end is greater than date_start
+
+            'DHARP' is exempt from the gamit_htc check: it is always allowed as
+            the default height code, even when the antenna has no height codes.
         """
+        if data['height_code'] != 'DHARP':
+            try:
+                models.GamitHtc.objects.get(
+                    antenna_code=data['antenna_code'], height_code=data['height_code'])
+            except models.GamitHtc.DoesNotExist:
+                raise serializers.ValidationError(
+                    'The combination of antenna_code and height_code does not exist in the gamit_htc table')
+
         try:
-            models.GamitHtc.objects.get(
-                antenna_code=data['antenna_code'], height_code=data['height_code'])
-        except models.GamitHtc.DoesNotExist:
+            models.Antennas.objects.get(
+                antenna_code=data['antenna_code'], radome_code=data['radome_code'])
+        except models.Antennas.DoesNotExist:
             raise serializers.ValidationError(
-                'The combination of antenna_code and height_code does not exist in the gamit_htc table')
+                'The combination of antenna_code and radome_code does not exist in the antennas table')
 
         if 'date_start' in data and 'date_end' in data and isinstance(data['date_start'], datetime.datetime) and isinstance(data['date_end'], datetime.datetime):
             if data['date_start'] > data['date_end']:

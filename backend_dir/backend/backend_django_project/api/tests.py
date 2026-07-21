@@ -74,7 +74,8 @@ class PermissionsTest(TestCase):
 
         response = self.client.post(url, {
             "antenna_code": "ANT1",
-            "antenna_description": "test description"
+            "antenna_description": "test description",
+            "radome_code": "R1"
         })
 
         self.assertEqual(response.status_code, 201)
@@ -251,7 +252,8 @@ class StationGapsTest(TestCase):
             url = reverse("antennas_list")
             data = {
                 "antenna_code": "ANT1",
-                "antenna_description": "test description"
+                "antenna_description": "test description",
+                "radome_code": "R1"
             }
             response = self.client.post(url, data)
 
@@ -585,15 +587,20 @@ class StationInfoTest(TestCase):
     def test_create_initial_data(self):
         def test_create_antennas(self):
             url = reverse("antennas_list")
-            data = {
-                "antenna_code": "ANT1",
-                "antenna_description": "test description"
-            }
-            response = self.client.post(url, data)
+            # composite PK (antenna_code, radome_code): one row per radome so
+            # that stationinfo validation finds both (ANT1, R1) and (ANT1, R2)
+            for radome_code in ("R1", "R2"):
+                data = {
+                    "antenna_code": "ANT1",
+                    "antenna_description": "test description",
+                    "radome_code": radome_code
+                }
+                response = self.client.post(url, data)
 
-            self.assertEqual(models.Antennas.objects.count(), 1)
-            self.assertEqual(response.status_code, 201)
-            self.assertEqual(response.json()["antenna_code"], 'ANT1')
+                self.assertEqual(response.status_code, 201)
+                self.assertEqual(response.json()["antenna_code"], 'ANT1')
+
+            self.assertEqual(models.Antennas.objects.count(), 2)
 
         def test_create_receivers(self):
             url = reverse("receivers_list")
