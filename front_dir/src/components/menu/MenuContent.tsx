@@ -18,9 +18,9 @@ interface MenuContentProps {
     setShowMenu: React.Dispatch<
         React.SetStateAction<
             | {
-                type: string;
-                show: boolean;
-            }
+                  type: string;
+                  show: boolean;
+              }
             | undefined
         >
     >;

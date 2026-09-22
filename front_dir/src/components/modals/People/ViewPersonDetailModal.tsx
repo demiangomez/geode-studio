@@ -70,9 +70,7 @@ const ViewPersonDetailModal = ({
             size={"smPlus"}
             setModalState={setStateModal}
         >
-
             <div className="flex flex-col items-center gap-4 p-2">
-
                 <div className="flex flex-col items-center gap-2">
                     {photoSrc ? (
                         <img
@@ -115,19 +113,14 @@ const ViewPersonDetailModal = ({
                 </div>
 
                 <div className="flex flex-col w-full items-end">
-
                     <div className="mt-2 mx-1">
                         <CopyButton
                             text={vcardText}
                             className="btn btn-ghost btn-sm gap-1"
                             iconClassName="size-6"
                         />
-
-
                     </div>
-                    <span className="text-gray-600 text-xs">
-                        Copy Vcard
-                    </span>
+                    <span className="text-gray-600 text-xs">Copy Vcard</span>
                 </div>
             </div>
         </Modal>

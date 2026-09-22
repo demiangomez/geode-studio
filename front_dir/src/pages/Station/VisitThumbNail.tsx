@@ -1,8 +1,9 @@
-// import { useLocation, useOutletContext } from "react-router-dom";
-// import { useEffect, useState } from "react";
-import { MapVisitOL, Spinner } from "@componentsReact";
+import { memo } from "react";
+import { MissingPhoto, Spinner } from "@componentsReact";
+import MapVisitOL from "@components/map/ol/MapVisitOL";
 
 import {
+    Photo,
     StationCampaignsData,
     StationData,
     StationVisitsData,
@@ -10,12 +11,14 @@ import {
 } from "@types";
 
 import {
+    ArrowsRightLeftIcon,
     Bars3BottomRightIcon,
     TrashIcon,
     UserIcon,
     DocumentChartBarIcon,
     DocumentMagnifyingGlassIcon,
     DocumentIcon,
+    MagnifyingGlassPlusIcon,
 } from "@heroicons/react/24/outline";
 
 interface VisitThumbNailProps {
@@ -31,6 +34,8 @@ interface VisitThumbNailProps {
     setVisit: React.Dispatch<
         React.SetStateAction<StationVisitsData | undefined>
     >;
+    setPhoto: React.Dispatch<React.SetStateAction<Photo | undefined>>;
+    onTransfer: (visits: StationVisitsData[]) => void;
     campaigns: StationCampaignsData[] | undefined;
     loadingVisitImages: boolean;
     visitImages: StationVisitsFilesData[] | undefined;
@@ -44,6 +49,8 @@ const VisitThumbNail = ({
     setModals,
     setVisitToDel,
     setVisit,
+    setPhoto,
+    onTransfer,
     campaigns,
     loadingVisitImages,
     visitImages,
@@ -104,6 +111,13 @@ const VisitThumbNail = ({
                     <TrashIcon className="size-8 text-red-600" />
                 </button>
                 <button
+                    title={"transfer to another station"}
+                    className="btn btn-ghost btn-circle"
+                    onClick={() => onTransfer([visit])}
+                >
+                    <ArrowsRightLeftIcon className="size-8" />
+                </button>
+                <button
                     title={"details"}
                     className="btn btn-ghost btn-circle"
                     onClick={() => {
@@ -153,7 +167,7 @@ const VisitThumbNail = ({
                     >
                         <DocumentMagnifyingGlassIcon
                             id="LogSheetIcon"
-                            className={`size-8 ${!visit?.log_sheet_actual_file ? "text-gray-400" : ""}`}
+                            className={`size-8 ${!visit?.log_sheet_filename ? "text-gray-400" : ""}`}
                         />
                     </div>
                     <div className="tooltip" data-tip={getOtherFilesString()}>
@@ -172,20 +186,49 @@ const VisitThumbNail = ({
                     </div>
                 ) : (
                     <div
-                        className={`grid grid-cols-2 gap-3 items-start place-items-center overflow-auto`}
+                        className={`grid grid-cols-2 gap-3 w-full items-start place-items-center overflow-auto`}
                     >
                         <>
                             {visitImages?.map((img) => {
+                                if (!img.actual_image) {
+                                    return (
+                                        <MissingPhoto
+                                            key={img.id}
+                                            className="w-full aspect-[4/3] rounded-lg shadow-xl"
+                                        />
+                                    );
+                                }
                                 return (
-                                    <img
+                                    <div
                                         key={img.id}
-                                        src={
-                                            "data:image/png;base64," +
-                                            img.actual_image
-                                        }
-                                        alt={img.description}
-                                        className="shadow-xl rounded-lg object-center object-contain w-full h-full"
-                                    />
+                                        className="group relative w-full overflow-hidden rounded-lg shadow-xl cursor-zoom-in transition-shadow duration-200 hover:shadow-2xl"
+                                        onClick={() => {
+                                            setPhoto({
+                                                id: img.id,
+                                                actual_image:
+                                                    img.actual_image ?? "",
+                                                description: img.description,
+                                                name: img.name,
+                                            });
+                                            setModals({
+                                                show: true,
+                                                title: "ViewStationPhoto",
+                                                type: "edit",
+                                            });
+                                        }}
+                                    >
+                                        <img
+                                            src={
+                                                "data:image/png;base64," +
+                                                img.actual_image
+                                            }
+                                            alt={img.description}
+                                            className="block w-full object-center object-contain transition-transform duration-200 ease-in-out group-hover:scale-110"
+                                        />
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors duration-200">
+                                            <MagnifyingGlassPlusIcon className="size-10 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                                        </div>
+                                    </div>
                                 );
                             })}
                         </>
@@ -206,4 +249,4 @@ const VisitThumbNail = ({
     );
 };
 
-export default VisitThumbNail;
+export default memo(VisitThumbNail);

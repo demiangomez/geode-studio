@@ -4,6 +4,9 @@ export type UserState = {
     msg?: string;
     url?: string;
     unauthorizedOperations: Record<string, { method: string; msg: string }>; // URL -> {method, msg}
+    // Canal aparte del de permisos: Table.tsx lee unauthorizedOperations para
+    // pintar "sin permiso" en lugar de la tabla, y un 500 no es eso.
+    serverError?: { msg: string };
 };
 
 export const initialState: UserState = {
@@ -26,6 +29,13 @@ export type Action =
           url?: string;
       }
     | {
+          type: "SERVER_ERROR";
+          msg: string;
+      }
+    | {
+          type: "CLEAR_SERVER_ERROR";
+      }
+    | {
           type: "CLEAR_ALL";
       };
 
@@ -42,14 +52,12 @@ export type Dispatch = (action: Action) => void;
 // quiza lo mejor sea adaptarlos a unauthorizedOperations (como los gets en table).
 
 export const useUserInfo = (state: UserState, action: Action): UserState => {
+    const hasUrl = action.type === "INIT" || action.type === "UNAUTHORIZE";
     const actionUrlSplitted =
-        action.type !== "CLEAR_ALL" && action.url
-            ? action.url.split("?")[0]
-            : "";
-    const unauthorizedOperationsKey =
-        action.type !== "CLEAR_ALL"
-            ? actionUrlSplitted + "-" + action.method
-            : "";
+        hasUrl && action.url ? action.url.split("?")[0] : "";
+    const unauthorizedOperationsKey = hasUrl
+        ? actionUrlSplitted + "-" + action.method
+        : "";
 
     switch (action.type) {
         case "INIT": {
@@ -81,6 +89,17 @@ export const useUserInfo = (state: UserState, action: Action): UserState => {
                     },
                 },
             };
+        }
+        // Agregado: una sola falla de servidor a la vez. Mientras haya una
+        // activa las siguientes se descartan, asi una caida que rompe 20
+        // requests en paralelo muestra un unico toast.
+        case "SERVER_ERROR": {
+            if (state.serverError) return state;
+            return { ...state, serverError: { msg: action.msg } };
+        }
+        case "CLEAR_SERVER_ERROR": {
+            if (!state.serverError) return state;
+            return { ...state, serverError: undefined };
         }
         case "CLEAR_ALL": {
             return {

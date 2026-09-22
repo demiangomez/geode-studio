@@ -42,7 +42,7 @@ const StationRolesTable = () => {
         rolesTotal,
         rolesIsFetching,
         isLoading: loading,
-    } = useMetadata(api, {}, params);
+    } = useMetadata(api, { only: ["roles"] }, params);
 
     const pages = useMemo(() => {
         if (rolesTotal && params.limit) {
@@ -52,7 +52,13 @@ const StationRolesTable = () => {
     }, [rolesTotal, params.limit]);
 
     useEffect(() => {
-        if (!loading && !rolesIsFetching && stationRoles && stationRoles.length === 0 && activePage > 1) {
+        if (
+            !loading &&
+            !rolesIsFetching &&
+            stationRoles &&
+            stationRoles.length === 0 &&
+            activePage > 1
+        ) {
             handlePage(activePage - 1);
         }
     }, [stationRoles, activePage, loading, rolesIsFetching]); // eslint-disable-line
@@ -74,14 +80,12 @@ const StationRolesTable = () => {
     const titles = ["Name"];
 
     const body = useMemo(() => {
-        return stationRoles
-            ?.sort((a, b) => a.name.localeCompare(b.name))
-            .map((sr) =>
-                Object.values({
-                    // id: monument.id,
-                    name: sr.name,
-                }),
-            );
+        return stationRoles?.map((sr) =>
+            Object.values({
+                // id: monument.id,
+                name: sr.name,
+            }),
+        );
     }, [stationRoles]);
 
     useEffect(() => {

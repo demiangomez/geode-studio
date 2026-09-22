@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 import {
     Alert,
@@ -6,18 +6,12 @@ import {
     CopyButton,
     LargeSkeleton,
     Modal,
-    RenderFileModal,
     StationAddFileModal,
-    QuillText,
-    Dropzone,
+    FileOrTextField,
 } from "@componentsReact";
+import QuillText from "@components/map/QuillText";
 
-import {
-    useApi,
-    useAuth,
-    useFormReducer,
-    useWaitCursor,
-} from "@hooks";
+import { useApi, useAuth, useFormReducer, useWaitCursor } from "@hooks";
 
 import {
     ArrowDownTrayIcon,
@@ -31,55 +25,178 @@ import defPhoto from "@assets/images/placeholder.png";
 
 import {
     delStationsFilesAttachedService,
-    getMonumentsTypesByIdService,
-    getRinexService,
     getStationFileByIdAttachedService,
-    getStationsFilesAttachedService,
-    getStationInfoService,
     patchStationMetaService,
-    patchStationService,
-    getStationsService,
-    getStationMetaService,
 } from "@services";
 
-import { useMetadata } from "@hooks/queries";
+import {
+    useMetadata,
+    useMonumentPhoto,
+    useStation,
+    useStationFiles,
+    useStationInfoLast,
+    useStationMeta,
+    useStationRinexBounds,
+    useTectonicPlateNames,
+    useUpdateStation,
+    useUpdateStationMeta,
+} from "@hooks/queries";
 
-import { classHtml, decimalToDMS, formattedDates, showModal } from "@utils";
+import {
+    ApiError,
+    classHtml,
+    decimalToDMS,
+    ecef2lla,
+    formattedDates,
+    isPreviewableFile,
+    lazyRetry,
+    lla2ecef,
+    showModal,
+} from "@utils";
+
+// Lazy: pdf.js (~110KB gz) solo baja al abrir un preview de archivo
+const RenderFileModal = lazyRetry(
+    () => import("@components/modals/RenderFileModal"),
+);
 
 import {
     ErrorResponse,
     Errors,
-    ExtendedStationData,
-    MonumentTypes,
-    RinexData,
-    RinexServiceData,
     StationData,
     StationFilesData,
-    StationFilesServiceData,
-    StationInfoData,
-    StationInfoServiceData,
     StationMetadataServiceData,
-    StationServiceData,
 } from "@types";
+
+type FieldMsg = { status: number; msg: string; errors?: Errors } | undefined;
+
+const mutationMsg = (
+    mutation: { isError: boolean; isSuccess: boolean; error: unknown },
+    successMsg: string,
+): FieldMsg => {
+    if (mutation.isError) {
+        const err = mutation.error;
+        return err instanceof ApiError
+            ? { status: err.statusCode, msg: err.message, errors: err.response }
+            : { status: 400, msg: "Request failed" };
+    }
+    if (mutation.isSuccess) {
+        return { status: 200, msg: successMsg };
+    }
+    return undefined;
+};
+
+// espera a que los dos mensajes esten definidos: si uno todavia esta en
+// vuelo (undefined), no hay veredicto que combinar todavia
+const combineUpdateMessages = (
+    metaMsg: FieldMsg,
+    stationMsg: FieldMsg,
+): FieldMsg => {
+    if (!metaMsg || !stationMsg) return undefined;
+
+    const metaOk = metaMsg.status === 200;
+    const stationOk = stationMsg.status === 200;
+
+    if (metaOk && stationOk) {
+        return {
+            status: 200,
+            msg: "Metadata and station updated successfully",
+        };
+    }
+
+    if (metaOk || stationOk) {
+        const failed = metaOk ? stationMsg : metaMsg;
+        return {
+            status: failed.status,
+            msg: `${metaOk ? "Station" : "Metadata"} update failed (the other half was saved): ${failed.msg}`,
+            errors: failed.errors,
+        };
+    }
+
+    return {
+        status: metaMsg.status,
+        msg: [metaMsg.msg, stationMsg.msg].filter(Boolean).join(" / "),
+        errors: metaMsg.errors ?? stationMsg.errors,
+    };
+};
+
+interface GeneralFieldDescriptor {
+    key: string;
+    slice: "meta" | "station";
+    label: string;
+    kind?: "select" | "link";
+    emptyText?: string;
+}
+
+// harpos_coeff_otl vive en formState.station pero tiene su propia card
+// (Ocean Tide Loading Model) y no se lista aca
+const GENERAL_FIELDS: GeneralFieldDescriptor[] = [
+    {
+        key: "station_type",
+        slice: "meta",
+        label: "Station Type",
+        kind: "select",
+    },
+    {
+        key: "monument_type",
+        slice: "meta",
+        label: "Monument",
+        kind: "select",
+    },
+    { key: "status", slice: "meta", label: "Status", kind: "select" },
+    {
+        key: "remote_access_link",
+        slice: "meta",
+        label: "Remote Access Link",
+        kind: "link",
+    },
+    { key: "station_name", slice: "station", label: "Station Name" },
+    { key: "dome", slice: "station", label: "Domes Number" },
+    { key: "max_dist", slice: "station", label: "Max distance" },
+    {
+        key: "plate",
+        slice: "station",
+        label: "Tectonic Plate",
+        kind: "select",
+        emptyText: "Auto-detected from coordinates",
+    },
+];
+
+interface BooleanFieldDescriptor {
+    key: "has_battery" | "has_communications";
+    descKey: "battery_description" | "communications_description";
+    label: string;
+}
+
+const BOOLEAN_FIELDS: BooleanFieldDescriptor[] = [
+    { key: "has_battery", descKey: "battery_description", label: "Battery" },
+    {
+        key: "has_communications",
+        descKey: "communications_description",
+        label: "Communications",
+    },
+];
 
 interface StationMetadataProps {
     close: boolean;
     size?: "sm" | "md" | "lg" | "xl" | "fit";
     station?: StationData | undefined;
-    stationMetaMain?: StationMetadataServiceData | undefined;
     setModalState: React.Dispatch<
         React.SetStateAction<
             | { show: boolean; title: string; type: "add" | "edit" | "none" }
             | undefined
         >
     >;
-    refetch: () => void;
+    // refresca Station.tsx; pasarle los datos ya frescos evita que el padre
+    // los vuelva a pedir por su cuenta
+    refetch: (
+        freshStation?: StationData,
+        freshStationMeta?: StationMetadataServiceData,
+    ) => void;
 }
 
 const StationMetadataModal = ({
     close,
     station,
-    stationMetaMain,
     size,
     refetch,
     setModalState,
@@ -91,18 +208,27 @@ const StationMetadataModal = ({
         "by file" | "manual" | undefined
     >(undefined);
 
-    const [metaMsg, setMetaMsg] = useState<
-        { status: number; msg: string; errors?: Errors } | undefined
-    >(undefined);
-    const [stationMsg, setStationMsg] = useState<
-        { status: number; msg: string; errors?: Errors } | undefined
-    >(undefined);
+    const metaMutation = useUpdateStationMeta(api);
+    const stationMutation = useUpdateStation(api);
+
+    // por-recurso: alimentan los badges de error de cada campo (cada uno
+    // viaja en un PATCH distinto, ver el mapeo de campos en updateMetadata)
+    const metaMsg = mutationMsg(metaMutation, "Metadata updated successfully");
+    const stationMsg = mutationMsg(
+        stationMutation,
+        "Station updated successfully",
+    );
+
+    // combinado: lo que ve el usuario en el Alert de arriba
+    const updateMsg = combineUpdateMessages(metaMsg, stationMsg);
+
+    const updateLoading = metaMutation.isPending || stationMutation.isPending;
 
     const [fileMsg, setFileMsg] = useState<
         { status: number; msg: string; errors?: Errors } | undefined
     >(undefined);
 
-    const [loading, setLoading] = useState<boolean>(true);
+    const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
     const [loadFile, setLoadFile] = useState<boolean>(false);
 
     const [oceanTideFile, setOceanTideFile] = useState<File | undefined>(
@@ -111,45 +237,17 @@ const StationMetadataModal = ({
 
     useWaitCursor(loadFile);
 
-    const [updateLoading, setUpdateLoading] = useState<boolean>(false);
     const [edit, setEdit] = useState<boolean>(false);
-
-    const [chosenMonumentPhoto, setChosenMonumentPhoto] = useState<
-        string | null
-    >(null);
 
     const [fileToEdit, setFileToEdit] = useState<
         StationFilesData | undefined
     >();
 
-    const [firstRinex, setFirstRinex] = useState<RinexData | undefined>(
-        undefined,
-    );
-    const [lastRinex, setLastRinex] = useState<RinexData | undefined>(
-        undefined,
-    );
-
-    const [stationData, setStationData] = useState<StationData | undefined>(
-        undefined,
-    );
-
-    const [stationMeta, setStationMeta] = useState<
-        StationMetadataServiceData | undefined
-    >(undefined);
-
-    const [stationInfo, setStationInfo] = useState<StationInfoData | undefined>(
-        undefined,
-    );
-
-    const [richText, setRichText] = useState<string>(
-        stationMetaMain?.comments ?? "",
-    );
+    // null = "sin tocar": el Quill sigue el ultimo valor fetcheado de
+    // stationMeta.comments; al tipear pasa a "controlado por el usuario"
+    const [richTextDraft, setRichTextDraft] = useState<string | null>(null);
 
     const [fileType, setFileType] = useState<"meta" | "none">("none");
-
-    const [files, setFiles] = useState<StationFilesData[] | undefined>(
-        undefined,
-    );
 
     const [fileToDel, setFileToDel] = useState<number | undefined>(undefined);
 
@@ -172,131 +270,53 @@ const StationMetadataModal = ({
         setShowAllFiles(false);
     };
 
-    const getStation = async () => {
-        try {
-            const res = await getStationsService<StationServiceData>(api, {
-                network_code: station?.network_code,
-                station_code: station?.station_code,
-                limit: 1,
-                offset: 0,
-            });
-            setStationData(res.data[0]);
-        } catch (e) {
-            console.error(e);
-        }
-    };
+    const {
+        data: stationData,
+        isLoading: isStationLoading,
+        refetch: refetchStation,
+    } = useStation(api, {
+        network_code: station?.network_code,
+        station_code: station?.station_code,
+    });
 
-    const getStationMeta = async () => {
-        try {
-            const res = await getStationMetaService<StationMetadataServiceData>(
-                api,
-                Number(station?.api_id ?? undefined),
-            );
-            if (res) {
-                setStationMeta(res);
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
+    const {
+        data: stationMeta,
+        isLoading: isStationMetaLoading,
+        refetch: refetchStationMeta,
+    } = useStationMeta(api, station?.api_id);
+
     const { types: stationType, statuses: stationStatus } = useMetadata(api, {
-        enabled: !!stationMetaMain,
+        enabled: !!station?.api_id,
+        only: ["types", "statuses"],
     });
 
     const { monuments: monumentsType } = useMetadata(
         api,
-        { enabled: !!stationMetaMain },
+        { enabled: !!station?.api_id, only: ["monuments"] },
         { only_metadata: true },
     );
 
-    const getMonumentPhoto = async () => {
-        try {
-            if (stationMetaMain) {
-                if (monumentsType && monumentsType.length > 0) {
-                    const auxMonumentType = monumentsType;
-                    if (auxMonumentType) {
-                        const monumentId = auxMonumentType.find(
-                            (mt) =>
-                                mt.id ===
-                                Number(stationMetaMain?.monument_type),
-                        )?.id;
-                        await getMonumentPhotoById(monumentId);
-                    }
-                }
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
+    const { data: tectonicPlates } = useTectonicPlateNames(api);
 
-    const getRinex = async () => {
-        try {
-            const firstRes = await getRinexService<RinexServiceData>(api, {
-                network_code: station?.network_code,
-                station_code: station?.station_code,
-                limit: 1,
-                offset: 0,
-            });
-            if (firstRes.statusCode !== 200 || firstRes.total_count === 0) {
-                return;
-            }
-            setFirstRinex(firstRes.data[0]);
+    const { data: rinexBounds, isLoading: isRinexLoading } =
+        useStationRinexBounds(api, {
+            network_code: station?.network_code,
+            station_code: station?.station_code,
+        });
+    const firstRinex = rinexBounds?.firstRinex;
+    const lastRinex = rinexBounds?.lastRinex;
 
-            const lastRes = await getRinexService<RinexServiceData>(api, {
-                network_code: station?.network_code,
-                station_code: station?.station_code,
-                limit: 1,
-                offset: firstRes.total_count - 1,
-            });
-            if (lastRes.statusCode === 200) {
-                setLastRinex(lastRes.data[0]);
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    const getStationInfo = async () => {
-        try {
-            const res = await getStationInfoService<StationInfoServiceData>(
-                api,
-                {
-                    network_code: station?.network_code ?? "",
-                    station_code: station?.station_code ?? "",
-                    offset: 0,
-                    limit: 0,
-                },
-            );
-
-            const lastStationInfo = res.data[res.data.length - 1];
-
-            setStationInfo(lastStationInfo);
-        } catch (err) {
-            console.error(err);
-        }
-    };
+    const { data: stationInfo } = useStationInfoLast(api, {
+        network_code: station?.network_code,
+        station_code: station?.station_code,
+    });
 
     const stationId = stationMeta?.station ?? undefined;
 
-    const getFiles = async () => {
-        try {
-            if (stationId) {
-                const res =
-                    await getStationsFilesAttachedService<StationFilesServiceData>(
-                        api,
-                        {
-                            station_api_id: stationId,
-                            offset: 0,
-                            limit: 0,
-                            only_metadata: true,
-                        },
-                    );
-                setFiles(res.data);
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
+    const { data: files, refetch: refetchFiles } = useStationFiles(
+        api,
+        stationId,
+    );
 
     const getFileById = async (id: number) => {
         try {
@@ -316,23 +336,9 @@ const StationMetadataModal = ({
         }
     };
 
-    const getMonumentPhotoById = async (id: number | undefined) => {
-        try {
-            if (id) {
-                const res = await getMonumentsTypesByIdService<MonumentTypes>(
-                    api,
-                    id,
-                );
-                setChosenMonumentPhoto(res.photo_file);
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
     const delFile = async (id: number | undefined) => {
         try {
-            setLoading(true);
+            setDeleteLoading(true);
             if (stationId && typeof id === "number") {
                 const res =
                     await delStationsFilesAttachedService<ErrorResponse>(
@@ -351,7 +357,7 @@ const StationMetadataModal = ({
                         status: res.statusCode,
                         msg: "File deleted successfully",
                     });
-                    getFiles();
+                    refetchFiles();
                 }
             } else {
                 setFileMsg({
@@ -362,13 +368,13 @@ const StationMetadataModal = ({
         } catch (err) {
             console.error(err);
         } finally {
-            setLoading(false);
+            setDeleteLoading(false);
         }
     };
 
     const delFileMeta = async () => {
         try {
-            setLoading(true);
+            setDeleteLoading(true);
             if (stationId) {
                 const formData = new FormData();
 
@@ -377,7 +383,7 @@ const StationMetadataModal = ({
 
                 const res = await patchStationMetaService<
                     StationFilesData | ErrorResponse
-                >(api, Number(stationMetaMain?.station), formData);
+                >(api, Number(stationId), formData);
                 if (res.statusCode !== 200 && "status" in res) {
                     setFileMsg({
                         status: res.statusCode,
@@ -389,118 +395,21 @@ const StationMetadataModal = ({
                         status: res.statusCode,
                         msg: "File deleted successfully",
                     });
-                    getStationMeta();
-                    // refetchStationMeta && refetchStationMeta();
+                    refetchStationMeta();
                 }
             }
         } catch (err) {
             console.error(err);
         } finally {
-            setLoading(false);
+            setDeleteLoading(false);
         }
     };
 
-    function lla2ecef(llaArr: number[]): { x: number; y: number; z: number } {
-        const [lat, lon, alt] = llaArr;
-
-        // Convertir a radianes
-        const rad_lat = (lat * Math.PI) / 180;
-        const rad_lon = (lon * Math.PI) / 180;
-
-        // Parámetros WGS84
-        const a = 6378137.0;
-        const finv = 298.257223563;
-        const f = 1 / finv;
-        const e2 = 1 - (1 - f) * (1 - f);
-
-        const v = a / Math.sqrt(1 - e2 * Math.pow(Math.sin(rad_lat), 2));
-
-        const x = (v + alt) * Math.cos(rad_lat) * Math.cos(rad_lon);
-        const y = (v + alt) * Math.cos(rad_lat) * Math.sin(rad_lon);
-        const z = (v * (1 - e2) + alt) * Math.sin(rad_lat);
-
-        // Redondear a 8 decimales
-        return {
-            x: parseFloat(x.toFixed(3)),
-            y: parseFloat(y.toFixed(3)),
-            z: parseFloat(z.toFixed(3)),
-        };
-    }
-
-    function ecef2lla(ecefArr: number[]): {
-        lat: number;
-        lon: number;
-        alt: number;
-    } {
-        const [x, y, z] = ecefArr;
-
-        // Parámetros WGS84
-        const a = 6378137; // Semieje mayor (m)
-        const e = 8.1819190842622e-2; // Excentricidad
-
-        const asq = Math.pow(a, 2);
-        const esq = Math.pow(e, 2);
-
-        const b = Math.sqrt(asq * (1 - esq));
-        const bsq = Math.pow(b, 2);
-
-        const ep = Math.sqrt((asq - bsq) / bsq);
-        const p = Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2));
-        const th = Math.atan2(a * z, b * p);
-
-        const lon = Math.atan2(y, x);
-        const lat = Math.atan2(
-            z + Math.pow(ep, 2) * b * Math.pow(Math.sin(th), 3),
-            p - esq * a * Math.pow(Math.cos(th), 3),
-        );
-
-        const N = a / Math.sqrt(1 - esq * Math.pow(Math.sin(lat), 2));
-        const alt = p / Math.cos(lat) - N;
-
-        // Convertir a grados y redondear a 8 decimales
-        return {
-            lat: parseFloat(((lat * 180) / Math.PI).toFixed(8)),
-            lon: parseFloat(((lon * 180) / Math.PI).toFixed(8)),
-            alt: parseFloat(alt.toFixed(3)),
-        };
-    }
-
-    useEffect(() => {
-        if (stationMeta && station) {
-            getStationInfo();
-            getFiles();
-        }
-    }, [stationMeta, station]);
-
-    useEffect(() => {
-        setLoading(true);
-        Promise.all([getRinex(), getStationMeta(), getStation()]).then(() => {
-            setLoading(false);
-        });
-    }, []);
-
-    // la foto inicial recién puede pedirse cuando llega el catálogo de monuments
-    useEffect(() => {
-        if (!edit && monumentsType && monumentsType.length > 0) {
-            getMonumentPhoto();
-        }
-    }, [monumentsType, stationMetaMain, edit]); // eslint-disable-line
+    const loading = isStationLoading || isStationMetaLoading || isRinexLoading;
 
     useEffect(() => {
         modals?.show && showModal(modals.title);
     }, [modals]);
-
-    useEffect(() => {
-        const updatedRichText = classHtml(richText);
-
-        dispatch({
-            type: "change_value",
-            payload: {
-                inputName: "rinex.comments",
-                inputValue: updatedRichText,
-            },
-        });
-    }, [richText]);
 
     useEffect(() => {
         if (fileToShow !== undefined) {
@@ -526,19 +435,10 @@ const StationMetadataModal = ({
             rinex: {
                 first_rinex: firstRinex?.observation_e_time ?? "",
                 last_rinex: lastRinex?.observation_e_time ?? "",
-                comments: stationMeta?.comments ?? "",
                 navigation_file: stationMeta?.navigation_filename ?? "",
             },
-            booleans: {
-                has_battery: stationMeta?.has_battery ?? false,
-                has_communications: stationMeta?.has_communications ?? false,
-            },
-            booleansDesc: {
-                battery_description: stationMeta?.battery_description ?? "",
-                communications_description:
-                    stationMeta?.communications_description ?? "",
-            },
-            stationMeta: {
+            // 1:1 con lo que manda el PATCH de station-meta (updateMetadata)
+            meta: {
                 station_type:
                     stationType?.find(
                         (st) => st.id === Number(stationMeta?.station_type),
@@ -552,12 +452,13 @@ const StationMetadataModal = ({
                         (st) => st.id === Number(stationMeta?.status),
                     )?.name ?? "",
                 remote_access_link: stationMeta?.remote_access_link ?? "",
-                station_name: stationData?.station_name ?? "",
-                dome: stationData?.dome ?? "",
-                harpos_coeff_otl: stationData?.harpos_coeff_otl ?? "",
-                max_dist: String(stationData?.max_dist ?? ""),
+                has_battery: stationMeta?.has_battery ?? false,
+                has_communications: stationMeta?.has_communications ?? false,
+                battery_description: stationMeta?.battery_description ?? "",
+                communications_description:
+                    stationMeta?.communications_description ?? "",
             },
-
+            // 1:1 con lo que manda el PATCH de station (updateMetadata)
             station: {
                 lat: String(Number(stationData?.lat).toFixed(8)) ?? "",
                 lon: String(Number(stationData?.lon).toFixed(8)) ?? "",
@@ -565,6 +466,11 @@ const StationMetadataModal = ({
                 auto_x: String(Number(stationData?.auto_x).toFixed(3)) ?? "",
                 auto_y: String(Number(stationData?.auto_y).toFixed(3)) ?? "",
                 auto_z: String(Number(stationData?.auto_z).toFixed(3)) ?? "",
+                station_name: stationData?.station_name ?? "",
+                dome: stationData?.dome ?? "",
+                harpos_coeff_otl: stationData?.harpos_coeff_otl ?? "",
+                max_dist: String(stationData?.max_dist ?? ""),
+                plate: stationData?.plate ?? "",
             },
         };
     }, [
@@ -580,36 +486,69 @@ const StationMetadataModal = ({
 
     const { formState, dispatch } = useFormReducer(formattedData);
 
+    // se resetea junto con el resto del form: al montar y despues de cada
+    // refetch exitoso (incluido el post-guardado), nunca por el mero
+    // toggle de edit (igual que el resto de los campos)
+    const comments = stationMeta?.comments ?? "";
+    const richText = richTextDraft ?? comments;
+
     useEffect(() => {
         dispatch({
             type: "set",
             payload: formattedData,
         });
+        setRichTextDraft(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [formattedData]);
 
-    useEffect(() => {
-        // useEffect to set monumentType photo dinamically on edit monument type
-        if (monumentsType && monumentsType.length > 0 && edit) {
-            const newMonumentSelected = monumentsType.find(
-                (mt) => mt.name === formState.stationMeta.monument_type,
-            );
-            if (
-                newMonumentSelected &&
-                newMonumentSelected.id !== Number(stationMeta?.monument_type)
-            ) {
-                const monumentId = newMonumentSelected.id;
-                getMonumentPhotoById(monumentId);
-            } else if (
-                newMonumentSelected &&
-                newMonumentSelected.id === Number(stationMeta?.monument_type)
-            ) {
-                const monumentId = monumentsType.find(
-                    (mt) => mt.id === Number(stationMeta?.monument_type),
-                )?.id;
-                getMonumentPhotoById(monumentId);
-            }
+    const selectOptions = useMemo<
+        Record<string, { value: string; label: string }[]>
+    >(() => {
+        const byName = (item: { name: string }) => ({
+            value: item.name,
+            label: item.name,
+        });
+
+        const plateOptions = (tectonicPlates ?? []).map((plate) => ({
+            value: plate.code,
+            label: `${plate.name} (${plate.code})`,
+        }));
+
+        // el código guardado puede no estar en el catálogo todavía (o nunca, si
+        // geode cambió de dataset): lo agregamos para no perder el valor actual
+        const currentPlate = formState.station.plate;
+        if (
+            currentPlate &&
+            !plateOptions.some((option) => option.value === currentPlate)
+        ) {
+            plateOptions.unshift({ value: currentPlate, label: currentPlate });
         }
-    }, [stationMeta, monumentsType, formState.stationMeta.monument_type]);
+
+        return {
+            station_type: (stationType ?? []).map(byName),
+            monument_type: (monumentsType ?? []).map(byName),
+            status: (stationStatus ?? []).map(byName),
+            plate: plateOptions,
+        };
+    }, [
+        stationType,
+        monumentsType,
+        stationStatus,
+        tectonicPlates,
+        formState.station.plate,
+    ]);
+
+    // foto del monumento actualmente relevante: el elegido en el form mientras
+    // se edita, o el guardado en stationMeta el resto del tiempo
+    const activeMonumentTypeId = edit
+        ? monumentsType?.find((mt) => mt.name === formState.meta.monument_type)
+              ?.id
+        : Number(stationMeta?.monument_type) || undefined;
+
+    const { data: chosenMonumentPhoto } = useMonumentPhoto(
+        api,
+        activeMonumentTypeId,
+    );
 
     const handleChange = (
         e:
@@ -739,131 +678,67 @@ const StationMetadataModal = ({
     };
 
     const updateMetadata = async () => {
-        try {
-            if (station && stationMeta) {
-                setUpdateLoading(true);
+        if (!station || !stationMeta) return;
 
-                const updatedRichText = classHtml(richText);
+        const updatedRichText = classHtml(richText);
 
-                const meta = {
-                    has_battery: formState.booleans.has_battery,
-                    has_communications: formState.booleans.has_communications,
-                    comments: updatedRichText,
-                    remote_access_link:
-                        formState.stationMeta.remote_access_link,
-                    battery_description:
-                        formState.booleansDesc.battery_description,
-                    communications_description:
-                        formState.booleansDesc.communications_description,
-                    station_type: stationType?.find(
-                        (st) => st.name === formState.stationMeta.station_type,
-                    )?.id,
-                    monument_type: monumentsType?.find(
-                        (mt) => mt.name === formState.stationMeta.monument_type,
-                    )?.id,
-                    status: stationStatus?.find(
-                        (st) => st.name === formState.stationMeta.status,
-                    )?.id,
-                    navigation_file_delete: false,
-                    station: stationId,
-                };
+        // formState.meta/.station ya tienen la forma de cada PATCH (ver
+        // formattedData); solo se pisan los campos que necesitan transformarse
+        const meta = {
+            ...formState.meta,
+            comments: updatedRichText,
+            station_type: stationType?.find(
+                (st) => st.name === formState.meta.station_type,
+            )?.id,
+            monument_type: monumentsType?.find(
+                (mt) => mt.name === formState.meta.monument_type,
+            )?.id,
+            status: stationStatus?.find(
+                (st) => st.name === formState.meta.status,
+            )?.id,
+            navigation_file_delete: false,
+            station: stationId,
+        };
 
-                const formData = new FormData();
+        const stationParams: Record<string, unknown> = {
+            ...formState.station,
+            harpos_coeff_otl_by_file: oceanTideFile,
+        };
 
-                Object.entries(meta).forEach(([key, value]) => {
-                    if (value) {
-                        formData.append(key, String(value));
-                    }
-                });
-
-                const resMeta = await patchStationMetaService<
-                    StationMetadataServiceData | ErrorResponse
-                >(api, Number(station?.api_id), meta);
-                if ("msg" in resMeta) {
-                    setMetaMsg({
-                        status: resMeta.statusCode,
-                        msg: resMeta.response.type,
-                        errors: resMeta.response,
-                    });
-                } else {
-                    setMetaMsg({
-                        status: Number(resMeta.statusCode),
-                        msg: "Metadata updated successfully",
-                    });
-                }
-                const stationParams = {
-                    ...formState.station,
-                    harpos_coeff_otl: formState.stationMeta.harpos_coeff_otl,
-                    max_dist: formState.stationMeta.max_dist,
-                    dome: formState.stationMeta.dome ?? "",
-                    station_name: formState.stationMeta.station_name ?? "",
-                    harpos_coeff_otl_by_file: oceanTideFile,
-                };
-
-                if (oceanTideType === "by file") {
-                    delete (stationParams as any).harpos_coeff_otl;
-                } else if (oceanTideType === "manual") {
-                    delete (stationParams as any).harpos_coeff_otl_by_file;
-                }
-
-                const stationFormData = new FormData();
-
-                Object.entries(stationParams).forEach(([key, value]) => {
-                    if (value) {
-                        stationFormData.append(key, String(value));
-                    }
-                });
-                const res = await patchStationService<
-                    ExtendedStationData | ErrorResponse
-                >(api, Number(station?.api_id), stationParams);
-                const errorRes = res as ErrorResponse;
-                if (res.statusCode !== 200 && "status" in res) {
-                    setStationMsg({
-                        status: errorRes.statusCode,
-                        msg: errorRes.msg,
-                        errors: errorRes.response,
-                    });
-                } else if (res.statusCode === 200) {
-                    setStationMsg({
-                        status: Number(res.statusCode),
-                        msg: "Station updated successfully",
-                    });
-                }
-
-                if (resMeta.statusCode === 200 && res.statusCode === 200) {
-                    Promise.all([getStationMeta(), getStation()]).then(() => {
-                        setLoading(false);
-                        setUpdateLoading(false);
-                    });
-                    setTimeout(() => {
-                        setEdit(false);
-                    }, 1000);
-                }
-            }
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setUpdateLoading(false);
+        if (oceanTideType === "by file") {
+            delete stationParams.harpos_coeff_otl;
+        } else if (oceanTideType === "manual") {
+            delete stationParams.harpos_coeff_otl_by_file;
         }
-    };
 
-    const generalFields = [
-        "Station Type",
-        "Monument",
-        "Status",
-        "Remote Access Link",
-        "Station Name",
-        "Domes Number",
-        "Ocean Tide Loading Model",
-        "Max distance",
-    ];
-    const generalFields2 = ["Battery", "Communications"];
-    const generalFields3 = [
-        "First rinex",
-        "Last rinex",
-        "Comments",
-        "Navigation File",
-    ];
+        const [metaResult, stationResult] = await Promise.allSettled([
+            metaMutation.mutateAsync({
+                id: Number(station?.api_id),
+                data: meta,
+            }),
+            stationMutation.mutateAsync({
+                id: Number(station?.api_id),
+                data: stationParams,
+            }),
+        ]);
+
+        const metaWritten = metaResult.status === "fulfilled";
+        const stationWritten = stationResult.status === "fulfilled";
+
+        const [metaRefetchResult, stationRefetchResult] = await Promise.all([
+            metaWritten ? refetchStationMeta() : Promise.resolve(undefined),
+            stationWritten ? refetchStation() : Promise.resolve(undefined),
+        ]);
+
+        // le paso los datos ya frescos al padre para que no los vuelva a pedir
+        if (metaWritten || stationWritten) {
+            refetch(stationRefetchResult?.data, metaRefetchResult?.data);
+        }
+
+        // se queda en modo edicion: el usuario tiene que poder ver el
+        // mensaje de exito/error, no que se lo saquen de encima solo
+    };
+    const generalFields3 = ["First rinex", "Last rinex", "Navigation File"];
     const equipmentFields = [
         "Antenna Code",
         "Antenna Serial",
@@ -874,22 +749,210 @@ const StationMetadataModal = ({
         "Radome Code",
     ];
 
-    const inputsWithSelectKey = ["station_type", "monument_type", "status"];
+    const renderGeneralField = ({
+        key,
+        slice,
+        label,
+        kind,
+        emptyText,
+    }: GeneralFieldDescriptor) => {
+        // meta y station viajan en PATCHs distintos, cada uno con sus propios
+        // errores (ver el mapeo de campos en updateMetadata)
+        const errorBadge =
+            metaMsg?.errors?.errors?.find((error) => error.attr === key) ??
+            stationMsg?.errors?.errors?.find((error) => error.attr === key);
+        const value = (formState[slice] as Record<string, string>)[key] ?? "";
+        const name = `${slice}.${key}`;
+        // en modo lectura mostramos el label del catalogo (p.ej. "South
+        // America (SA)"), no el valor crudo que viaja en el PATCH ("SA")
+        const displayValue =
+            kind === "select"
+                ? ((selectOptions[key] ?? []).find(
+                      (option) => option.value === value,
+                  )?.label ?? value)
+                : value;
 
-    const inputRefType = useRef<HTMLInputElement>(null);
+        return (
+            <div key={key}>
+                <div
+                    className="text-sm font-bold flex items-center"
+                    title={label}
+                >
+                    {label}
+                </div>
+                {edit ? (
+                    <div className="flex flex-col space-y-1">
+                        <label
+                            className={`input input-bordered flex items-center ${errorBadge ? "input-error" : ""}`}
+                            title={errorBadge ? errorBadge.detail : ""}
+                            style={kind === "select" ? { padding: "0" } : {}}
+                        >
+                            {kind === "select" ? (
+                                <select
+                                    className="select select-ghost w-full focus:outline-none focus:border-transparent focus:ring-0 focus:scale-95"
+                                    name={name}
+                                    value={value}
+                                    style={{
+                                        fontSize: "16px",
+                                        textOverflow: "ellipsis",
+                                        overflow: "hidden",
+                                        whiteSpace: "nowrap",
+                                    }}
+                                    onChange={(e) => {
+                                        dispatch({
+                                            type: "change_value",
+                                            payload: {
+                                                inputName: e.target.name,
+                                                inputValue: e.target.value,
+                                            },
+                                        });
+                                    }}
+                                >
+                                    {emptyText ? (
+                                        <option value="">{emptyText}</option>
+                                    ) : (
+                                        <option value="" disabled>
+                                            Select a {key.replace("_", " ")}
+                                        </option>
+                                    )}
+                                    {(selectOptions[key] ?? []).map(
+                                        (option) => (
+                                            <option
+                                                className="truncate"
+                                                key={option.value}
+                                                value={option.value}
+                                                title={option.label}
+                                            >
+                                                {option.label.length > 30
+                                                    ? option.label.slice(
+                                                          0,
+                                                          30,
+                                                      ) + "..."
+                                                    : option.label}
+                                            </option>
+                                        ),
+                                    )}
+                                </select>
+                            ) : (
+                                <input
+                                    className="w-full"
+                                    autoComplete="off"
+                                    type="text"
+                                    value={value}
+                                    name={name}
+                                    onChange={(e) => handleChange(e)}
+                                />
+                            )}
+                            {errorBadge && (
+                                <span className="badge badge-error self-start -mt-2">
+                                    {errorBadge.code}
+                                </span>
+                            )}
+                        </label>
+                    </div>
+                ) : kind === "link" ? (
+                    value ? (
+                        <a
+                            target="_blank"
+                            className="link link-hover break-words"
+                            href={value}
+                        >
+                            {value}
+                        </a>
+                    ) : (
+                        <span className="text-gray-400">No info</span>
+                    )
+                ) : (
+                    <p className="break-words whitespace-pre-wrap max-h-[150px] overflow-y-auto">
+                        {displayValue !== "" ? (
+                            displayValue
+                        ) : (
+                            <span className="text-gray-400">
+                                {emptyText ?? "No info"}
+                            </span>
+                        )}
+                    </p>
+                )}
+            </div>
+        );
+    };
 
-    const inputRefMonument = useRef<HTMLInputElement>(null);
+    const renderBooleanField = ({
+        key,
+        descKey,
+        label,
+    }: BooleanFieldDescriptor) => {
+        const value = formState.meta[key];
+        const errorBadge = metaMsg?.errors?.errors?.find(
+            (error) => error.attr === descKey,
+        );
 
-    const inputRefStatus = useRef<HTMLInputElement>(null);
+        return (
+            <div key={key}>
+                <div className="text-sm font-bold flex items-center">
+                    {label}
+                    {edit ? (
+                        <input
+                            type="checkbox"
+                            className="toggle ml-2"
+                            style={{
+                                borderRadius: "50px",
+                                color: value
+                                    ? "rgb(21 128 61)"
+                                    : "rgb(185 28 28)",
+                            }}
+                            onChange={(e) => {
+                                dispatch({
+                                    type: "change_value",
+                                    payload: {
+                                        inputName: `meta.${key}`,
+                                        inputValue: e.target.checked,
+                                    },
+                                });
+                            }}
+                            checked={value}
+                        />
+                    ) : (
+                        <div
+                            className={`size-3 ${value ? "bg-green-500" : "bg-red-500"} rounded-full ml-3`}
+                            title={label}
+                        ></div>
+                    )}
+                </div>
 
-    const selectRef = (key: string) => {
-        return key === "station_type"
-            ? inputRefType
-            : key === "monument_type"
-                ? inputRefMonument
-                : key === "status"
-                    ? inputRefStatus
-                    : null;
+                {edit ? (
+                    <div className="flex flex-col space-y-1">
+                        <label
+                            className={`input input-bordered ${errorBadge ? "input-error" : ""} flex items-center`}
+                        >
+                            <input
+                                className="w-full"
+                                autoComplete="off"
+                                type="text"
+                                value={formState.meta[descKey]}
+                                name={`meta.${descKey}`}
+                                onChange={(e) => handleChange(e)}
+                            />
+                        </label>
+                        {errorBadge && (
+                            <span className="badge badge-error self-end">
+                                {errorBadge.code}
+                            </span>
+                        )}
+                    </div>
+                ) : (
+                    <p className="break-words">
+                        {formState.meta[descKey] !== "" ? (
+                            formState.meta[descKey]
+                        ) : (
+                            <span className="text-gray-400">
+                                No Description
+                            </span>
+                        )}
+                    </p>
+                )}
+            </div>
+        );
     };
 
     const handleGetFile = async (file: StationFilesData) => {
@@ -903,16 +966,13 @@ const StationMetadataModal = ({
         }
     };
 
-    const isPdf = (file: string) => {
-        return file.includes(".pdf");
-    };
-
     const setEditFile = (file: StationFilesData) => {
         setModals({ show: true, title: "AddFile", type: "edit" });
         setFileToEdit(file);
     };
 
-    const otlErrorBadge = metaMsg?.errors?.errors?.find(
+    // harpos_coeff_otl viaja en el PATCH de station, no en el de meta
+    const otlErrorBadge = stationMsg?.errors?.errors?.find(
         (error) => error.attr === "harpos_coeff_otl",
     );
 
@@ -922,9 +982,6 @@ const StationMetadataModal = ({
             modalId={"Metadata"}
             size={size}
             setModalState={setModalState}
-            handleCloseModal={() => {
-                refetch();
-            }}
         >
             <div className="w-full inline-flex">
                 <h3 className="font-bold text-center text-3xl my-2 grow">
@@ -934,6 +991,11 @@ const StationMetadataModal = ({
                     className="flex items-center btn btn-ghost btn-circle"
                     onClick={() => {
                         setEdit(!edit);
+                        // sin esto, el mensaje de exito/error del guardado
+                        // anterior reaparecia al volver a entrar en modo
+                        // edicion sin haber tocado nada nuevo
+                        metaMutation.reset();
+                        stationMutation.reset();
                     }}
                 >
                     <PencilSquareIcon title="edit" className="size-8" />
@@ -951,422 +1013,17 @@ const StationMetadataModal = ({
 
                             <div className="card-body">
                                 <div className="grid grid-cols-2 gap-6">
-                                    {Object.keys(formState.stationMeta).map(
-                                        (key, idx) => {
-                                            const keysToNotShow = [
-                                                "harpos_coeff_otl",
-                                            ];
-
-                                            if (
-                                                key &&
-                                                !keysToNotShow.includes(key)
-                                            ) {
-                                                const errorBadge =
-                                                    metaMsg?.errors?.errors?.find(
-                                                        (error) =>
-                                                            error.attr === key,
-                                                    );
-                                                const maxDistErrorBadge =
-                                                    stationMsg?.errors?.errors?.find(
-                                                        (error) =>
-                                                            error.attr ===
-                                                            "max_dist",
-                                                    );
-
-                                                return (
-                                                    <div key={key}>
-                                                        <div
-                                                            className="text-sm font-bold flex items-center"
-                                                            title={
-                                                                generalFields[
-                                                                idx
-                                                                ]
-                                                            }
-                                                        >
-                                                            {generalFields[idx]}{" "}
-                                                            <div
-                                                                className={`size-3  rounded-full ml-3`}
-                                                                title={
-                                                                    generalFields[
-                                                                    idx
-                                                                    ]
-                                                                }
-                                                            ></div>
-                                                        </div>
-                                                        {edit ? (
-                                                            <div className="flex flex-col space-y-1">
-                                                                <label
-                                                                    className={`input input-bordered flex items-center ${errorBadge || (key === "max_dist" && maxDistErrorBadge) ? "input-error" : ""}  `}
-                                                                    title={
-                                                                        errorBadge
-                                                                            ? errorBadge.detail
-                                                                            : key ===
-                                                                                "max_dist" &&
-                                                                                maxDistErrorBadge
-                                                                                ? maxDistErrorBadge.detail
-                                                                                : ""
-                                                                    }
-                                                                    style={
-                                                                        inputsWithSelectKey.includes(
-                                                                            key,
-                                                                        )
-                                                                            ? {
-                                                                                padding:
-                                                                                    "0",
-                                                                            }
-                                                                            : {}
-                                                                    }
-                                                                >
-                                                                    {inputsWithSelectKey.includes(
-                                                                        key,
-                                                                    ) ? (
-                                                                        <select
-                                                                            className="select select-ghost w-full focus:outline-none focus:border-transparent focus:ring-0 focus:scale-95"
-                                                                            name={
-                                                                                "stationMeta." +
-                                                                                key
-                                                                            }
-                                                                            value={
-                                                                                formState
-                                                                                    .stationMeta[
-                                                                                key as keyof typeof formState.stationMeta
-                                                                                ] ??
-                                                                                ""
-                                                                            }
-                                                                            style={{
-                                                                                fontSize:
-                                                                                    "16px",
-                                                                                textOverflow:
-                                                                                    "ellipsis",
-                                                                                overflow:
-                                                                                    "hidden",
-                                                                                whiteSpace:
-                                                                                    "nowrap",
-                                                                            }}
-                                                                            onChange={(
-                                                                                e,
-                                                                            ) => {
-                                                                                dispatch(
-                                                                                    {
-                                                                                        type: "change_value",
-                                                                                        payload:
-                                                                                        {
-                                                                                            inputName:
-                                                                                                e
-                                                                                                    .target
-                                                                                                    .name,
-                                                                                            inputValue:
-                                                                                                e
-                                                                                                    .target
-                                                                                                    .value,
-                                                                                        },
-                                                                                    },
-                                                                                );
-                                                                            }}
-                                                                        >
-                                                                            <option
-                                                                                value=""
-                                                                                disabled
-                                                                            >
-                                                                                Select
-                                                                                a{" "}
-                                                                                {key.replace(
-                                                                                    "_",
-                                                                                    " ",
-                                                                                )}
-                                                                            </option>
-                                                                            {(key ===
-                                                                                "station_type"
-                                                                                ? (stationType ??
-                                                                                    [])
-                                                                                : key ===
-                                                                                    "monument_type"
-                                                                                    ? (monumentsType ??
-                                                                                        [])
-                                                                                    : key ===
-                                                                                        "status"
-                                                                                        ? (stationStatus ??
-                                                                                            [])
-                                                                                        : []
-                                                                            ).map(
-                                                                                (
-                                                                                    item,
-                                                                                ) => (
-                                                                                    <option
-                                                                                        className="truncate"
-                                                                                        key={
-                                                                                            item.id
-                                                                                        }
-                                                                                        value={
-                                                                                            item.name
-                                                                                        }
-                                                                                        title={
-                                                                                            item.name
-                                                                                        }
-                                                                                    >
-                                                                                        {item
-                                                                                            .name
-                                                                                            .length >
-                                                                                            30
-                                                                                            ? item.name.slice(
-                                                                                                0,
-                                                                                                30,
-                                                                                            ) +
-                                                                                            "..."
-                                                                                            : item.name}
-                                                                                    </option>
-                                                                                ),
-                                                                            )}
-                                                                        </select>
-                                                                    ) : (
-                                                                        <input
-                                                                            className={
-                                                                                "w-full "
-                                                                            }
-                                                                            autoComplete="off"
-                                                                            type="text"
-                                                                            ref={selectRef(
-                                                                                key,
-                                                                            )}
-                                                                            value={
-                                                                                formState
-                                                                                    .stationMeta[
-                                                                                key as keyof typeof formState.stationMeta
-                                                                                ] ??
-                                                                                ""
-                                                                            }
-                                                                            name={
-                                                                                "stationMeta." +
-                                                                                key
-                                                                            }
-                                                                            onChange={(
-                                                                                e,
-                                                                            ) =>
-                                                                                handleChange(
-                                                                                    e,
-                                                                                )
-                                                                            }
-                                                                        />
-                                                                    )}
-
-                                                                    {errorBadge ? (
-                                                                        <span className="badge badge-error self-start -mt-2">
-                                                                            {
-                                                                                errorBadge.code
-                                                                            }
-                                                                        </span>
-                                                                    ) : key ===
-                                                                        "max_dist" &&
-                                                                        maxDistErrorBadge ? (
-                                                                        <span className="badge badge-error self-start -mt-2">
-                                                                            {
-                                                                                maxDistErrorBadge.code
-                                                                            }
-                                                                        </span>
-                                                                    ) : null}
-                                                                </label>
-                                                            </div>
-                                                        ) : key ===
-                                                            "remote_access_link" ? (
-                                                            formState
-                                                                .stationMeta[
-                                                                key as keyof typeof formState.stationMeta
-                                                            ] ? (
-                                                                <a
-                                                                    target="_blank"
-                                                                    className="link link-hover break-words"
-                                                                    href={
-                                                                        formState
-                                                                            .stationMeta[
-                                                                        key as keyof typeof formState.stationMeta
-                                                                        ]
-                                                                    }
-                                                                >
-                                                                    {
-                                                                        formState
-                                                                            .stationMeta[
-                                                                        key as keyof typeof formState.stationMeta
-                                                                        ]
-                                                                    }
-                                                                </a>
-                                                            ) : (
-                                                                <span className="text-gray-400">
-                                                                    No info
-                                                                </span>
-                                                            )
-                                                        ) : (
-                                                            <p className="break-words whitespace-pre-wrap max-h-[150px] overflow-y-auto">
-                                                                {formState
-                                                                    .stationMeta[
-                                                                    key as keyof typeof formState.stationMeta
-                                                                ] &&
-                                                                    formState
-                                                                        .stationMeta[
-                                                                    key as keyof typeof formState.stationMeta
-                                                                    ] !== "" ? (
-                                                                    formState
-                                                                        .stationMeta[
-                                                                    key as keyof typeof formState.stationMeta
-                                                                    ]
-                                                                ) : (
-                                                                    <span className="text-gray-400">
-                                                                        No info
-                                                                    </span>
-                                                                )}
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                );
-                                            }
-                                        },
-                                    )}
-                                    {Object.entries(formState.booleans).map(
-                                        ([key, value], idx) => {
-                                            if (key) {
-                                                const pointer = value
-                                                    ? "bg-green-500"
-                                                    : "bg-red-500";
-
-                                                const descKey =
-                                                    key === "has_battery"
-                                                        ? "battery_description"
-                                                        : "communications_description";
-
-                                                const errorBadge =
-                                                    metaMsg?.errors?.errors?.find(
-                                                        (error) =>
-                                                            error.attr ===
-                                                            descKey,
-                                                    );
-
-                                                return (
-                                                    <div key={key}>
-                                                        <div className="text-sm font-bold flex items-center">
-                                                            {
-                                                                generalFields2[
-                                                                idx
-                                                                ]
-                                                            }
-                                                            {edit ? (
-                                                                <input
-                                                                    type="checkbox"
-                                                                    className={`toggle ml-2`}
-                                                                    style={{
-                                                                        borderRadius:
-                                                                            "50px",
-                                                                        color: value
-                                                                            ? "rgb(21 128 61)"
-                                                                            : "rgb(185 28 28)",
-                                                                    }}
-                                                                    onChange={(
-                                                                        e,
-                                                                    ) => {
-                                                                        dispatch(
-                                                                            {
-                                                                                type: "change_value",
-                                                                                payload:
-                                                                                {
-                                                                                    inputName:
-                                                                                        "booleans." +
-                                                                                        key,
-                                                                                    inputValue:
-                                                                                        e
-                                                                                            .target
-                                                                                            .checked,
-                                                                                },
-                                                                            },
-                                                                        );
-                                                                    }}
-                                                                    checked={
-                                                                        formState
-                                                                            .booleans[
-                                                                        key as keyof typeof formState.booleans
-                                                                        ]
-                                                                    }
-                                                                />
-                                                            ) : (
-                                                                <div
-                                                                    className={`size-3 ${pointer} rounded-full ml-3`}
-                                                                    title={
-                                                                        generalFields2[
-                                                                        idx
-                                                                        ]
-                                                                    }
-                                                                ></div>
-                                                            )}
-                                                        </div>
-
-                                                        {edit ? (
-                                                            <div className="flex flex-col space-y-1">
-                                                                <label
-                                                                    className={`input input-bordered ${errorBadge ? "input-error" : ""} flex items-center`}
-                                                                >
-                                                                    <input
-                                                                        className="w-full"
-                                                                        autoComplete="off"
-                                                                        type="text"
-                                                                        value={
-                                                                            formState
-                                                                                .booleansDesc[
-                                                                            descKey
-                                                                            ]
-                                                                        }
-                                                                        name={
-                                                                            "booleansDesc." +
-                                                                            descKey
-                                                                        }
-                                                                        onChange={(
-                                                                            e,
-                                                                        ) =>
-                                                                            handleChange(
-                                                                                e,
-                                                                            )
-                                                                        }
-                                                                    />
-                                                                </label>
-                                                                {errorBadge && (
-                                                                    <span className="badge badge-error self-end">
-                                                                        {
-                                                                            errorBadge.code
-                                                                        }
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        ) : (
-                                                            <p className="break-words">
-                                                                {formState
-                                                                    .booleansDesc[
-                                                                    descKey
-                                                                ] !== "" ? (
-                                                                    formState
-                                                                        .booleansDesc[
-                                                                    descKey
-                                                                    ]
-                                                                ) : (
-                                                                    <span className="text-gray-400">
-                                                                        No
-                                                                        Description
-                                                                    </span>
-                                                                )}
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                );
-                                            }
-                                        },
-                                    )}
+                                    {GENERAL_FIELDS.map(renderGeneralField)}
+                                    {BOOLEAN_FIELDS.map(renderBooleanField)}
                                     {Object.entries(formState.rinex).map(
                                         ([key, value], idx) => {
-                                            if (
-                                                key !== "comments" &&
-                                                key !== "navigation_file"
-                                            ) {
+                                            if (key !== "navigation_file") {
                                                 return (
                                                     <div key={key}>
                                                         <div className="text-sm font-bold flex items-center">
                                                             {
                                                                 generalFields3[
-                                                                idx
+                                                                    idx
                                                                 ]
                                                             }
                                                         </div>
@@ -1387,136 +1044,125 @@ const StationMetadataModal = ({
                                                     </div>
                                                 );
                                             } else {
-                                                // const errorBadge =
-                                                //     metaMsg?.errors?.errors?.find(
-                                                //         (error) =>
-                                                //             error.attr === key,
-                                                //     );
-
                                                 // TODO: HANDLEAR EL APPLICATION, ESTA PUESTO SOLO PDF. XQ NOSE
-
-                                                if (key === "navigation_file") {
-                                                    return (
-                                                        <div key={key}>
-                                                            <div className="text-sm font-bold flex items-center justify-between">
-                                                                Navigation File
-                                                                {edit && (
-                                                                    <button
-                                                                        className="btn btn-ghost btn-circle ml-2 -mt-2"
-                                                                        onClick={() => {
-                                                                            setModals(
-                                                                                {
-                                                                                    show: true,
-                                                                                    title: "AddFile",
-                                                                                    type: "add",
-                                                                                },
-                                                                            );
-                                                                            setFileType(
-                                                                                "meta",
-                                                                            );
-                                                                        }}
-                                                                        disabled={
-                                                                            formState
-                                                                                .rinex
-                                                                                .navigation_file !==
-                                                                            ""
+                                                return (
+                                                    <div key={key}>
+                                                        <div className="text-sm font-bold flex items-center justify-between">
+                                                            Navigation File
+                                                            {edit && (
+                                                                <button
+                                                                    className="btn btn-ghost btn-circle ml-2 -mt-2"
+                                                                    onClick={() => {
+                                                                        setModals(
+                                                                            {
+                                                                                show: true,
+                                                                                title: "AddFile",
+                                                                                type: "add",
+                                                                            },
+                                                                        );
+                                                                        setFileType(
+                                                                            "meta",
+                                                                        );
+                                                                    }}
+                                                                    disabled={
+                                                                        formState
+                                                                            .rinex
+                                                                            .navigation_file !==
+                                                                        ""
+                                                                    }
+                                                                >
+                                                                    <PlusCircleIcon
+                                                                        strokeWidth={
+                                                                            1.5
                                                                         }
-                                                                    >
-                                                                        <PlusCircleIcon
-                                                                            strokeWidth={
-                                                                                1.5
-                                                                            }
-                                                                            stroke="currentColor"
-                                                                            className="size-6"
-                                                                        />
-                                                                    </button>
-                                                                )}
-                                                            </div>
+                                                                        stroke="currentColor"
+                                                                        className="size-6"
+                                                                    />
+                                                                </button>
+                                                            )}
+                                                        </div>
 
-                                                            {edit ? (
-                                                                <div className="flex flex-col space-y-1">
-                                                                    <div className="bg-neutral-content p-4 rounded-md flex-grow flex items-center">
-                                                                        {formState
-                                                                            .rinex[
-                                                                            key as keyof typeof formState.rinex
-                                                                        ] && (
-                                                                                <button
-                                                                                    className="btn btn-ghost btn-circle mr-4"
-                                                                                    onClick={() => {
-                                                                                        setModals(
-                                                                                            {
-                                                                                                show: true,
-                                                                                                title: "ConfirmDelete",
-                                                                                                type: "edit",
-                                                                                            },
-                                                                                        );
-                                                                                        setFileType(
-                                                                                            "meta",
-                                                                                        );
-                                                                                    }}
-                                                                                >
-                                                                                    <TrashIcon className="size-6 text-red-600" />
-                                                                                </button>
-                                                                            )}
-                                                                        <p className="break-words">
-                                                                            {formState
-                                                                                .rinex[
-                                                                                key as keyof typeof formState.rinex
-                                                                            ] ? (
-                                                                                formState
-                                                                                    .rinex[
-                                                                                key as keyof typeof formState.rinex
-                                                                                ]
-                                                                            ) : (
-                                                                                <span className="text-gray-400">
-                                                                                    No
-                                                                                    info
-                                                                                </span>
-                                                                            )}
-                                                                        </p>
-                                                                        {formState
-                                                                            .rinex[
-                                                                            key as keyof typeof formState.rinex
-                                                                        ] && (
-                                                                                <a
-                                                                                    className="btn-circle btn-ghost flex justify-center w-4/12"
-                                                                                    download={
-                                                                                        formState
-                                                                                            .rinex
-                                                                                            .navigation_file
-                                                                                    }
-                                                                                    href={`data:application/octet-stream;base64,${stationMeta?.navigation_actual_file}`}
-                                                                                >
-                                                                                    <ArrowDownTrayIcon className="size-6 self-center" />
-                                                                                </a>
-                                                                            )}
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                <p className="break-words">
+                                                        {edit ? (
+                                                            <div className="flex flex-col space-y-1">
+                                                                <div className="bg-neutral-content p-4 rounded-md flex-grow flex items-center">
                                                                     {formState
                                                                         .rinex[
                                                                         key as keyof typeof formState.rinex
-                                                                    ] &&
-                                                                        formState
-                                                                            .rinex[
-                                                                        key as keyof typeof formState.rinex
-                                                                        ] !== "" ? (
-                                                                        formState
-                                                                            .rinex[
-                                                                        key as keyof typeof formState.rinex
-                                                                        ]
-                                                                    ) : (
-                                                                        <span className="text-gray-400">
-                                                                            No
-                                                                            info
-                                                                        </span>
+                                                                    ] && (
+                                                                        <button
+                                                                            className="btn btn-ghost btn-circle mr-4"
+                                                                            onClick={() => {
+                                                                                setModals(
+                                                                                    {
+                                                                                        show: true,
+                                                                                        title: "ConfirmDelete",
+                                                                                        type: "edit",
+                                                                                    },
+                                                                                );
+                                                                                setFileType(
+                                                                                    "meta",
+                                                                                );
+                                                                            }}
+                                                                        >
+                                                                            <TrashIcon className="size-6 text-red-600" />
+                                                                        </button>
                                                                     )}
-                                                                </p>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                }
+                                                                    <p className="break-words">
+                                                                        {formState
+                                                                            .rinex[
+                                                                            key as keyof typeof formState.rinex
+                                                                        ] ? (
+                                                                            formState
+                                                                                .rinex[
+                                                                                key as keyof typeof formState.rinex
+                                                                            ]
+                                                                        ) : (
+                                                                            <span className="text-gray-400">
+                                                                                No
+                                                                                info
+                                                                            </span>
+                                                                        )}
+                                                                    </p>
+                                                                    {formState
+                                                                        .rinex[
+                                                                        key as keyof typeof formState.rinex
+                                                                    ] && (
+                                                                        <a
+                                                                            className="btn-circle btn-ghost flex justify-center w-4/12"
+                                                                            download={
+                                                                                formState
+                                                                                    .rinex
+                                                                                    .navigation_file
+                                                                            }
+                                                                            href={`data:application/octet-stream;base64,${stationMeta?.navigation_actual_file}`}
+                                                                        >
+                                                                            <ArrowDownTrayIcon className="size-6 self-center" />
+                                                                        </a>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <p className="break-words">
+                                                                {formState
+                                                                    .rinex[
+                                                                    key as keyof typeof formState.rinex
+                                                                ] &&
+                                                                formState.rinex[
+                                                                    key as keyof typeof formState.rinex
+                                                                ] !== "" ? (
+                                                                    formState
+                                                                        .rinex[
+                                                                        key as keyof typeof formState.rinex
+                                                                    ]
+                                                                ) : (
+                                                                    <span className="text-gray-400">
+                                                                        No info
+                                                                    </span>
+                                                                )}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                );
                                             }
                                         },
                                     )}
@@ -1533,7 +1179,7 @@ const StationMetadataModal = ({
                                 src={
                                     chosenMonumentPhoto
                                         ? "data:image/png;base64," +
-                                        chosenMonumentPhoto
+                                          chosenMonumentPhoto
                                         : defPhoto
                                 }
                                 alt={
@@ -1554,21 +1200,15 @@ const StationMetadataModal = ({
                             <div className="max-h-48 h-auto">
                                 {edit ? (
                                     <QuillText
-                                        value={
-                                            metaMsg?.errors
-                                                ? formattedData.rinex.comments
-                                                : richText
-                                        }
-                                        setValue={setRichText}
+                                        value={richText}
+                                        setValue={setRichTextDraft}
                                         clase="h-48 pb-12"
                                     />
-                                ) : formattedData.rinex.comments ? (
+                                ) : comments ? (
                                     <div
                                         className="textarea-bordered rounded-md overflow-auto p-4 max-h-48"
                                         dangerouslySetInnerHTML={{
-                                            __html:
-                                                formattedData.rinex.comments ??
-                                                "",
+                                            __html: comments,
                                         }}
                                     />
                                 ) : (
@@ -1671,17 +1311,17 @@ const StationMetadataModal = ({
                                                                     onClick={async () => {
                                                                         edit
                                                                             ? setEditFile(
-                                                                                file,
-                                                                            )
-                                                                            : isPdf(
-                                                                                file.filename,
-                                                                            )
-                                                                                ? setFileToShow(
+                                                                                  file,
+                                                                              )
+                                                                            : isPreviewableFile(
+                                                                                    file.filename,
+                                                                                )
+                                                                              ? setFileToShow(
                                                                                     await getFileById(
                                                                                         file.id,
                                                                                     ),
                                                                                 )
-                                                                                : handleGetFile(
+                                                                              : handleGetFile(
                                                                                     file,
                                                                                 );
                                                                     }}
@@ -1703,9 +1343,9 @@ const StationMetadataModal = ({
                                                                                 d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
                                                                             />
                                                                         </svg>
-                                                                    ) : isPdf(
-                                                                        file.filename,
-                                                                    ) ? (
+                                                                    ) : isPreviewableFile(
+                                                                          file.filename,
+                                                                      ) ? (
                                                                         <BookOpenIcon className="size-6 self-center" />
                                                                     ) : (
                                                                         <ArrowDownTrayIcon className="size-6 self-center" />
@@ -1737,95 +1377,25 @@ const StationMetadataModal = ({
                                 </div>
                             )}
                         </div>
-                        <div className="card bg-base-200 grow shadow-xl">
-                            <h2 className="card-title border-b-2 border-base-300 p-2 justify-between">
-                                Ocean Tide Loading Model
-                            </h2>
-                            <div className="max-h-48 overflow-y-auto h-full">
-                                {edit ? (
-                                    <>
-                                        <div className="flex gap-2 mb-2">
-                                            <button
-                                                className={`btn flex-1 ${oceanTideType === "by file" ? "btn-primary" : ""}`}
-                                                onClick={() =>
-                                                    setOceanTideType("by file")
-                                                }
-                                            >
-                                                By File
-                                            </button>
-                                            <button
-                                                className={`btn flex-1 ${oceanTideType === "manual" ? "btn-primary" : ""}`}
-                                                onClick={() =>
-                                                    setOceanTideType("manual")
-                                                }
-                                            >
-                                                Manual
-                                            </button>
-                                        </div>
-                                        {oceanTideType === "manual" ? (
-                                            <textarea
-                                                className={
-                                                    "textarea h-44 w-full textarea-ghost resize-none"
-                                                }
-                                                autoComplete="off"
-                                                value={
-                                                    formState.stationMeta[
-                                                    "harpos_coeff_otl" as keyof typeof formState.stationMeta
-                                                    ] ?? ""
-                                                }
-                                                name={
-                                                    "stationMeta." +
-                                                    "harpos_coeff_otl"
-                                                }
-                                                onChange={(e) =>
-                                                    handleChange(e)
-                                                }
-                                            ></textarea>
-                                        ) : (
-                                            oceanTideType === "by file" && (
-                                                <div className="">
-                                                    <Dropzone
-                                                        setFile={
-                                                            setOceanTideFile
-                                                        }
-                                                        file={oceanTideFile}
-                                                    />
-                                                </div>
-                                            )
-                                        )}
-                                        {otlErrorBadge && (
-                                            <span className="badge badge-error self-start -mt-2">
-                                                {otlErrorBadge.code}
-                                            </span>
-                                        )}
-                                    </>
-                                ) : (
-                                    <>
-                                        {formState.stationMeta[
-                                            "harpos_coeff_otl" as keyof typeof formState.stationMeta
-                                        ] &&
-                                            formState.stationMeta[
-                                            "harpos_coeff_otl" as keyof typeof formState.stationMeta
-                                            ] !== "" ? (
-                                            <p className="break-words whitespace-pre-wrap overflow-y-auto h-full p-2">
-                                                {
-                                                    formState.stationMeta[
-                                                    "harpos_coeff_otl" as keyof typeof formState.stationMeta
-                                                    ]
-                                                }
-                                            </p>
-                                        ) : (
-                                            <div className="card-body">
-                                                <div className="text-center text-neutral text-2xl font-bold w-full rounded-md bg-neutral-content p-6">
-                                                    There is no ocean tide
-                                                    loading model
-                                                </div>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        </div>
+                        <FileOrTextField
+                            title="Ocean Tide Loading Model"
+                            value={formState.station.harpos_coeff_otl ?? ""}
+                            onChange={(value) =>
+                                handleChange({
+                                    target: {
+                                        name: "station.harpos_coeff_otl",
+                                        value,
+                                    },
+                                })
+                            }
+                            mode={oceanTideType}
+                            onModeChange={setOceanTideType}
+                            file={oceanTideFile}
+                            setFile={setOceanTideFile}
+                            error={otlErrorBadge?.code}
+                            readOnly={!edit}
+                            emptyText="There is no ocean tide loading model"
+                        />
                     </div>
                     <div className="grid grid-cols-2 space-x-4 grid-flow-dense">
                         <div className="card bg-base-200 grow shadow-xl">
@@ -1858,8 +1428,8 @@ const StationMetadataModal = ({
                                                             {key === "lat"
                                                                 ? "Latitude"
                                                                 : key === "lon"
-                                                                    ? "Longitude"
-                                                                    : "Height"}
+                                                                  ? "Longitude"
+                                                                  : "Height"}
                                                         </div>
                                                         {edit ? (
                                                             <div className="flex flex-col space-y-1">
@@ -1878,7 +1448,7 @@ const StationMetadataModal = ({
                                                                         value={
                                                                             formState
                                                                                 .station[
-                                                                            key as keyof typeof formState.station
+                                                                                key as keyof typeof formState.station
                                                                             ] ??
                                                                             ""
                                                                         }
@@ -1921,17 +1491,17 @@ const StationMetadataModal = ({
                                                                             Number(
                                                                                 formState
                                                                                     .station[
-                                                                                key as keyof typeof formState.station
+                                                                                    key as keyof typeof formState.station
                                                                                 ],
                                                                             ),
                                                                             key ===
-                                                                            "lat",
+                                                                                "lat",
                                                                         )
                                                                     ) : (
                                                                         Number(
                                                                             formState
                                                                                 .station[
-                                                                            key as keyof typeof formState.station
+                                                                                key as keyof typeof formState.station
                                                                             ],
                                                                         ) + " m"
                                                                     )
@@ -1979,8 +1549,8 @@ const StationMetadataModal = ({
                                                                 ? "X"
                                                                 : key ===
                                                                     "auto_y"
-                                                                    ? "Y"
-                                                                    : "Z"}
+                                                                  ? "Y"
+                                                                  : "Z"}
                                                         </div>
                                                         {edit ? (
                                                             <div className="flex flex-col space-y-1">
@@ -1994,7 +1564,7 @@ const StationMetadataModal = ({
                                                                         value={
                                                                             formState
                                                                                 .station[
-                                                                            key as keyof typeof formState.station
+                                                                                key as keyof typeof formState.station
                                                                             ] ??
                                                                             ""
                                                                         }
@@ -2033,7 +1603,7 @@ const StationMetadataModal = ({
                                                                     Number(
                                                                         formState
                                                                             .station[
-                                                                        key as keyof typeof formState.station
+                                                                            key as keyof typeof formState.station
                                                                         ],
                                                                     ) + " m"
                                                                 ) : (
@@ -2069,7 +1639,7 @@ const StationMetadataModal = ({
                                                         <div className="text-sm font-bold flex items-center">
                                                             {
                                                                 equipmentFields[
-                                                                idx
+                                                                    idx
                                                                 ]
                                                             }
                                                         </div>
@@ -2100,22 +1670,11 @@ const StationMetadataModal = ({
             )}
             {edit && (
                 <div className="w-full flex flex-col mt-4 items-center justify-center">
-                    <Alert
-                        msg={
-                            metaMsg?.status === 200 &&
-                                stationMsg?.status === 200
-                                ? metaMsg
-                                : metaMsg?.status !== 200
-                                    ? metaMsg
-                                    : stationMsg?.status !== 200
-                                        ? stationMsg
-                                        : undefined
-                        }
-                    />
+                    <Alert msg={updateMsg} />
                     <button
                         className="btn btn-success w-[140px] mt-4"
                         onClick={() => updateMetadata()}
-                        disabled={loading || updateLoading}
+                        disabled={loading || deleteLoading || updateLoading}
                     >
                         {updateLoading && (
                             <div
@@ -2135,18 +1694,11 @@ const StationMetadataModal = ({
                     stationMetaId={stationMeta?.station}
                     meta={fileType === "meta"}
                     refetchStationMeta={() => {
-                        Promise.all([getStationMeta(), getStation()]).then(
-                            () => {
-                                setLoading(false);
-                                setUpdateLoading(false);
-                            },
-                        );
-                        // refetchStationMeta && refetchStationMeta();
+                        Promise.all([refetchStationMeta(), refetchStation()]);
                         setFileType("none");
                     }}
                     reFetch={() => {
-                        getFiles();
-                        setLoading(false);
+                        refetchFiles();
                         setFileType("none");
                     }}
                     setStateModal={setModals}
@@ -2157,18 +1709,20 @@ const StationMetadataModal = ({
             )}
 
             {modals && modals.title === "FileRender" && (
-                <RenderFileModal
-                    file={`data:application/pdf;base64,${fileToShow?.actual_file}`}
-                    filename={fileToShow?.filename}
-                    closeModal={() => undefined}
-                    setStateModal={setModals}
-                />
+                <Suspense fallback={null}>
+                    <RenderFileModal
+                        file={fileToShow?.actual_file}
+                        filename={fileToShow?.filename}
+                        closeModal={() => undefined}
+                        setStateModal={setModals}
+                    />
+                </Suspense>
             )}
 
             {modals && modals?.title === "ConfirmDelete" && (
                 <ConfirmDeleteModal
                     msg={fileMsg}
-                    loading={loading}
+                    loading={deleteLoading}
                     confirmRemove={() =>
                         fileType === "meta"
                             ? delFileMeta()

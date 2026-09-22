@@ -1,6 +1,8 @@
 import { woTz } from "@utils";
 import { FormReducerAction } from "@hooks/useFormReducer";
 
+import TimeInput from "./TimeInput";
+
 interface DatetimePickerProps {
     typeKey: string;
     startDate: Date | null;
@@ -18,32 +20,6 @@ const DateTimePicker = ({
     setEndDate,
     dispatch,
 }: DatetimePickerProps) => {
-    const CustomTimeInput = ({
-        date,
-        typeKey,
-        onChangeCustom,
-    }: {
-        date: Date | null;
-        typeKey: string;
-        onChangeCustom: (date: Date, time: string, typeKey: string) => void;
-    }) => {
-        const defaultTime = typeKey === "date_end" ? "23:59:59" : "00:00:00";
-        const value =
-            date instanceof Date
-                ? date.toLocaleTimeString("it-IT")
-                : defaultTime;
-        return (
-            <input
-                type="time"
-                step="1"
-                value={value}
-                onChange={(e) =>
-                    onChangeCustom(date ?? new Date(), e.target.value, typeKey)
-                }
-            />
-        );
-    };
-
     const handleChangeTime = (date: Date, time: string, typeKey: string) => {
         const [hh, mm, ss] = time.split(":");
         const targetDate = date instanceof Date ? date : new Date();
@@ -105,6 +81,8 @@ const DateTimePicker = ({
         }
     };
 
+    const timeDate = typeKey === "date_start" ? startDate : endDate;
+
     return (
         <>
             <div className="badge badge-ghost">
@@ -122,10 +100,18 @@ const DateTimePicker = ({
             </div>
 
             <div className="badge badge-ghost">
-                <CustomTimeInput
-                    date={typeKey === "date_start" ? startDate : endDate}
-                    onChangeCustom={handleChangeTime}
-                    typeKey={typeKey}
+                <TimeInput
+                    step={1}
+                    value={
+                        timeDate instanceof Date
+                            ? timeDate.toLocaleTimeString("it-IT")
+                            : typeKey === "date_end"
+                              ? "23:59:59"
+                              : "00:00:00"
+                    }
+                    onChange={(time) =>
+                        handleChangeTime(timeDate ?? new Date(), time, typeKey)
+                    }
                 />
             </div>
         </>

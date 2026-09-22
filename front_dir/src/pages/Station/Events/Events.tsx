@@ -14,7 +14,12 @@ import { FunnelIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { getStationEventsService } from "@services";
 import { useAuth, useApi } from "@hooks";
 
-import { showModal } from "@utils";
+import {
+    buildEventsBody,
+    buildEventsTitles,
+    normalizeEventDateFilters,
+    showModal,
+} from "@utils";
 import { EVENTS_FILTERS_STATE } from "@utils/reducerFormStates";
 
 import {
@@ -43,6 +48,7 @@ const Events = () => {
             station_code: station.station_code,
             network_code: station.network_code,
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const [loading, setLoading] = useState<boolean>(false);
@@ -70,7 +76,7 @@ const Events = () => {
         setLoading(true);
         try {
             const res = await getStationEventsService<StationEventsData>(api, {
-                ...filters,
+                ...normalizeEventDateFilters(filters),
                 offset: 0,
                 limit: REGISTERS_PER_PAGE,
             });
@@ -95,7 +101,7 @@ const Events = () => {
 
             const res = await getStationEventsService<StationEventsData>(
                 api,
-                newParams,
+                normalizeEventDateFilters(newParams),
             );
 
             setEvents(res.data);
@@ -151,6 +157,7 @@ const Events = () => {
 
     useEffect(() => {
         getEvents();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -159,30 +166,9 @@ const Events = () => {
         }
     }, [modals]);
 
-    const titles = useMemo(() => {
-        if (events) {
-            if (events?.length === 0) return [];
-            const keysToIgnore = ["event_id", "network_code", "station_code"];
-            const keys = Object.keys(events[0]).filter(
-                (key) => !keysToIgnore.includes(key),
-            );
-            return keys.map((key) => key.replace(/_/g, " "));
-        }
-    }, [events]);
+    const titles = useMemo(() => buildEventsTitles(events), [events]);
 
-    const body = useMemo(() => {
-        if (events) {
-            if (events?.length === 0) return [];
-
-            return Object.values(events).map((event) => {
-                const keysToIgnore = ["network_code", "station_code"];
-                const keys = Object.keys(event).filter(
-                    (key) => !keysToIgnore.includes(key),
-                );
-                return keys.map((key) => event[key as keyof typeof event]);
-            });
-        }
-    }, [events]);
+    const body = useMemo(() => buildEventsBody(events), [events]);
 
     return (
         <div className="">

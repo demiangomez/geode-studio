@@ -9,12 +9,12 @@ interface ConfirmDeleteModalProps {
     mainMsg?: string;
     alterMsg?: string;
     msg?:
-    | {
-        status: number;
-        msg: string;
-        errors?: Errors;
-    }
-    | undefined;
+        | {
+              status: number;
+              msg: string;
+              errors?: Errors;
+          }
+        | undefined;
     loading?: boolean;
     confirmRemove: () => void;
     closeModal: () => void;
@@ -39,31 +39,34 @@ const ConfirmDeleteModal = ({
             size="sm"
             modalId="ConfirmDelete"
             variant={variant ? variant : "danger"}
-            handleCloseModal={() => { closeModal() }}
+            handleCloseModal={() => {
+                closeModal();
+            }}
         >
             <div className="flex items-center justify-center">
                 <div className="w-3/12">
                     <ExclamationTriangleIcon
-                        className={`size-20 ${variant && variant === "danger"
-                            ? "text-red-500"
-                            : variant === "warning"
-                                ? "text-yellow-500"
-                                : "text-red-500"
-                            }`}
+                        className={`size-20 ${
+                            variant && variant === "danger"
+                                ? "text-red-500"
+                                : variant === "warning"
+                                  ? "text-yellow-500"
+                                  : "text-red-500"
+                        }`}
                     />
                 </div>
                 <div className="w-9/12 flex flex-col">
                     <span className="text-xl font-bold">Are you sure?</span>
                     <span className="text-sm mt-1 text-base-content/80">
-                        {mainMsg ? mainMsg : (
-                            type === "reset" ?
-                                "Are you sure you want to reset this table?"
-                                : type === "deactivate" ?
-                                    "Are you sure you want to deactivate this register?"
-                                    : type === "activate" ?
-                                        "Are you sure you want to activate this register?"
-                                        : "Are you sure you want to delete this register ?"
-                        )}
+                        {mainMsg
+                            ? mainMsg
+                            : type === "reset"
+                              ? "Are you sure you want to reset this table?"
+                              : type === "deactivate"
+                                ? "Are you sure you want to deactivate this register?"
+                                : type === "activate"
+                                  ? "Are you sure you want to activate this register?"
+                                  : "Are you sure you want to delete this register ?"}
                     </span>
                     {alterMsg && (
                         <p className="text-sm my-2 text-base-content/70 font-bold">
@@ -77,17 +80,28 @@ const ConfirmDeleteModal = ({
             </div>
             <div className="flex justify-center mt-6 space-x-4">
                 <button
-                    className={`btn w-4/12 ${type === "activate" ? "btn-success" :
-                        type === "copy_sync" ? "btn-warning text-warning-content" :
-                            "btn-error"
-                        }`}
+                    className={`btn w-4/12 ${
+                        type === "activate"
+                            ? "btn-success"
+                            : type === "copy_sync"
+                              ? "btn-warning text-warning-content"
+                              : "btn-error"
+                    }`}
                     type="button"
                     onClick={() => confirmRemove()}
                     disabled={
                         loading || apiOkStatuses.includes(Number(statusMsg))
                     }
                 >
-                    {type === "reset" ? "Reset" : type === "deactivate" ? "Deactivate" : type === "activate" ? "Activate" : type === "copy_sync" ? "Sync" : "Remove  "}
+                    {type === "reset"
+                        ? "Reset"
+                        : type === "deactivate"
+                          ? "Deactivate"
+                          : type === "activate"
+                            ? "Activate"
+                            : type === "copy_sync"
+                              ? "Sync"
+                              : "Remove  "}
                     {loading && (
                         <span className="loading loading-spinner loading-sm self-center"></span>
                     )}

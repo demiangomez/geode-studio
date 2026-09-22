@@ -21,7 +21,7 @@ import {
     Role,
 } from "@types";
 
-import { apiOkStatuses, showModal } from "@utils";
+import { apiOkStatuses, showModal, modalActions } from "@utils";
 
 interface AddRoleModalProps {
     Role: Role | undefined;
@@ -173,6 +173,7 @@ const AddRoleModal = ({
                     status: res.statusCode,
                     msg: "Role added successfully",
                 });
+                reFetch();
             }
         } catch (err) {
             console.error(err);
@@ -209,6 +210,7 @@ const AddRoleModal = ({
                     status: res.statusCode,
                     msg: "Role edited successfully",
                 });
+                reFetch();
             }
         } catch (err) {
             console.error(err);
@@ -216,14 +218,6 @@ const AddRoleModal = ({
             setLoading(false);
         }
     };
-
-    const fetch = () => {
-        reFetch();
-    };
-
-    useEffect(() => {
-        fetch();
-    }, []); //eslint-disable-line
 
     const { dispatch, formState } = useFormReducer(roleMockup);
 
@@ -333,7 +327,6 @@ const AddRoleModal = ({
     }, [endpoints]);
 
     const handleCloseModal = () => {
-        fetch();
         setRole(undefined);
         if (modalType !== "edit") {
             dispatch({
@@ -837,7 +830,7 @@ const AddRoleModal = ({
                         <Alert msg={msg} />
 
                         <button
-                            className="btn btn-success w-6/12 self-center"
+                            className={modalActions.primary}
                             type="submit"
                             disabled={
                                 apiOkStatuses.includes(Number(msg?.status)) ||

@@ -390,8 +390,8 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
                     ? maxYear
                     : minYear
                 : isStart
-                    ? sliderEnd
-                    : sliderStart,
+                  ? sliderEnd
+                  : sliderStart,
         );
 
         const finalDate = fractionalYearToDate(fy);
@@ -436,8 +436,8 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
                         ? maxYear
                         : minYear
                     : isStart
-                        ? sliderEnd
-                        : sliderStart,
+                      ? sliderEnd
+                      : sliderStart,
             );
 
             const finalDate = fractionalYearToDate(fy);
@@ -466,11 +466,11 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
     const filterLabel = !hasActiveFilter
         ? "Temporal Filter"
         : temporalFilter.exactDate
-            ? formattedDates(
+          ? formattedDates(
                 fractionalYearToDate(temporalFilter.dateStart ?? minYear),
                 true,
             )
-            : `${formattedDates(fractionalYearToDate(temporalFilter.dateStart ?? minYear), true)} - ${formattedDates(fractionalYearToDate(temporalFilter.dateEnd ?? maxYear), true)}`;
+          : `${formattedDates(fractionalYearToDate(temporalFilter.dateStart ?? minYear), true)} - ${formattedDates(fractionalYearToDate(temporalFilter.dateEnd ?? maxYear), true)}`;
 
     if (loading && temporalFilter.enabled) {
         return <TemporalBarSkeleton />;
@@ -568,9 +568,7 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
                                     onChange={(e) =>
                                         handleDoyChange(e.target.value, true)
                                     }
-                                    onKeyDown={(e) =>
-                                        handleDoyKeyDown(e, true)
-                                    }
+                                    onKeyDown={(e) => handleDoyKeyDown(e, true)}
                                     onBlur={() => commitDoy(true)}
                                 />
                             ) : (
@@ -594,12 +592,12 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
                                             <span>
                                                 {selectedDateStart
                                                     ? formattedDates(
-                                                        selectedDateStart,
-                                                        true,
-                                                    )
+                                                          selectedDateStart,
+                                                          true,
+                                                      )
                                                     : temporalFilter.exactDate
-                                                        ? "Exact Date"
-                                                        : "Start Date"}
+                                                      ? "Exact Date"
+                                                      : "Start Date"}
                                             </span>
                                             <CalendarDateRangeIcon className="size-3.5 flex-shrink-0" />
                                         </button>
@@ -651,9 +649,9 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
                                                 <span>
                                                     {selectedDateEnd
                                                         ? formattedDates(
-                                                            selectedDateEnd,
-                                                            true,
-                                                        )
+                                                              selectedDateEnd,
+                                                              true,
+                                                          )
                                                         : "End Date"}
                                                 </span>
                                                 <CalendarDateRangeIcon className="size-3.5 flex-shrink-0" />
@@ -736,7 +734,7 @@ const TemporalBar = ({ stations, loading = false }: TemporalBarProps) => {
                                             temporalFilter.dateStart !== null &&
                                             temporalFilter.dateEnd !== null &&
                                             temporalFilter.dateStart >
-                                            temporalFilter.dateEnd
+                                                temporalFilter.dateEnd
                                         ) {
                                             updates.dateEnd =
                                                 temporalFilter.dateStart;

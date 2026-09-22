@@ -7,7 +7,6 @@ import Modal from "../Modal";
 import Pagination from "@components/Pagination";
 interface Props {
     Person: People | undefined;
-    reFetch: () => void;
     setStateModal: React.Dispatch<
         React.SetStateAction<
             | { show: boolean; title: string; type: "add" | "edit" | "none" }
@@ -54,7 +53,7 @@ interface Visit {
     station: number;
 }
 
-const ViewPersonRelations = ({ Person, reFetch, setStateModal }: Props) => {
+const ViewPersonRelations = ({ Person, setStateModal }: Props) => {
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
     const [relation, setRelation] = useState<Relation | null>(null);
@@ -79,11 +78,8 @@ const ViewPersonRelations = ({ Person, reFetch, setStateModal }: Props) => {
 
     useEffect(() => {
         getRelations();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [Person]);
-
-    const handleCloseModal = () => {
-        reFetch();
-    };
 
     // Pagination helper functions
     const getPaginatedData = (data: any[], currentPage: number) => {
@@ -97,7 +93,6 @@ const ViewPersonRelations = ({ Person, reFetch, setStateModal }: Props) => {
             close={true}
             modalId={"ViewPersonRelations"}
             size={"smPlus"}
-            handleCloseModal={() => handleCloseModal()}
             setModalState={setStateModal}
         >
             <div className="p-4">
@@ -129,7 +124,7 @@ const ViewPersonRelations = ({ Person, reFetch, setStateModal }: Props) => {
                                     )}
                             </h3>
                             {relation.relations.role_person_station &&
-                                relation.relations.role_person_station.length >
+                            relation.relations.role_person_station.length >
                                 0 ? (
                                 <div>
                                     <div className="overflow-x-auto">
@@ -214,7 +209,7 @@ const ViewPersonRelations = ({ Person, reFetch, setStateModal }: Props) => {
                                     )}
                             </h3>
                             {relation.relations.visits &&
-                                relation.relations.visits.length > 0 ? (
+                            relation.relations.visits.length > 0 ? (
                                 <div>
                                     <div className="overflow-x-auto">
                                         <table className="table table-zebra table-bordered w-full border border-base-300">
@@ -260,7 +255,7 @@ const ViewPersonRelations = ({ Person, reFetch, setStateModal }: Props) => {
                                     </div>
                                     {relation.relations &&
                                         relation.relations?.visits.length >
-                                        4 && (
+                                            4 && (
                                             <Pagination
                                                 pages={Math.ceil(
                                                     relation.relations.visits

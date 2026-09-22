@@ -6,7 +6,7 @@ import {
     postMonumentTypesService,
 } from "@services";
 import { useAuth, useApi, useFormReducer } from "@hooks";
-import { apiOkStatuses, showModal } from "@utils";
+import { apiOkStatuses, showModal, modalActions } from "@utils";
 import {
     Errors,
     ErrorResponse,
@@ -358,7 +358,7 @@ const MonumentModal = ({
                 <div className="flex w-full justify-center space-x-4">
                     {modalType === "edit" && (
                         <button
-                            className="btn btn-error w-5/12"
+                            className={modalActions.destructive}
                             type="button"
                             disabled={isSuccess || loading}
                             onClick={() => {
@@ -375,7 +375,7 @@ const MonumentModal = ({
                     )}
                     <button
                         type="submit"
-                        className="btn btn-success w-5/12"
+                        className={modalActions.primary}
                         disabled={isSuccess || loading}
                     >
                         Submit

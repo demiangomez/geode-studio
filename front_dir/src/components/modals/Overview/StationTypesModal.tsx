@@ -6,7 +6,7 @@ import {
     postStationTypesService,
 } from "@services";
 import { useFormReducer, useAuth, useApi } from "@hooks";
-import { apiOkStatuses, showModal } from "@utils";
+import { apiOkStatuses, showModal, modalActions } from "@utils";
 
 import {
     Errors,
@@ -375,7 +375,7 @@ const StationTypesModal = ({
                 <div className="flex w-full justify-center space-x-4">
                     {modalType === "edit" && (
                         <button
-                            className="btn btn-error w-5/12"
+                            className={modalActions.destructive}
                             type="button"
                             disabled={isSuccess || loading}
                             onClick={() => {
@@ -392,7 +392,7 @@ const StationTypesModal = ({
                     )}
                     <button
                         type="submit"
-                        className="btn btn-success w-5/12"
+                        className={modalActions.primary}
                         disabled={isSuccess || loading}
                     >
                         Submit

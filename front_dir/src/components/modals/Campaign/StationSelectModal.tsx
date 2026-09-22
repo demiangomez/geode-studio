@@ -1,24 +1,12 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
-import {
-    Menu,
-    MenuButton,
-    MenuContent,
-    Modal,
-    Spinner,
-} from "@componentsReact";
+import { useState } from "react";
 
-import { getStationsService, getStationVisitsService } from "@services";
+import { Modal, StationSelectList } from "@componentsReact";
 
-import { useFormReducer, useAuth, useApi, useClickOutside } from "@hooks";
+import { useAuth, useApi } from "@hooks";
+import { useStationCatalog, useStationVisits } from "@hooks/queries";
 
-import {
-    CampaignsData,
-    StationData,
-    StationServiceData,
-    StationVisitsData,
-    StationVisitsServiceData,
-} from "@types";
+import { CampaignsData, StationData } from "@types";
 
 interface Props {
     campaign: CampaignsData | undefined;
@@ -43,101 +31,22 @@ const StationSelectModal = ({
 
     const navigate = useNavigate();
 
-    const [showMenu, setShowMenu] = useState<
-        { type: string; show: boolean } | undefined
-    >(undefined);
-
-    const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(
-        openMenuRef,
-        () => setShowMenu(undefined),
-        !!showMenu?.show,
-    );
+    const [tab, setTab] = useState<1 | 2>(1);
 
     const [station, setStation] = useState<StationData | undefined>(undefined);
 
-    const [stations, setStations] = useState<StationData[] | undefined>(
-        undefined,
-    );
-    const [matchStation, setMatchStation] = useState<StationData[] | undefined>(
-        undefined,
-    );
+    const { data: stationsResult, isLoading: loadingStations } =
+        useStationCatalog(api);
 
-    const [visits, setVisits] = useState<StationVisitsData[] | undefined>(
-        undefined,
+    const { data: visits, isLoading: loadingVisits } = useStationVisits(
+        api,
+        station?.api_id,
     );
 
-    const [loading, setLoading] = useState<boolean>(true);
-
-    const [tab, setTab] = useState<number>(1);
-
-    const { formState, dispatch } = useFormReducer({
-        name: "",
-    });
-
-    const getStation = async () => {
-        try {
-            setLoading(true);
-            const res = await getStationsService<StationServiceData>(api, {
-                limit: 0,
-                offset: 0,
-            });
-            setStations(res.data);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const getVisits = async () => {
-        try {
-            const res = await getStationVisitsService<StationVisitsServiceData>(
-                api,
-                {
-                    limit: 0,
-                    offset: 0,
-                    station_api_id: String(station?.api_id),
-                },
-            );
-
-            if (res.statusCode === 200) {
-                setVisits(res.data);
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    };
-
-    useEffect(() => {
-        if (station) {
-            getVisits();
-        }
-    }, [station]);
-
-    useEffect(() => {
+    const selectTab = (next: 1 | 2) => {
+        setTab(next);
         setStation(undefined);
-        setVisits(undefined);
-        dispatch({
-            type: "change_value",
-            payload: {
-                inputName: "name",
-                inputValue: "",
-            },
-        });
-    }, [tab]);
-
-    useEffect(() => {
-        getStation();
-    }, []);
-
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        if (showMenu) {
-            inputRef.current?.focus();
-        }
-    }, [showMenu]);
+    };
 
     return (
         <Modal
@@ -151,250 +60,81 @@ const StationSelectModal = ({
                 <div role="tablist" className="tabs tabs-bordered mb-6">
                     <a
                         role="tab"
-                        onClick={() => setTab(1)}
+                        onClick={() => selectTab(1)}
                         className={`tab ${tab === 1 && "tab-active font-bold"} `}
                     >
                         Add new visit
                     </a>
                     <a
                         role="tab"
-                        onClick={() => setTab(2)}
+                        onClick={() => selectTab(2)}
                         className={`tab ${tab === 2 && "tab-active font-bold"}`}
                     >
                         Add existing visit
                     </a>
                 </div>
 
-                {loading ? (
-                    <div className="w-full flex justify-center items-center">
-                        <Spinner size={"lg"} />
-                    </div>
-                ) : tab === 1 ? (
-                    <div
-                        ref={
-                            showMenu?.show && showMenu.type === "name"
-                                ? openMenuRef
-                                : undefined
+                {tab === 1 ? (
+                    <StationSelectList
+                        stations={stationsResult?.data}
+                        isLoading={loadingStations}
+                        selectedApiId={undefined}
+                        onSelect={(s) =>
+                            navigate(
+                                `/${s.network_code}/${s.station_code}/visits`,
+                                { state: campaign },
+                            )
                         }
-                    >
-                        <label
-                            className={`w-full input input-bordered flex items-center gap-2`}
-                            title={"Stations"}
-                        >
-                            <div className="label ">
-                                <span className="font-bold">STATIONS</span>
-                            </div>
-                            <input
-                                type="text"
-                                value={formState["name"] ?? ""}
-                                onChange={(e) => {
-                                    const value = e.target.value;
-                                    dispatch({
-                                        type: "change_value",
-                                        payload: {
-                                            inputName: "name",
-                                            inputValue: value,
-                                        },
-                                    });
-                                    const parts = value
-                                        .toLowerCase()
-                                        .split(" ");
-                                    const match = stations?.filter((p) =>
-                                        parts.every(
-                                            (part) =>
-                                                p.network_code
-                                                    .toLowerCase()
-                                                    .includes(part) ||
-                                                p.station_code
-                                                    .toLowerCase()
-                                                    .includes(part),
-                                        ),
-                                    );
-
-                                    setMatchStation(match);
-                                }}
-                                ref={inputRef}
-                                className="grow"
-                                autoComplete="off"
-                            />
-
-                            <MenuButton
-                                setShowMenu={setShowMenu}
-                                showMenu={showMenu}
-                                typeKey={"name"}
-                            />
-                        </label>
-                        {showMenu?.show && showMenu?.type === "name" ? (
-                            <Menu>
-                                {(matchStation && matchStation.length > 0
-                                    ? matchStation
-                                    : stations
-                                )?.map((p) => (
-                                    <MenuContent
-                                        key={p.api_id}
-                                        typeKey={""}
-                                        value={
-                                            p.network_code
-                                                .trim()
-                                                .toUpperCase() +
-                                            "." +
-                                            p.station_code.trim().toUpperCase()
-                                        }
-                                        alterFunction={() => {
-                                            navigate(
-                                                `/${p.network_code}/${p.station_code}/visits`,
-                                                { state: campaign },
-                                            );
-                                        }}
-                                        setShowMenu={setShowMenu}
-                                    />
-                                ))}
-                            </Menu>
-                        ) : null}
-                    </div>
+                        height={256}
+                        collapsible
+                    />
                 ) : (
-                    tab === 2 && (
-                        <>
-                            <div
-                                ref={
-                                    showMenu?.show && showMenu.type === "name"
-                                        ? openMenuRef
-                                        : undefined
-                                }
-                            >
-                                <label
-                                    className={`w-full input input-bordered flex items-center gap-2`}
-                                    title={"Stations"}
-                                >
-                                    <div className="label ">
-                                        <span className="font-bold">
-                                            STATIONS
-                                        </span>
-                                    </div>
-                                    <input
-                                        type="text"
-                                        value={formState["name"] ?? ""}
-                                        onChange={(e) => {
-                                            const value = e.target.value;
-                                            dispatch({
-                                                type: "change_value",
-                                                payload: {
-                                                    inputName: "name",
-                                                    inputValue: value,
-                                                },
-                                            });
-                                            const parts = value
-                                                .toLowerCase()
-                                                .split(" ");
-                                            const match = stations?.filter(
-                                                (p) =>
-                                                    parts.every(
-                                                        (part) =>
-                                                            p.network_code
-                                                                .toLowerCase()
-                                                                .includes(
-                                                                    part,
-                                                                ) ||
-                                                            p.station_code
-                                                                .toLowerCase()
-                                                                .includes(part),
-                                                    ),
-                                            );
+                    <div className="flex flex-col gap-3">
+                        <StationSelectList
+                            stations={stationsResult?.data}
+                            isLoading={loadingStations}
+                            selectedApiId={station?.api_id}
+                            onSelect={setStation}
+                            height={256}
+                            collapsible
+                        />
 
-                                            setMatchStation(match);
-                                        }}
-                                        className="grow"
-                                        autoComplete="off"
-                                    />
-
-                                    <MenuButton
-                                        setShowMenu={setShowMenu}
-                                        showMenu={showMenu}
-                                        typeKey={"name"}
-                                    />
-                                </label>
-                                {showMenu?.show && showMenu?.type === "name" ? (
-                                    <Menu>
-                                        {(matchStation &&
-                                        matchStation.length > 0
-                                            ? matchStation
-                                            : stations
-                                        )?.map((p) => (
-                                            <MenuContent
-                                                key={p.api_id}
-                                                typeKey={""}
-                                                value={
-                                                    p.network_code
-                                                        .trim()
-                                                        .toUpperCase() +
-                                                    "." +
-                                                    p.station_code
-                                                        .trim()
-                                                        .toUpperCase()
-                                                }
-                                                alterFunction={() => {
-                                                    setStation(p);
-                                                    dispatch({
-                                                        type: "change_value",
-                                                        payload: {
-                                                            inputName: "name",
-                                                            inputValue:
-                                                                p.network_code +
-                                                                "." +
-                                                                p.station_code,
-                                                        },
-                                                    });
-                                                }}
-                                                setShowMenu={setShowMenu}
-                                            />
-                                        ))}
-                                    </Menu>
-                                ) : null}
+                        {!station ? (
+                            <span className="text-center font-bold text-xl">
+                                Select a station
+                            </span>
+                        ) : loadingVisits ? (
+                            <div className="w-full flex justify-center">
+                                <span className="loading loading-spinner loading-lg" />
                             </div>
-                            <div className="flex flex-grow flex-col justify-start items-center">
-                                {visits && visits.length > 0 ? (
-                                    <>
-                                        <ul className="menu bg-base-200 mt-4 rounded-box w-full max-h-56 overflow-y-auto">
-                                            <li>
-                                                <h2 className="menu-title">
-                                                    Visits
-                                                </h2>
-                                                <ul>
-                                                    {visits.map((v) => {
-                                                        return (
-                                                            <li
-                                                                key={v.id}
-                                                                className="w-full flex"
-                                                            >
-                                                                <Link
-                                                                    to={`/${station?.network_code}/${station?.station_code}/visits`}
-                                                                    state={{
-                                                                        visitDetail:
-                                                                            v,
-                                                                    }}
-                                                                    className="font-bold text-lg"
-                                                                >
-                                                                    {v.date}
-                                                                </Link>
-                                                            </li>
-                                                        );
-                                                    })}
-                                                </ul>
+                        ) : visits && visits.length > 0 ? (
+                            <ul className="menu bg-base-200 rounded-box w-full max-h-56 overflow-y-auto">
+                                <li>
+                                    <h2 className="menu-title">Visits</h2>
+                                    <ul>
+                                        {visits.map((v) => (
+                                            <li
+                                                key={v.id}
+                                                className="w-full flex"
+                                            >
+                                                <Link
+                                                    to={`/${station.network_code}/${station.station_code}/visits`}
+                                                    state={{ visitDetail: v }}
+                                                    className="font-bold text-lg"
+                                                >
+                                                    {v.date}
+                                                </Link>
                                             </li>
-                                        </ul>
-                                    </>
-                                ) : station ? (
-                                    <span className="mt-4 font-bold text-2xl">
-                                        No visits for this station
-                                    </span>
-                                ) : (
-                                    <span className="mt-4 font-bold text-2xl">
-                                        Select a station
-                                    </span>
-                                )}
-                            </div>
-                        </>
-                    )
+                                        ))}
+                                    </ul>
+                                </li>
+                            </ul>
+                        ) : (
+                            <span className="text-center font-bold text-xl">
+                                No visits for this station
+                            </span>
+                        )}
+                    </div>
                 )}
             </div>
         </Modal>

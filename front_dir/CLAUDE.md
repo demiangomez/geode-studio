@@ -29,9 +29,29 @@ npm run showcase   # dev server exposed on the network (vite --host)
 npm run build      # tsc typecheck + production build (4GB node heap)
 npm run lint       # eslint, fails on any warning (--max-warnings 0)
 npm run preview    # serve the built dist/
+npm run test       # vitest en watch
+npm run test:run   # vitest una pasada (CI)
 ```
 
-There is **no test runner** configured. Lint and `tsc` (run as part of `build`) are the only automated checks. `tsconfig.json` enforces `strict`, `noUnusedLocals`, and `noUnusedParameters`, so unused imports/vars break the build.
+`tsconfig.json` enforces `strict`, `noUnusedLocals`, and `noUnusedParameters`, so unused imports/vars break the build.
+
+### Tests
+
+Vitest + React Testing Library (`vitest.config.ts`, setup en `src/test/setup.ts`). **Coverage is deliberately narrow**: the only suite today is `src/components/modals/Station/__tests__/`, written as a *characterization* net for the in-progress refactor of `StationMetadataModal` — it pins the current PATCH payloads, the field inventory, and the message/refetch behaviour so the migration can't change them silently. It is not a general testing convention for the repo (yet).
+
+Two things that bite when writing tests here:
+
+- **Mock `useApi`/`useAuth` from `@hooks`** (spread `importOriginal()` so `useFormReducer` stays real). `useUser` throws without its provider, so rendering anything that calls `useApi` needs either the full provider tree or these mocks.
+- **`Modal` renders into a `<dialog>`.** In the app it's opened by `showModal()` from the parent; in jsdom an un-`open` dialog is `display:none`, so `getByRole` finds nothing inside it. The render helper sets the `open` attribute — see `__tests__/renderModal.tsx`.
+
+Some tests are named "comportamiento actual" and assert behaviour we intend to change (e.g. `refetch` firing on close instead of on save). Those are meant to fail loudly when the corresponding stage lands — update them deliberately, don't delete them.
+
+**File organization, as the suite grows:** one `__tests__/` per *feature directory* (e.g. `modals/Station/`, `modals/Visit/`, `hooks/queries/`), not one per component file — the folder count should track the number of feature areas, not the number of components.
+
+- Fixtures/render-helpers (`fixtures.ts`, `renderX.tsx`) are **shared by every test file in that `__tests__/` folder** — extend the existing one instead of copy-pasting a new one per component.
+- A component earns its own `ComponentName.test.tsx` inside the feature's `__tests__/` folder once it has something to test. It only earns a **split into multiple files** (`.fields.test.tsx` / `.payload.test.tsx` / `.states.test.tsx`, as with `StationMetadataModal`) once a single file genuinely gets unwieldy — don't split by default.
+- Pure functions (`src/utils/`) don't need a folder at all: colocate `name.test.ts` flat next to `name.ts` — there's no fixture to share.
+- `src/test/` stays reserved for helpers used **across more than one feature folder** (the `useApi`/`useAuth` mock, a generic `renderWithProviders`, if/when that pattern repeats enough to extract).
 
 Formatting: Prettier with **4-space indentation** (`.prettierrc`). ESLint disables `@typescript-eslint/no-explicit-any` — `any` is used liberally, especially around OL/Cesium objects.
 
@@ -41,7 +61,7 @@ Imports use aliases defined in `tsconfig.json` and resolved by `vite-tsconfig-pa
 
 - `@types` → `src/interfaces/index.d.ts` (single ~1000-line ambient declaration file — all shared types live here)
 - `@services` → `src/services/index.ts` (all API call functions)
-- `@hooks`, `@store`, `@utils`, `@components`/`@componentsReact`, `@pages`/`@pagesReact`, `@routes`, `@queryClient`
+- `@hooks`, `@store`, `@utils`, `@components`/`@componentsReact`, `@pages/*` (las páginas se importan por path; no hay barrel), `@routes`, `@queryClient`
 - `@olUtils` → `src/components/map/ol/utils/index.ts`
 
 ## Architecture
@@ -51,20 +71,20 @@ Provider order: `QueryClientProvider` → `UserContextProvider` → `AuthProvide
 
 ### Authentication & API layer
 - **JWT auth** lives in `useAuth` (`src/hooks/useAuth.tsx`), an `AuthContext`. Tokens are persisted to `localStorage` under `gpsToken` / `gpsRefresh` / `gpsRole` via the `useLocalStorage` hook. On login it clears the previous user's React Query cache and user context.
-- **`useApi`** (`src/hooks/useApi.tsx`) builds a memoized Axios instance with the bearer token and a response interceptor: 401 → `logout()`; 403 → dispatches `UNAUTHORIZE` into the user context (permission tracking). The interceptor **swallows errors and returns a fake success-shaped object** with `status: "error"` instead of rejecting — callers must check `statusCode`/`status` on the resolved value rather than relying on try/catch. (A code comment notes this should eventually be changed to `Promise.reject`.)
+- **`useApi`** (`src/hooks/useApi.tsx`) builds a memoized Axios instance with the bearer token and a response interceptor: 401 → `logout()`; 403 → dispatches `UNAUTHORIZE` into the user context (permission tracking). The interceptor **swallows errors and returns a fake success-shaped object** with `status: "error"` instead of rejecting — callers must check `statusCode`/`status` on the resolved value rather than relying on try/catch. (A code comment notes this should eventually be changed to `Promise.reject`.) Exception: client aborts (`ERR_CANCELED`, e.g. TanStack cancelling a query via `signal`) are rejected as-is and never toast.
   - **TanStack consequence (critical — silent-failure trap):** because failed requests still *resolve*, `useQuery`/`useMutation` never notice a failure on their own — `isError` stays `false`, `retry` never runs, `onError` never fires, and `useQuery` caches the fake error object as valid data for the whole `staleTime`. **Every `queryFn`/`mutationFn` must check the resolved `statusCode` (or `'status' in res`) and `throw` on failure** — never return the raw service result unchecked. Pattern: `useStationPdf` in `src/hooks/queries/useStations.ts`.
 - **Service functions** in `src/services/index.ts` are plain async functions that take an `AxiosInstance` as their first argument (except the unauthenticated `loginService`/`refreshTokenService`, which use `axiosInstanceUnauth`). Query params are serialized via `transformParams`/`transformParamsForFilter` from utils.
-- **`queryClient`** (`src/queryClient.ts`): 5-minute staleTime, `refetchOnWindowFocus: false`, `retry: 1`.
+- **`queryClient`** (`src/queryClient.ts`): 5-minute staleTime, `refetchOnWindowFocus: false`, one retry **except on 4xx** (`ApiError` with a client status — a 403 without permission used to fire the same GET twice).
 
 ### Data fetching
-Reusable query hooks wrapping the service functions live in `src/hooks/queries/` (`useStations`, `useEarthquakes`, `useAffectedStations`, `useMetadata`). User identity/permissions use a reducer-backed context in `src/hooks/user/`.
+Reusable query hooks wrapping the service functions live in `src/hooks/queries/` (`useStations`, `useEarthquakes`, `useAffectedStations`, `useMetadata`, `useUsers`/`useRoles`…). **Paginated lists** (`useGeneralEvents`, `useUsers`, `useRoles`) put the `{limit, offset}` params in the query key and use `placeholderData: keepPreviousData`: a page already visited comes straight from the cache (no request) and the previous page stays visible — `isPlaceholderData` — while the next one loads. **Invalidation** after a write goes through `useInvalidate(key)` (`useInvalidateSources`, `useInvalidateUsers`), called from the modal's *success* path — not on open/close, which refetches even when nothing changed. User identity/permissions use a reducer-backed context in `src/hooks/user/`.
 
 ### State management
 - **Zustand** `useMapStore` (`src/store/useMapStore.ts`) is the central store for map and map-related UI state: layer/projection toggles, scrollers, earthquake/temporal filters, modals, globe-loading flag, etc.
 - Auth and user info are in **React Context**, not Zustand.
 
 ### Maps (the core feature, `src/components/map/`)
-- 2D rendering is **OpenLayers**. The map and its layers are constructed imperatively through hooks in `src/hooks/ol/`: `useMapInit` (creates the `ol/Map`, overlays, base tile layers), `useStationLayer`, `useClusterLayer`, `useKmlLayer`, `usePopup`, `useTooltip`.
+- 2D rendering is **OpenLayers**. The map and its layers are constructed imperatively through hooks in `src/hooks/ol/`: `useMapInit` (creates the `ol/Map`, overlays, base tile layers), `useClusterLayer`, `useKmlLayer`, `useTectonicPlatesLayer`, `useCesiumGlobe`. Los hooks de OL se importan por path, no por el barrel de `@hooks` (arrastran `ol`).
 - 3D is **Cesium**, integrated via `olcs` in `useCesiumGlobe`. Cesium is dynamically imported only when the globe is enabled (it's a large dependency). The globe shares the OL map instance.
 - OL helper utilities (icons, styles, vectors, KML, spiderfy, coordinates) are in `src/components/map/ol/utils/`, re-exported through `@olUtils`.
 - `MapOL.tsx` / `MapStationOL.tsx` / `MapVisitOL.tsx` are the three map variants.
@@ -73,7 +93,9 @@ Reusable query hooks wrapping the service functions live in `src/hooks/queries/`
 Cesium needs its static assets (Workers, Assets, Widgets, ThirdParty) served at a known path. `vite.config.ts` defines `CESIUM_BASE_URL` and uses `vite-plugin-static-copy` to copy them — to `cesium-assets/` in dev, `assets/cesium/` in prod. The `Dockerfile` additionally re-copies them with `cp -rL` after the build (dereferencing symlinks) because the symlinked copies don't survive into the nginx image. If the globe fails to load assets, this pipeline is the place to look.
 
 ### Code splitting & lazy loading
-`lazyRetry` / `dynamicImportRetry` (`src/utils/lazyRetry.ts`) wrap `React.lazy`/dynamic imports so that when a chunk fails to load (typically because a deploy changed the file hash), the browser reloads the asset instead of hard-failing. Use these wrappers for new lazy imports, not bare `React.lazy`. `vite.config.ts` manually chunks `cesium` (cesium + @cesium), `openlayers` (`ol` **only**), `pdf` (the react-pdf viewer), and `vendor` — via a `manualChunks` **function** with deliberate rules: **`olcs` must never be pinned to an eager chunk** (it's dynamically imported by `useCesiumGlobe` and statically imports cesium — pinning it preloads the 4.8MB cesium chunk at startup), and shared micro-deps (`rbush`/`quickselect`/`tslib`) plus rollup's virtual helper modules are pinned to `vendor` so they can't land inside the cesium chunk and drag it into the entry's `modulepreload` graph (see the comments in `vite.config.ts`). To audit chunk composition run `BUNDLE_STATS=1 npm run build`, which emits `stats.json` (rollup-plugin-visualizer raw-data).
+`lazyRetry` / `dynamicImportRetry` (`src/utils/lazyRetry.ts`) wrap `React.lazy`/dynamic imports so that when a chunk fails to load (typically because a deploy changed the file hash), the browser reloads the asset instead of hard-failing. Use these wrappers for new lazy imports, not bare `React.lazy`. `vite.config.ts` manually chunks `cesium` (cesium + @cesium), `openlayers` (`ol` **only**), `pdf` (the react-pdf viewer), and `vendor` — via a `manualChunks` **function** with deliberate rules: **`olcs` must never be pinned to an eager chunk** (it's dynamically imported by `useCesiumGlobe` and statically imports cesium — pinning it preloads the 4.8MB cesium chunk at startup), and shared micro-deps (`rbush`/`quickselect`/`tslib`) plus rollup's **package-less** virtual modules (`commonjsHelpers`, vite's preload helper) are pinned to `vendor` so they can't land inside the cesium chunk and drag it into the entry's `modulepreload` graph — but **per-package** virtuals (`?commonjs-proxy` wrappers) are deliberately *not* pinned: they follow their real package, because a blanket `\0` → `vendor` rule used to drag every lazy CJS dep (quill, jszip, react-slick, urijs…) into the eager vendor chunk (see the comments in `vite.config.ts`). To audit chunk composition run `BUNDLE_STATS=1 npm run build`, which emits `stats.json` (rollup-plugin-visualizer raw-data).
+
+**Eager-graph hygiene (guardrailed):** modules reachable *statically* from the entry (`App`, `@routes`, `Layout`, `Nav`, `ServerStatusToast`, anything they import) must **not** import the `@componentsReact`/`@hooks` barrels — a single barrel member with a side effect (a CSS import like `ol/ol.css`, a global assignment like `pdfjs.GlobalWorkerOptions`) survives tree-shaking and drags its whole library into the startup bundle even if nothing uses it. In eager modules import the concrete file (`@hooks/useAuth`, `@components/Message`); library CSS lives in the lazy components that use it (`ol/ol.css` in the three `Map*OL`, **not** in `useMapInit`). `npm run build` runs `scripts/check-eager-chunks.mjs` (postbuild) and fails if **(a)** `dist/index.html` references an `openlayers-`/`pdf-`/`cesium-` chunk, or **(b)** any page chunk's *static closure* pulls one of those outside its `ALLOWED` list (openlayers belongs only to the map pages; pdf only to the lazy `RenderFileModal`; cesium to none — it loads via dynamic import). If it fires, find the leaked chain with `BUNDLE_STATS=raw` instead of weakening the check. Known cause: a barrel member that reaches `ol`/`react-pdf`/`quill` — those components (the `Map*OL` family, `RenderFileModal`, `QuillText`, `TemporalBar`, `Popup`, the OL hooks, `StationModal`+`AddStation*`, and page re-exports) are deliberately **not** in the barrels; import them by file path.
 
 ## Deployment
 Production is a multi-stage Docker build (`Dockerfile`): Node builds `dist/`, then it's served by nginx. nginx config is templated — `srv/nginx.conf.template` is rendered with `envsubst` using `NGINX_PORT` and `SERVER_NAME` at container start. `srv/nginxdev.conf` is a reference dev config that proxies `/api/` to the backend. `docker-compose.yml` mounts `.env` and maps `APP_PORT`. Env vars: `VITE_API_URL` (build-time, baked into the bundle), plus `SERVER_NAME`/`NGINX_PORT`/`APP_PORT` for nginx.
@@ -126,4 +148,6 @@ Several directories carry their own `CLAUDE.md` with local conventions — read 
 - `src/pages/Station/CLAUDE.md` — station detail tabs (time series/ETM, rinex, people, visits, events); the ETM/time-series quirks live here.
 - `src/components/CLAUDE.md` — the 150+ component barrel and the shared-primitive landscape (modals, date pickers, clipboard, tables, forms).
 - `src/services/CLAUDE.md` — the service-layer contract, the error-swallowing convention, and the endpoint catalogue.
+- `src/pages/Processing/Projects/` — proyectos de procesamiento por motor (GAMIT hoy, PAGES a futuro): la página, la tabla, el modal y el panel de estaciones se parametrizan con el **registro de motores** `engines.ts` (endpoint, campos, columnas, defaults de la DB, tablas en cascada); un motor nuevo es otra entrada ahí, no otra página. Ruta `/processing-projects/:engine` bajo el menú "Processing and Frames"; la página está en `ALLOWED.openlayers` porque el modal abre `MapModalOL`.
+- `src/pages/Campaigns/CLAUDE.md` — la tabla de campañas y el **Campaign Planner** (`Planner/`): sección propia `/campaign-plans` (lista de planes guardados) con el planner como detalle en `/campaign-plans/new` y `/:id` (lazy, en `ALLOWED.openlayers`), entrada por el dropdown de Campaigns del navbar; paradas, mapa OL, pestaña sincrónica con el HTML del plan y planes guardados (sin relación con las campañas).
 - `src/store/CLAUDE.md` — the `useMapStore` Zustand store and its modal/filter slice patterns.

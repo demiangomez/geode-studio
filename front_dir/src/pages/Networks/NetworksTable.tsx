@@ -29,7 +29,9 @@ const NetworksTable = () => {
         search: "",
     });
 
-    const { networks, networksIsFetching, isLoading } = useMetadata(api, {});
+    const { networks, networksIsFetching, isLoading } = useMetadata(api, {
+        only: ["networks"],
+    });
 
     const filteredNetworks = useMemo(() => {
         const term = filters.search.toLowerCase().trim();

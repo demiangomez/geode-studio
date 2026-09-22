@@ -26,20 +26,40 @@ const SourcesServersMergeModal = ({
 
     const [successText, setSuccessText] = useState<boolean>(false);
 
+    const [errorMsg, setErrorMsg] = useState<
+        { status: number; msg: string; errors?: Errors } | undefined
+    >(undefined);
+
+    const servers = sourcesServers ?? [];
+
+    const noServers = servers.length === 0 && (
+        <span className="text-base-content/60">
+            No source servers available
+        </span>
+    );
+
     const mergeSourcesServers = async () => {
         try {
             setLoading(true);
+            setErrorMsg(undefined);
             const res = await mergeSourcesServersService<ErrorResponse>(api, {
                 from: from as number,
                 to: to as number,
             });
             if (res.statusCode === 200) {
                 setSuccessText(true);
+                refetch();
             } else {
                 setSuccessText(false);
+                setErrorMsg({
+                    status: res.statusCode,
+                    msg: res.response?.type ?? res.msg ?? "Transfer failed",
+                    errors: res.response,
+                });
             }
         } catch (error) {
             console.error(error);
+            setErrorMsg({ status: 500, msg: "Transfer failed" });
         } finally {
             setLoading(false);
         }
@@ -60,7 +80,6 @@ const SourcesServersMergeModal = ({
                 handleCloseModal();
                 setTo(undefined);
                 setFrom(undefined);
-                successText && refetch();
             }}
             modalId="Merge Source Server"
         >
@@ -74,9 +93,7 @@ const SourcesServersMergeModal = ({
                 }
             >
                 <div className="w-full border-b-2 border-gray-300 pb-6 pl-8 pt-6">
-                    <h1 className="text-2xl font-bold">
-                        Transfer Stations
-                    </h1>
+                    <h1 className="text-2xl font-bold">Transfer Stations</h1>
                 </div>
                 <form
                     typeof="submit"
@@ -91,50 +108,52 @@ const SourcesServersMergeModal = ({
                                 Transfer From:
                             </h2>
                             <div className="max-h-[20vh] flex flex-col w-full gap-2 overflow-y-auto">
-                                {sourcesServers?.map((s, index) => (
-                                <div
-                                    key={index}
-                                    className="flex justify-center items-center gap-4 p-2 mb-1 hover:bg-gray-400 rounded-md bg-gray-300"
-                                >
-                                    <input
-                                        className="checkbox checkbox-lg"
-                                        type="checkbox"
-                                        name="person"
-                                        value={s.server_id}
-                                        checked={from === s.server_id}
-                                        onChange={() =>
-                                            to === s.server_id
-                                                ? setFrom(undefined)
-                                                : setFrom(s.server_id)
-                                        }
-                                    />
-                                    <div className="flex flex-col justify-start items-start w-full">
-                                        <div className="flex flex-row justify-start items-start w-full">
-                                            <label
-                                                title={s.fqdn}
-                                                className="text-2xl w-3/4 text-pretty truncate"
-                                            >
-                                                {s.fqdn}
+                                {noServers}
+                                {servers.map((s, index) => (
+                                    <div
+                                        key={index}
+                                        className="flex justify-center items-center gap-4 p-2 mb-1 hover:bg-gray-400 rounded-md bg-gray-300"
+                                    >
+                                        <input
+                                            className="checkbox checkbox-lg"
+                                            type="checkbox"
+                                            name="person"
+                                            value={s.server_id}
+                                            checked={from === s.server_id}
+                                            onChange={() =>
+                                                to === s.server_id
+                                                    ? setFrom(undefined)
+                                                    : setFrom(s.server_id)
+                                            }
+                                        />
+                                        <div className="flex flex-col justify-start items-start w-full">
+                                            <div className="flex flex-row justify-start items-start w-full">
+                                                <label
+                                                    title={s.fqdn}
+                                                    className="text-2xl w-3/4 text-pretty truncate"
+                                                >
+                                                    {s.fqdn}
+                                                </label>
+                                                <label className="text-lg w-1/4 font-bold text-center">
+                                                    {s.protocol}
+                                                </label>
+                                            </div>
+                                            <label className="w-full overflow-auto whitespace-normal break-all">
+                                                {s.path}
                                             </label>
-                                            <label className="text-lg w-1/4 font-bold text-center">
-                                                {s.protocol}
-                                            </label>
+                                            <label>{s.format}</label>
                                         </div>
-                                        <label className="w-full overflow-auto whitespace-normal break-all">
-                                            {s.path}
-                                        </label>
-                                        <label>
-                                            {s.format}
-                                        </label>
                                     </div>
-                                </div>
                                 ))}
                             </div>
                         </div>
                         <div className="flex flex-col gap-6 w-full">
-                            <h2 className="text-xl font-semibold">Transfer To:</h2>
+                            <h2 className="text-xl font-semibold">
+                                Transfer To:
+                            </h2>
                             <div className="max-h-[20vh] flex flex-col gap-2 overflow-y-auto">
-                                {sourcesServers?.map((s, index) => {
+                                {noServers}
+                                {servers.map((s, index) => {
                                     return (
                                         <div
                                             key={index}
@@ -164,9 +183,7 @@ const SourcesServersMergeModal = ({
                                                         {s.protocol}
                                                     </label>
                                                 </div>
-                                                <label>
-                                                    {s.format}
-                                                </label>
+                                                <label>{s.format}</label>
                                                 <label className="w-full overflow-auto whitespace-normal break-all">
                                                     {s.path}
                                                 </label>
@@ -177,6 +194,43 @@ const SourcesServersMergeModal = ({
                             </div>
                         </div>
                     </div>
+
+                    {successText ? (
+                        <div className="w-full p-4">
+                            <Alert
+                                msg={{
+                                    status: 200,
+                                    msg: "!Transfer successfully done!",
+                                }}
+                            />
+                        </div>
+                    ) : to === from &&
+                      to !== undefined &&
+                      from !== undefined &&
+                      !successText ? (
+                        <div className="w-full p-4">
+                            <Alert
+                                msg={{
+                                    status: 400,
+                                    msg: "Transfer same source station order is not possible!",
+                                    errors: {
+                                        errors: [
+                                            {
+                                                code: "400",
+                                                detail: "",
+                                                attr: "transfer",
+                                            },
+                                        ],
+                                        type: "TransferError",
+                                    } as Errors,
+                                }}
+                            />
+                        </div>
+                    ) : errorMsg ? (
+                        <div className="w-full p-4">
+                            <Alert msg={errorMsg} />
+                        </div>
+                    ) : null}
 
                     <div className="flex justify-center flex-col items-center gap-1">
                         <button
@@ -198,38 +252,6 @@ const SourcesServersMergeModal = ({
                         </button>
                     </div>
                 </form>
-                {successText ? (
-                    <div className="w-full p-4">
-                        <Alert
-                            msg={{
-                                status: 200,
-                                msg: "!Transfer successfully done!",
-                            }}
-                        />
-                    </div>
-                ) : to === from &&
-                  to !== undefined &&
-                  from !== undefined &&
-                  !successText ? (
-                    <div className="w-full p-4">
-                        <Alert
-                            msg={{
-                                status: 400,
-                                msg: "Transfer same source station order is not possible!",
-                                errors: {
-                                    errors: [
-                                        {
-                                            code: "400",
-                                            detail: "",
-                                            attr: "transfer",
-                                        },
-                                    ],
-                                    type: "TransferError",
-                                } as Errors,
-                            }}
-                        />
-                    </div>
-                ) : null}
             </div>
         </Modal>
     );

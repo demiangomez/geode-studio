@@ -34,6 +34,24 @@ class GamitHtcFilter(filters.FilterSet):
         fields = ['antenna_code']
 
 
+class GamitProjectsFilter(filters.FilterSet):
+    project = filters.CharFilter(
+        field_name='project', lookup_expr='icontains')
+
+    class Meta:
+        model = models.GamitProjects
+        fields = ['project']
+
+
+class CampaignPlansFilter(filters.FilterSet):
+    name = filters.CharFilter(
+        field_name='name', lookup_expr='icontains')
+
+    class Meta:
+        model = models.CampaignPlans
+        fields = ['name']
+
+
 class AntennasFilter(filters.FilterSet):
 
     class Meta:
@@ -85,7 +103,7 @@ class VisitFilter(filters.FilterSet):
 
     class Meta:
         model = models.Visits
-        fields = ['station_api_id', "campaign"]
+        fields = ['station_api_id', "campaign", "planned"]
 
 
 class VisitAttachedFilesFilter(filters.FilterSet):
@@ -148,6 +166,13 @@ class EventsFilter(filters.FilterSet):
     stack = filters.CharFilter(field_name='stack', lookup_expr='icontains')
     module = filters.CharFilter(field_name='module', lookup_expr='icontains')
     node = filters.CharFilter(field_name='node', lookup_expr='icontains')
+    only_empty_network = filters.BooleanFilter(
+        method='filter_only_empty_network')
+
+    def filter_only_empty_network(self, queryset, name, value):
+        if value:
+            return queryset.filter(network_code__contains='?')
+        return queryset
 
     class Meta:
         model = models.Events

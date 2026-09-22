@@ -66,7 +66,6 @@ const People = () => {
         return peopleType.find((p) => p.id === rolePersonStation.person);
     }, [rolePersonStation, peopleType]);
 
-
     const [roles, setRoles] = useState<StationStatus[] | undefined>(undefined);
 
     const [modals, setModals] = useState<
@@ -198,11 +197,9 @@ const People = () => {
         return b;
     }, [sortedRolePersonStations, peopleType, roles]);
 
-
     useEffect(() => {
         modals?.show && showModal(modals.title);
     }, [modals]);
-
 
     return (
         <div className="">
@@ -247,7 +244,7 @@ const People = () => {
                             dataFetchUrl="api/people"
                         />
                         {modals?.show &&
-                            modals.title === "EditStationPerson" ? (
+                        modals.title === "EditStationPerson" ? (
                             <StationPersonModal
                                 people={peopleType}
                                 roles={roles}

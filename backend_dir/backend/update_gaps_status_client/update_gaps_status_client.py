@@ -10,6 +10,7 @@ if __name__ == "__main__":
     timeout_value = 2 * 60 * 60 # 2 hours
     update_url = 'http://localhost:8000/api/update-gaps-status'
     delete_block_url = 'http://localhost:8000/api/delete-update-gaps-status-block'
+    update_planned_visits_url = 'http://localhost:8000/api/update-planned-visits-status'
 
     def get_token():
         url = 'http://localhost:8000/api/token'
@@ -39,10 +40,13 @@ if __name__ == "__main__":
             requests.post(delete_block_url, headers=headers, timeout=timeout_value)
 
         response = requests.post(update_url, headers=headers, timeout=timeout_value)
-        
+
         if response.status_code == 429:
             failed_request_counter += 1
         else:
             failed_request_counter = 0
+
+        # 429 just means the task already ran within the last hour
+        requests.post(update_planned_visits_url, headers=headers, timeout=timeout_value)
 
         sleep(10)

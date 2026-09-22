@@ -46,7 +46,11 @@ const AddCampaignModal = ({
     >(undefined);
 
     const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     const { formState, dispatch } = useFormReducer(visit);
 
@@ -126,6 +130,7 @@ const AddCampaignModal = ({
                 },
             });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [formState.campaign_id]);
 
     const handleCloseModal = () => {

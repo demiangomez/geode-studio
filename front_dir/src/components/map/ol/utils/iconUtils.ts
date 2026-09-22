@@ -13,9 +13,7 @@ export const iconUrl = (
         return caution;
     }
     const foundUrl = types.find((t) => t.name === s.type)?.image;
-    return foundUrl
-        ? "data:image/png;base64," + foundUrl
-        : placemarkSquare;
+    return foundUrl ? "data:image/png;base64," + foundUrl : placemarkSquare;
 };
 
 export const iconClass = (
@@ -55,13 +53,10 @@ const FILTER_MAP: Record<string, string> = {
         "invert(10%) sepia(100%) saturate(5793%) hue-rotate(247deg) brightness(96%) contrast(149%)",
 };
 
-export const getFilterFromClass = (className: string): string =>
+const getFilterFromClass = (className: string): string =>
     FILTER_MAP[className] ?? "";
 
-export const createColoredIcon = (
-    iconSrc: string,
-    filter: string,
-): Promise<string> =>
+const createColoredIcon = (iconSrc: string, filter: string): Promise<string> =>
     new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = "anonymous";
@@ -135,3 +130,11 @@ export const getCachedColoredIcon = async (
         return iconSrc;
     }
 };
+
+// Pin simple (gota con circulo) del color pedido, para marcadores que no son estaciones
+export const pinIconUrl = (color: string) =>
+    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+        <path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5c-1.4 0-2.5-1.1-2.5-2.5S10.6 6.5 12 6.5s2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5z" fill="${color}" stroke="#fff" stroke-width="1"/>
+    </svg>`,
+    )}`;

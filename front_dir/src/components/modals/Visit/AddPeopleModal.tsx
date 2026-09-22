@@ -41,7 +41,11 @@ const AddPeopleModal = ({ people, visit, reFetch, setStateModal }: Props) => {
     >(undefined);
 
     const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     const { formState, dispatch } = useFormReducer(visit);
 
@@ -146,6 +150,7 @@ const AddPeopleModal = ({ people, visit, reFetch, setStateModal }: Props) => {
                 },
             });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [formState.people_id]);
 
     const handleCloseModal = () => {

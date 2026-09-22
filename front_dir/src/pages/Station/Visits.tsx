@@ -1,38 +1,38 @@
 import { useLocation, useOutletContext } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
     CardContainer,
     ConfirmDeleteModal,
+    ImageModal,
     TableCard,
     TableSkeleton,
+    TransferVisitsModal,
     VisitAddModal,
-    VisitDetailModal,
-    VisitThumbNail,
 } from "@componentsReact";
+import VisitDetailModal from "@components/modals/Station/StationVisitDetailModal";
+import VisitThumbNail from "./VisitThumbNail";
 
 import { useAuth, useApi } from "@hooks";
 
 import {
-    delStationVisitService,
-    getStationCampaignsService,
-    getStationVisitsImagesService,
-    getStationVisitsService,
-} from "@services";
-
-import {
-    ErrorResponse,
-    Errors,
+    Photo,
     StationCampaignsData,
-    StationCampaignsServiceData,
     StationData,
     StationVisitsData,
     StationVisitsFilesData,
-    StationVisitsFilesServiceData,
-    StationVisitsServiceData,
 } from "@types";
 
-import { showModal } from "@utils";
-import { useMetadata } from "@hooks/queries";
+import { ApiError, showModal } from "@utils";
+
+import { ArrowsRightLeftIcon } from "@heroicons/react/24/outline";
+import {
+    useCampaigns,
+    useDeleteStationVisit,
+    useMetadata,
+    useStationVisitImages,
+    useStationVisits,
+} from "@hooks/queries";
 
 interface OutletContext {
     station: StationData;
@@ -41,6 +41,8 @@ interface OutletContext {
 const Visits = () => {
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
+
+    const queryClient = useQueryClient();
 
     const location = useLocation();
 
@@ -60,142 +62,94 @@ const Visits = () => {
 
     const { station } = useOutletContext<OutletContext>();
 
-    const [loading, setLoading] = useState<boolean>(false);
-    const [loadingVisitImages, setLoadingVisitImages] =
-        useState<boolean>(false);
-
-    const [msg, setMsg] = useState<
-        { status: number; msg: string; errors?: Errors } | undefined
-    >(undefined);
+    const [activeTab, setActiveTab] = useState<"visits" | "planned">("visits");
 
     const [modals, setModals] = useState<
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
         | undefined
     >(undefined);
 
-    const [visits, setVisits] = useState<StationVisitsData[] | undefined>(
-        undefined,
-    );
-
     const [visitToDel, setVisitToDel] = useState<number | undefined>(undefined);
 
-    const [campaigns, setCampaigns] = useState<
-        StationCampaignsData[] | undefined
-    >(undefined);
-
-    const [images, setImages] = useState<StationVisitsFilesData[] | undefined>(
-        undefined,
-    );
+    // Snapshot al abrir el modal: el listado se refetchea tras transferir y el
+    // reporte tiene que seguir mostrando las visitas que se mandaron.
+    const [visitsToTransfer, setVisitsToTransfer] = useState<
+        StationVisitsData[]
+    >([]);
 
     const [visit, setVisit] = useState<StationVisitsData | undefined>(
         undefined,
     );
 
-    const { statuses, types } = useMetadata(api, { enabled: !!station });
+    const [photo, setPhoto] = useState<Photo | undefined>(undefined);
 
-    const getVisits = async () => {
-        try {
-            setLoading(true);
-            const res = await getStationVisitsService<StationVisitsServiceData>(
-                api,
-                {
-                    limit: 0,
-                    offset: 0,
-                    station_api_id: String(station?.api_id),
-                },
-            );
+    const { statuses, types } = useMetadata(api, {
+        enabled: !!station,
+        only: ["types", "statuses"],
+    });
 
-            if (res.statusCode === 200) {
-                setVisits(res.data);
-            }
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setLoading(false);
-        }
+    const {
+        data: visits,
+        isLoading: loading,
+        isError: visitsError,
+    } = useStationVisits(api, station?.api_id);
+
+    const { data: images, isLoading: loadingVisitImages } =
+        useStationVisitImages(api, station?.api_id);
+
+    const { data: campaigns } = useCampaigns(api);
+
+    const delVisitMutation = useDeleteStationVisit(api);
+
+    const delMsg = delVisitMutation.isSuccess
+        ? {
+              status: delVisitMutation.data.statusCode,
+              msg: delVisitMutation.data.msg,
+          }
+        : delVisitMutation.isError
+          ? delVisitMutation.error instanceof ApiError
+              ? {
+                    status: delVisitMutation.error.statusCode,
+                    msg: delVisitMutation.error.message,
+                    errors: delVisitMutation.error.response,
+                }
+              : { status: 500, msg: delVisitMutation.error.message }
+          : undefined;
+
+    const refetchVisits = () => {
+        queryClient.invalidateQueries({ queryKey: ["visits"] });
+        queryClient.invalidateQueries({ queryKey: ["visitImages"] });
+        queryClient.invalidateQueries({ queryKey: ["campaigns"] });
     };
 
-    const getCampaigns = async () => {
-        try {
-            setLoading(true);
-            const res =
-                await getStationCampaignsService<StationCampaignsServiceData>(
-                    api,
-                    {
-                        limit: 0,
-                        offset: 0,
-                    },
-                );
+    const visibleVisits = useMemo(
+        () =>
+            visits?.filter((v) =>
+                activeTab === "planned" ? v.planned : !v.planned,
+            ),
+        [visits, activeTab],
+    );
 
-            if (res.statusCode === 200) {
-                setCampaigns(res.data);
-            }
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const plannedCount = useMemo(
+        () => visits?.filter((v) => v.planned).length ?? 0,
+        [visits],
+    );
 
-    const getVisitsImages = async () => {
-        try {
-            setLoadingVisitImages(true);
-            const res =
-                await getStationVisitsImagesService<StationVisitsFilesServiceData>(
-                    api,
-                    {
-                        limit: 0,
-                        offset: 0,
-                        station_api_id: String(station?.api_id),
-                        thumbnail: true,
-                    },
-                );
+    // misma referencia por visita entre renders (memo de VisitThumbNail)
+    const imagesByVisit = useMemo(() => {
+        const byVisit = new Map<number, StationVisitsFilesData[]>();
+        images?.forEach((img) => {
+            const list = byVisit.get(img.visit);
+            if (list) list.push(img);
+            else byVisit.set(img.visit, [img]);
+        });
+        return byVisit;
+    }, [images]);
 
-            if (res.statusCode === 200) {
-                setImages(res.data);
-            }
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setLoadingVisitImages(false);
-        }
-    };
-
-    const delVisit = async () => {
-        try {
-            setLoading(true);
-
-            const res = await delStationVisitService<ErrorResponse>(
-                api,
-                visitToDel ?? 0,
-            );
-
-            if ("status" in res && res.status === "success") {
-                setMsg({
-                    status: res.statusCode,
-                    msg: res.msg,
-                });
-            } else {
-                setMsg({
-                    status: res.statusCode,
-                    msg: res.response.type,
-                    errors: res.response,
-                });
-            }
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        if (station && station.api_id) {
-            getVisits();
-            getVisitsImages();
-            getCampaigns();
-        }
-    }, [station]); // eslint-disable-line
+    const openTransferModal = useCallback((toTransfer: StationVisitsData[]) => {
+        setVisitsToTransfer(toTransfer);
+        setModals({ show: true, title: "TransferVisits", type: "none" });
+    }, []);
 
     useEffect(() => {
         modals?.show && showModal(modals.title);
@@ -231,6 +185,50 @@ const Visits = () => {
                         modalTitle="AddVisit"
                         setModals={setModals}
                         addButton={true}
+                        headerActions={
+                            <button
+                                className="btn btn-neutral no-animation"
+                                title="Transfer the listed visits to another station"
+                                disabled={!visibleVisits?.length}
+                                onClick={() =>
+                                    openTransferModal(visibleVisits ?? [])
+                                }
+                            >
+                                <ArrowsRightLeftIcon className="size-5" />
+                                Transfer visits
+                            </button>
+                        }
+                        headerContent={
+                            <div
+                                role="tablist"
+                                className="tabs grid-cols-2 rounded-btn bg-base-300 p-1 gap-1"
+                            >
+                                <a
+                                    role="tab"
+                                    onClick={() => setActiveTab("visits")}
+                                    className={`tab gap-2 rounded-btn border border-base-300 ${activeTab === "visits" ? "bg-base-100 shadow font-bold border-base-content/20" : "bg-base-200"}`}
+                                >
+                                    Completed
+                                    <span
+                                        className={`badge badge-sm ${activeTab === "visits" ? "badge-neutral" : "badge-ghost"}`}
+                                    >
+                                        {(visits?.length ?? 0) - plannedCount}
+                                    </span>
+                                </a>
+                                <a
+                                    role="tab"
+                                    onClick={() => setActiveTab("planned")}
+                                    className={`tab gap-2 rounded-btn border border-base-300 ${activeTab === "planned" ? "bg-base-100 shadow font-bold border-base-content/20" : "bg-base-200"}`}
+                                >
+                                    Planned
+                                    <span
+                                        className={`badge badge-sm ${activeTab === "planned" ? "badge-neutral" : "badge-ghost"}`}
+                                    >
+                                        {plannedCount}
+                                    </span>
+                                </a>
+                            </div>
+                        }
                     >
                         {loading ? (
                             <div className="grid gap-4 grid-cols-3 grid-flow-dense">
@@ -238,39 +236,39 @@ const Visits = () => {
                                     <TableSkeleton mainSize="300px" key={i} />
                                 ))}
                             </div>
-                        ) : visits && visits.length === 0 ? (
+                        ) : visitsError ? (
                             <div className="text-center text-neutral text-2xl font-bold w-full rounded-md bg-neutral-content p-6">
-                                There are no visits
+                                There is no visit data to show
+                            </div>
+                        ) : visibleVisits && visibleVisits.length === 0 ? (
+                            <div className="text-center text-neutral text-2xl font-bold w-full rounded-md bg-neutral-content p-6">
+                                {activeTab === "planned"
+                                    ? "There are no planned visits"
+                                    : "There are no visits"}
                             </div>
                         ) : (
                             <div
-                                className={`grid 
+                                className={`grid
                                     grid-cols-2
                                     grid-flow-dense gap-4`}
                             >
-                                {visits?.map((vis) => {
-                                    const visitImages = images?.filter(
-                                        (i) => i.visit === vis.id,
-                                    );
-
-                                    return (
-                                        <VisitThumbNail
-                                            key={vis.id}
-                                            station={station}
-                                            statuses={statuses ?? []}
-                                            types={types ?? []}
-                                            visit={vis}
-                                            visitImages={visitImages}
-                                            campaigns={campaigns}
-                                            loadingVisitImages={
-                                                loadingVisitImages
-                                            }
-                                            setModals={setModals}
-                                            setVisitToDel={setVisitToDel}
-                                            setVisit={setVisit}
-                                        />
-                                    );
-                                })}
+                                {visibleVisits?.map((vis) => (
+                                    <VisitThumbNail
+                                        key={vis.id}
+                                        station={station}
+                                        statuses={statuses ?? []}
+                                        types={types ?? []}
+                                        visit={vis}
+                                        visitImages={imagesByVisit.get(vis.id)}
+                                        campaigns={campaigns}
+                                        loadingVisitImages={loadingVisitImages}
+                                        setModals={setModals}
+                                        setVisitToDel={setVisitToDel}
+                                        onTransfer={openTransferModal}
+                                        setVisit={setVisit}
+                                        setPhoto={setPhoto}
+                                    />
+                                ))}
                             </div>
                         )}
                     </TableCard>
@@ -279,19 +277,19 @@ const Visits = () => {
 
             {modals && modals?.title === "ConfirmDelete" && (
                 <ConfirmDeleteModal
-                    loading={loading}
-                    msg={msg}
-                    confirmRemove={() => delVisit()}
+                    loading={delVisitMutation.isPending}
+                    msg={delMsg}
+                    confirmRemove={() =>
+                        visitToDel && delVisitMutation.mutate(visitToDel)
+                    }
                     closeModal={() => {
                         setModals({
                             show: false,
                             title: "",
                             type: "edit",
                         });
-                        setMsg(undefined);
-                        getVisits();
-                        getVisitsImages();
-                        getCampaigns();
+                        setVisitToDel(undefined);
+                        delVisitMutation.reset();
                     }}
                 />
             )}
@@ -303,19 +301,23 @@ const Visits = () => {
                     setStateModal={setModals}
                     station={station}
                     closeModal={() => {
-                        getVisits();
-                        getVisitsImages();
-                        getCampaigns();
+                        refetchVisits();
                         setModals({
                             show: false,
                             title: "",
                             type: "edit",
                         });
                     }}
-                    reFetch={() => {
-                        getVisits();
-                        getVisitsImages();
-                        getCampaigns();
+                    reFetch={refetchVisits}
+                />
+            )}
+            {modals?.show && modals.title === "TransferVisits" && (
+                <TransferVisitsModal
+                    station={station}
+                    visits={visitsToTransfer}
+                    closeModal={() => {
+                        setModals({ show: false, title: "", type: "none" });
+                        setVisitsToTransfer([]);
                     }}
                 />
             )}
@@ -325,11 +327,23 @@ const Visits = () => {
                     visitId={visit?.id}
                     setStateModal={setModals}
                     closeModal={() => {
-                        getVisits();
-                        getVisitsImages();
-                        getCampaigns();
+                        refetchVisits();
                         setVisit(undefined);
                     }}
+                />
+            )}
+            {modals?.show && modals.title === "ViewStationPhoto" && (
+                <ImageModal
+                    photo={photo}
+                    visit={true}
+                    closeModal={() => setPhoto(undefined)}
+                    refetch={() =>
+                        queryClient.invalidateQueries({
+                            queryKey: ["visitImages"],
+                        })
+                    }
+                    setStateModal={setModals}
+                    type="edit"
                 />
             )}
         </div>

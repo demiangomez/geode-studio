@@ -3,16 +3,12 @@ export {
     animateSpiderfyExpand,
     animateSpiderfyCollapse,
     SPIDER_LEG_STYLE,
-    SPIDER_LEG_REACH,
-    SPIDER_ANIM_DURATION,
 } from "./spiderfyUtils";
 
 export {
-    clusterStyle,
     createClusterHoverStyle,
     clusterStyleFn,
     earthquakeSelectedStyle,
-    EMPTY_STYLE,
     CLUSTER_MAX_ZOOM,
     CLUSTER_MIN_DISTANCE,
 } from "./styleUtils";
@@ -24,6 +20,7 @@ export {
     iconClass,
     getCachedColoredIcon,
     getIconScale,
+    pinIconUrl,
 } from "./iconUtils";
 
 export { createKmlLayer, parseKmlFromBase64 } from "./kmlUtils";
@@ -34,4 +31,6 @@ export {
     getLastZoom,
     getLastCenterLonLat,
     saveLastView,
+    toWorldCoordinate,
+    worldExtentOf,
 } from "./mapViewUtils";

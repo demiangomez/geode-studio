@@ -3,10 +3,10 @@ import Modal from "@components/modals/Modal";
 import Toast from "@components/Message";
 import { AxiosError } from "axios";
 
-import osupng from "@assets/images/logo-osu-01.png";
+import osupng from "@assets/images/logo-osu-01.webp";
 
 import { ExclamationCircleIcon } from "@heroicons/react/24/outline";
-import { useAuth } from "@hooks";
+import { useAuth } from "@hooks/useAuth";
 
 import { loginService, refreshTokenService } from "@services";
 
@@ -159,7 +159,15 @@ const Login = () => {
                 {/* <div className="self-center mb-6 text-xl font-bold sm:text-2xl ">
                     Login
                 </div> */}
-                <img src={osupng} alt="GeoDE" />
+                {/* fetchpriority va en minúscula: React 18 no reconoce la prop camelCase */}
+                <img
+                    src={osupng}
+                    alt="GeoDE"
+                    width={1050}
+                    height={533}
+                    decoding="async"
+                    {...{ fetchpriority: "high" }}
+                />
                 <div className="mt-8">
                     <form action="#" autoComplete="off" onSubmit={handleLogin}>
                         <div className="flex flex-col mb-2">
@@ -198,6 +206,7 @@ const Login = () => {
                                 <input
                                     type="text"
                                     id="username"
+                                    aria-label="Username"
                                     value={username}
                                     onChange={(e) =>
                                         setUsername(e.target.value)
@@ -229,6 +238,7 @@ const Login = () => {
                                 <input
                                     type="password"
                                     id="password"
+                                    aria-label="Password"
                                     value={password}
                                     onChange={(e) =>
                                         setPassword(e.target.value)

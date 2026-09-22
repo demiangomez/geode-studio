@@ -20,9 +20,11 @@ import { showModal } from "@utils";
 interface SidebarProps {
     station: StationData | undefined;
     mainParams?: GetParams;
-    stationMeta?: StationMetadataServiceData | undefined;
     refetchStationMeta?: () => void;
-    refetch?: () => void;
+    refetch?: (
+        freshStation?: StationData,
+        freshStationMeta?: StationMetadataServiceData,
+    ) => void;
 }
 
 interface SidebarItemProps {
@@ -45,12 +47,7 @@ const SidebarItem = ({ icon: Icon, label, onClick }: SidebarItemProps) => (
     </li>
 );
 
-const Sidebar = ({
-    station,
-    mainParams,
-    stationMeta,
-    refetch,
-}: SidebarProps) => {
+const Sidebar = ({ station, mainParams, refetch }: SidebarProps) => {
     const icons: Record<string, React.ComponentType<any>> = {
         Instruments: InformationCircleIcon,
         Metadata: CodeBracketIcon,
@@ -100,7 +97,6 @@ const Sidebar = ({
 
     if (!station) return null;
 
-
     return (
         <>
             <div
@@ -119,19 +115,19 @@ const Sidebar = ({
                                 onClick={() => {
                                     stationPages.includes(title)
                                         ? navigate(
-                                            `/${station.network_code}/${station.station_code}/${formatTitle(title)}`,
-                                            {
-                                                state: {
-                                                    ...station,
-                                                    mainParams,
-                                                },
-                                            },
-                                        )
+                                              `/${station.network_code}/${station.station_code}/${formatTitle(title)}`,
+                                              {
+                                                  state: {
+                                                      ...station,
+                                                      mainParams,
+                                                  },
+                                              },
+                                          )
                                         : setModals({
-                                            show: true,
-                                            title,
-                                            type: "none",
-                                        });
+                                              show: true,
+                                              title,
+                                              type: "none",
+                                          });
                                 }}
                             />
                         );
@@ -144,7 +140,7 @@ const Sidebar = ({
                     close={false}
                     station={station}
                     size={"xl"}
-                    refetch={refetch ? refetch : () => { }}
+                    refetch={refetch ? refetch : () => {}}
                     setModalState={setModals}
                 />
             )}
@@ -152,9 +148,8 @@ const Sidebar = ({
                 <StationMetadataModal
                     close={false}
                     station={station}
-                    stationMetaMain={stationMeta}
                     size={"xl"}
-                    refetch={refetch ? refetch : () => { }}
+                    refetch={refetch ? refetch : () => {}}
                     setModalState={setModals}
                 />
             )}

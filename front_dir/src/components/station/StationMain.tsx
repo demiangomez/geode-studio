@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { MapSkeleton, MapStationOL, Photo } from "@componentsReact";
-
-import { findFlagUrlByIso3Code } from "country-flags-svg-v2";
+import { CountryFlag, MapSkeleton, Photo } from "@componentsReact";
+import MapStationOL from "@components/map/ol/MapStationOL";
+import { StationSubtituleSkeleton } from "@components/skeleton/StationMapPhotoSkeleton";
 
 import { hasDifferences } from "@utils";
 
@@ -51,35 +51,26 @@ const StationMain = () => {
             ? reStation
             : station;
 
-    const visitsAndMeta = {
-        visits: visits ?? [],
-        stationMeta: stationMeta,
-        changeKml: changeKml,
-        changeMeta: changeMeta,
-    };
-
-    const routesScrollerProps = {
-        visits: visits ?? [],
-        changeKml: changeKml,
-        changeMeta: changeMeta,
-        setChangeKml: setChangeKml,
-        setChangeMeta: setChangeMeta,
-        stationMeta: stationMeta,
-    };
+    const routesScrollerProps = useMemo(
+        () => ({
+            visits: visits ?? [],
+            changeKml,
+            changeMeta,
+            setChangeKml,
+            setChangeMeta,
+            stationMeta,
+        }),
+        [visits, changeKml, changeMeta, stationMeta],
+    );
 
     const stationCountry = useMemo(() => {
-        if (!station) return null;
+        if (!station) return <StationSubtituleSkeleton />;
 
         const iso3 = station?.country_code ?? "ATA";
-        const flag = findFlagUrlByIso3Code(iso3);
 
         return (
             <div className="flex w-full justify-center items-center">
-                <img
-                    src={flag}
-                    alt={station.country_code || "ATA"}
-                    className="mr-2 w-[30px] h-[20px]"
-                />
+                <CountryFlag iso3={iso3} className="mr-2 w-[30px] h-[20px]" />
                 <h1 className="text-2xl font-base text-center">
                     {iso3?.toUpperCase()}
                 </h1>
@@ -90,8 +81,8 @@ const StationMain = () => {
     useEffect(() => {
         setChangeMeta(
             stationMeta &&
-            stationMeta.navigation_actual_file !== null &&
-            stationMeta.navigation_actual_file !== "",
+                stationMeta.navigation_actual_file !== null &&
+                stationMeta.navigation_actual_file !== "",
         );
     }, [stationMeta]);
 
@@ -120,12 +111,6 @@ const StationMain = () => {
 
                     <MapStationOL
                         station={definitiveStation}
-                        base64Data={
-                            changeMeta ||
-                                changeKml?.some((visit) => visit.checked)
-                                ? (visitsAndMeta ?? "")
-                                : ""
-                        }
                         visitScrollerProps={routesScrollerProps}
                     />
 

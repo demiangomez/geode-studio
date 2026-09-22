@@ -25,6 +25,10 @@ interface Props {
         >
     >;
     onHide: () => void;
+    refetch?: (
+        freshStation?: StationData,
+        freshStationMeta?: StationMetadataServiceData,
+    ) => void;
 }
 
 const StationCommentsModal = ({
@@ -33,6 +37,7 @@ const StationCommentsModal = ({
     station,
     onHide,
     setModal,
+    refetch,
 }: Props) => {
     const [modals, setModals] = useState<
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
@@ -77,9 +82,8 @@ const StationCommentsModal = ({
                         <StationMetadataModal
                             close={false}
                             station={station}
-                            stationMetaMain={stationMeta}
                             size={"xl"}
-                            refetch={() => {}}
+                            refetch={refetch ? refetch : () => {}}
                             setModalState={setModal}
                         />
                     )}

@@ -1,0 +1,154 @@
+# Etapas (stages) del pipeline:
+#   1. LINT        : eslint sobre todo el código TS/TSX ("npm run lint" corta con
+#                    --max-warnings 0: cualquier warning falla el job, no solo los errores).
+#   2. TEST        : suite de vitest en modo "run" (una sola pasada, no watch).
+#   3. BUILD       : Verifica que el install de dependencias y el build de Vite estén correctos.
+#                    OJO respecto de otros repos: acá "npm run build" es "tsc && vite build"
+#                    (con "&&", NO con ";"), así que un error de tipado SÍ corta el pipeline.
+#                    Es el comportamiento esperado: el repo corre con tsconfig "strict" +
+#                    noUnusedLocals/noUnusedParameters, y el build ya usa
+#                    NODE_OPTIONS='--max-old-space-size=4096' internamente (definido en el
+#                    propio script de package.json, no hace falta repetirlo acá).
+#   4. BUILD-IMAGE : Verifica que la imagen de Docker (node build + nginx) se construya bien.
+#   5. DEPLOY      : (pendiente) push al registry y pull en el servidor de producción.
+
+# Las rules con CI_PIPELINE_SOURCE y CI_COMMIT_BRANCH usan variables predefinidas de GitLab.
+
+# PREREQUISITO: variable de CI/CD "ENV_FILE" (tipo File) con el contenido del .env.
+
+stages:
+    - lint
+    - test
+    - build
+    - build-image
+# - deploy
+
+# --- Cache de npm ---
+# A diferencia de otros repos con esta template (que cacheaban node_modules/ y corrían
+# "npm install"), acá usamos "npm ci": es obligatorio en CI porque instala exactamente lo
+# que dice package-lock.json (reproducible) y, a diferencia de "npm install", primero borra
+# node_modules/ -- así que cachear esa carpeta no sirve. En su lugar cacheamos la caché
+# interna de npm (.npm/), keyeada por package-lock.json igual que antes, y se la pasamos a
+# "npm ci" con --cache/--prefer-offline para no re-descargar los paquetes de la registry.
+.npm_cache:
+    cache:
+        key:
+            files:
+                - package-lock.json
+        paths:
+            - .npm/
+        policy: pull-push # (push) guarda el cache si no existe, (pull) lo descarga si existe
+
+lint-job:
+    stage: lint
+    tags: [docker-builder]
+    image: node:22-alpine
+    extends: .npm_cache
+
+    script:
+        - echo "Instalando dependencias..."
+        - npm ci --cache .npm --prefer-offline
+        - echo "Ejecutando lint (eslint --max-warnings 0)..."
+        - npm run lint
+
+    # Durante desarrollo corre en todo push; cuando haya flujo de MR, activar:
+    # rules:
+    #   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+test-job:
+    stage: test
+    tags: [docker-builder]
+    image: node:22-alpine
+    extends: .npm_cache
+
+    script:
+        - echo "Instalando dependencias..."
+        - npm ci --cache .npm --prefer-offline
+        - echo "Ejecutando tests (vitest run)..."
+        - npm run test:run
+
+    # rules:
+    #   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+build-job:
+    stage: build
+    tags: [docker-builder]
+
+    # El Dockerfile de este repo usa "FROM node:22" para el build stage.
+    # Acá usamos node:22-alpine: misma major version (importante para que "npm ci" resuelva
+    # los mismos binarios nativos que en la imagen final), pero liviana, porque este job solo
+    # valida install+build y no necesita coincidir con la imagen base completa del Dockerfile.
+
+    # No hay .nvmrc ni "engines" en package.json todavía: si se agrega alguno más adelante,
+    # alinear esta imagen y la del Dockerfile a esa versión en vez de a un número fijo acá.
+    image: node:22-alpine
+
+    extends: .npm_cache
+
+    script:
+        - echo "Instalando dependencias..."
+        - npm ci --cache .npm --prefer-offline
+        - echo "Ejecutando build (tsc && vite build)..."
+        - npm run build
+
+    # dist/ no lo consume ningún job downstream (build-image vuelve a instalar y buildear
+    # adentro del Dockerfile), pero queda como artefacto descargable para debug/QA sobre el
+    # commit exacto que corrió el pipeline.
+    artifacts:
+        paths:
+            - dist/
+        expire_in: 1 day
+
+    # rules:
+    #   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+build-image:
+    stage: build-image
+    tags: [docker-builder]
+
+    image: docker:20.10.16
+    services: # docker-in-docker para construir la imagen
+        - docker:20.10.16-dind
+
+    variables:
+        # le dice al cliente (imagen) la dirección del servidor (service)
+        DOCKER_HOST: tcp://docker:2375
+        # deshabilita el chequeo de seguridad tls
+        DOCKER_TLS_CERTDIR: ""
+
+    script:
+        # Espera activa a que arranque el daemon de docker-in-docker (máx ~60s)
+        - echo "Esperando al daemon de Docker (dind)..."
+        - i=0; until docker info > /dev/null 2>&1; do i=$((i + 1)); if [ "$i" -ge 30 ]; then echo "El daemon de Docker no respondió (¿runner sin privileged?)"; exit 1; fi; sleep 2; done
+        # .env no está versionado y el "COPY . ." del Dockerfile lo necesita en el contexto
+        # (ver comentario del REQUISITO arriba): lo generamos desde la variable ENV_FILE
+        # (tipo File) configurada en Settings > CI/CD > Variables.
+        - echo "Generando .env desde ENV_FILE..."
+        - cp "$ENV_FILE" .env
+        - echo "Construyendo imagen de Docker..."
+        # El Dockerfile de este repo NO declara "ARG COMMIT_HASH" (no lo usa en ningún
+        # RUN/LABEL), así que pasarlo como --build-arg no tiene efecto: se sacó del comando.
+        # En cambio, se taggea la imagen local de prueba con el short SHA del commit para
+        # poder identificarla en los logs del job (no se publica a ningún registry todavía).
+        - docker build -t temp:$CI_COMMIT_SHORT_SHA .
+        - echo "OK"
+
+    # rules:
+    #   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+# ==============================================================================================
+# ETAPA DE DEPLOY: IMPLEMENTAR CUANDO ESTÉ EL DOCKER REGISTRY Y SE DEFINA A DÓNDE CONECTARSE
+# VÍA SSH PARA PULLEAR Y LEVANTAR LA NUEVA IMAGEN.
+#
+# SE DEBE GENERAR UN NUEVO RUNNER (deploy-staging).
+#
+# SOLAMENTE SE EJECUTA CUANDO SE HAGA UN COMMIT A BRANCH main
+# ==============================================================================================
+
+# deploy_staging:
+#   stage: deploy
+#   tags: [deploy-staging]
+#
+#   script:
+#     - echo "Desplegando la aplicación..."
+#   rules:
+#     - if: '$CI_COMMIT_BRANCH == "main"'

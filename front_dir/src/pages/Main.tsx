@@ -23,11 +23,10 @@ import {
     useStations,
     useEarthquakes,
     useStationRinexOnDate,
+    affectedStationsQueryOptions,
 } from "@hooks/queries";
 
-import { useQueries, QueryFunctionContext } from "@tanstack/react-query";
-
-import { getAffectedStationsService } from "@services";
+import { useQueries } from "@tanstack/react-query";
 
 import { useMapStore } from "@store";
 
@@ -156,6 +155,8 @@ const MainPage = () => {
         api,
         {
             ...params,
+            // only_metadata: sin harposs_coef_otl
+            only_metadata: true,
             station_code:
                 selectedEarthquakes.length > 0 ? "" : params.station_code,
             network_code:
@@ -199,8 +200,8 @@ const MainPage = () => {
         : null;
     const absoluteDateStart = rangeRef.current?.minYear
         ? fractionalYearToDate(rangeRef.current.minYear)
-            .toISOString()
-            .split("T")[0]
+              .toISOString()
+              .split("T")[0]
         : null;
 
     const { data: rinexOnDateResult, isFetching: rinexOnDateLoading } =
@@ -236,17 +237,9 @@ const MainPage = () => {
         useEarthquakes(api, earthQuakeParams, mapState && !!earthQuakeParams);
 
     const affectedQueries = useQueries({
-        queries: selectedEarthquakes.map((eq) => ({
-            queryKey: ["affectedStations", eq.api_id],
-            queryFn: ({ signal }: QueryFunctionContext) =>
-                getAffectedStationsService<StationsAffectedServiceData>(
-                    api,
-                    eq.api_id,
-                    { signal },
-                ),
-            staleTime: 5 * 60 * 1000,
-            enabled: !!eq.api_id,
-        })),
+        queries: selectedEarthquakes.map((eq) =>
+            affectedStationsQueryOptions(api, eq.api_id),
+        ),
     });
 
     const affectedStationsFetching = affectedQueries.some((q) => q.isFetching);
@@ -343,6 +336,7 @@ const MainPage = () => {
         });
 
         return merged;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [affectedQueries, selectedEarthquakes, toggleStateEarthquakeMask]);
 
     const affectedStationList = useMemo(() => {
@@ -380,7 +374,7 @@ const MainPage = () => {
             list = list.filter((s) =>
                 exactDate
                     ? s.api_id !== undefined &&
-                    stationRinexOnDate.includes(s.api_id)
+                      stationRinexOnDate.includes(s.api_id)
                     : isStationInTemporalWindow(s, dateStart, dateEnd),
             );
         }
@@ -424,13 +418,13 @@ const MainPage = () => {
     const filteredEarthquakes =
         (Array.isArray(earthquakeFilterFormState?.polygon_coordinates) &&
             earthquakeFilterFormState.polygon_coordinates[0].length > 0) ||
-            !isEmpty(earthquakeFilterFormState?.max_latitude) ||
-            !isEmpty(earthquakeFilterFormState?.min_latitude) ||
-            !isEmpty(earthquakeFilterFormState?.max_longitude) ||
-            !isEmpty(earthquakeFilterFormState?.min_longitude)
+        !isEmpty(earthquakeFilterFormState?.max_latitude) ||
+        !isEmpty(earthquakeFilterFormState?.min_latitude) ||
+        !isEmpty(earthquakeFilterFormState?.max_longitude) ||
+        !isEmpty(earthquakeFilterFormState?.min_longitude)
             ? earthquakesResult?.data?.filter((s: EarthquakeData) =>
-                isEarthquakeFiltered(s),
-            )
+                  isEarthquakeFiltered(s),
+              )
             : earthquakesResult?.data;
 
     const handleEarthQuakeParams = (formstate: EarthQuakeFormState) => {
@@ -585,6 +579,7 @@ const MainPage = () => {
         }
 
         prevSelectionKey.current = currentKey;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
         selectedEarthquakes,
         setTemporalFilter,
@@ -595,14 +590,14 @@ const MainPage = () => {
     const stationsByFilters = (stations: StationData[]) => {
         const filteredStations =
             filters?.stationWithProblems ||
-                filters?.stationWithoutProblems ||
-                (Array.isArray(filterState?.statusOption) &&
-                    filterState?.statusOption.length > 0) ||
-                (Array.isArray(filterState?.typeOption) &&
-                    filterState?.typeOption.length > 0)
+            filters?.stationWithoutProblems ||
+            (Array.isArray(filterState?.statusOption) &&
+                filterState?.statusOption.length > 0) ||
+            (Array.isArray(filterState?.typeOption) &&
+                filterState?.typeOption.length > 0)
                 ? stations?.filter((s) =>
-                    isStationFiltered(s, filterState, filters),
-                )
+                      isStationFiltered(s, filterState, filters),
+                  )
                 : stations;
 
         return filteredStations;
@@ -700,8 +695,9 @@ const MainPage = () => {
             )}
 
             <div
-                className={`flex flex-1 w-full transition-all duration-500 ${showSkeleton ? "opacity-0 pointer-events-none" : ""
-                    } ${showSpinner ? "pointer-events-none" : ""}`}
+                className={`flex flex-1 w-full transition-all duration-500 ${
+                    showSkeleton ? "opacity-0 pointer-events-none" : ""
+                } ${showSpinner ? "pointer-events-none" : ""}`}
             >
                 <MainScroller
                     altData={{
@@ -789,10 +785,11 @@ const MainPage = () => {
                                 }
                                 data-tip="No stations within the current time window / filters"
                                 onClick={() => setShowDownloadModal(true)}
-                                className={`btn btn-rounded btn-sm flex-nowrap gap-1 ${downloadableAffectedStations.length === 0
-                                    ? " cursor-not-allowed opacity-60"
-                                    : ""
-                                    }`}
+                                className={`btn btn-rounded btn-sm flex-nowrap gap-1 ${
+                                    downloadableAffectedStations.length === 0
+                                        ? " cursor-not-allowed opacity-60"
+                                        : ""
+                                }`}
                                 style={{ backgroundColor: "white" }}
                             >
                                 <ArchiveBoxArrowDownIcon className="size-6" />

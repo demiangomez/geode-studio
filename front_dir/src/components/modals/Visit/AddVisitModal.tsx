@@ -23,7 +23,13 @@ import {
     StationVisitsFilesServiceData,
 } from "@types";
 
-import { apiOkStatuses, classHtml, showModal } from "@utils";
+import {
+    apiOkStatuses,
+    classHtml,
+    isFutureDate,
+    showModal,
+    modalActions,
+} from "@utils";
 
 import { VISIT_STATE } from "@utils/reducerFormStates";
 import {
@@ -35,6 +41,7 @@ import {
 } from "@services";
 
 import {
+    InformationCircleIcon,
     PlusCircleIcon,
     UserPlusIcon,
     XMarkIcon,
@@ -86,7 +93,11 @@ const AddVisitModal = ({
     >(undefined);
 
     const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     const [fileType, setFileType] = useState<string | undefined>(undefined);
 
@@ -122,6 +133,10 @@ const AddVisitModal = ({
 
     const { formState, dispatch } = useFormReducer(VISIT_STATE);
 
+    const plannedVisit = isFutureDate(formState.date);
+
+    const [createdPlanned, setCreatedPlanned] = useState<boolean>(false);
+
     const deleteUserSelectById = (id: number) => {
         const result = peopleSelected.filter((p) => p.id !== id);
         setPeopleSelected(result);
@@ -137,20 +152,20 @@ const AddVisitModal = ({
         return key === "campaign"
             ? inputRefCampaign
             : key === "people"
-                ? inputRefPeople
-                : null;
+              ? inputRefPeople
+              : null;
     };
 
     const formattedState = {
         ...VISIT_STATE,
         campaign: campaignB
             ? "(" +
-            campaignB?.name +
-            ")" +
-            " " +
-            campaignB?.start_date +
-            " - " +
-            campaignB?.end_date
+              campaignB?.name +
+              ")" +
+              " " +
+              campaignB?.start_date +
+              " - " +
+              campaignB?.end_date
             : "",
         station: String(station?.api_id),
     };
@@ -202,6 +217,8 @@ const AddVisitModal = ({
                 }
             });
 
+            formData.append("planned", String(plannedVisit));
+
             const res = await postStationVisitService<
                 StationPostVisitData | ErrorResponse
             >(api, formData);
@@ -219,6 +236,7 @@ const AddVisitModal = ({
                         msg: "Visit added successfully",
                     });
                     setVisitId(res.id);
+                    setCreatedPlanned(plannedVisit);
                     setStep(2);
                     setTimeout(() => {
                         setMsg(undefined);
@@ -367,6 +385,7 @@ const AddVisitModal = ({
 
     useEffect(() => {
         getPeople();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleCloseModal = () => {
@@ -383,6 +402,7 @@ const AddVisitModal = ({
             type: "set",
             payload: formattedState,
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [station, campaignB]);
 
     useEffect(() => {
@@ -410,12 +430,12 @@ const AddVisitModal = ({
             (campaign) =>
                 formState.campaign ===
                 "(" +
-                campaign.name +
-                ")" +
-                " " +
-                campaign.start_date +
-                " - " +
-                campaign.end_date,
+                    campaign.name +
+                    ")" +
+                    " " +
+                    campaign.start_date +
+                    " - " +
+                    campaign.end_date,
         );
         if (!campaignSelected) return;
 
@@ -427,7 +447,6 @@ const AddVisitModal = ({
 
         setPeopleSelected(selectedPeople);
     }, [formState.campaign, campaigns, people]);
-
 
     return (
         <Modal
@@ -526,10 +545,10 @@ const AddVisitModal = ({
                                                 {optionalFields.includes(
                                                     key,
                                                 ) && (
-                                                        <span className="badge badge-secondary">
-                                                            Optional
-                                                        </span>
-                                                    )}
+                                                    <span className="badge badge-secondary">
+                                                        Optional
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                     ) : key === "comments" ? (
@@ -586,10 +605,10 @@ const AddVisitModal = ({
                                                         )
                                                             ? "date"
                                                             : inputsToFile.includes(
-                                                                key,
-                                                            )
-                                                                ? "file"
-                                                                : "text"
+                                                                    key,
+                                                                )
+                                                              ? "file"
+                                                              : "text"
                                                     }
                                                     ref={selectRef(key)}
                                                     name={key}
@@ -597,8 +616,8 @@ const AddVisitModal = ({
                                                         key === "station"
                                                             ? station?.api_id
                                                             : (formState[
-                                                                key as keyof typeof formState
-                                                            ] ?? "")
+                                                                  key as keyof typeof formState
+                                                              ] ?? "")
                                                     }
                                                     onChange={(e) => {
                                                         handleChange(e.target);
@@ -632,37 +651,63 @@ const AddVisitModal = ({
 
                                                 {(key === "campaign" ||
                                                     key === "people") && (
-                                                        <MenuButton
-                                                            setShowMenu={
-                                                                setShowMenu
-                                                            }
-                                                            showMenu={showMenu}
-                                                            typeKey={key}
-                                                        />
-                                                    )}
+                                                    <MenuButton
+                                                        setShowMenu={
+                                                            setShowMenu
+                                                        }
+                                                        showMenu={showMenu}
+                                                        typeKey={key}
+                                                    />
+                                                )}
 
                                                 {key === "people" && (
-                                                    <button
-                                                        className="btn btn-ghost btn-circle tooltip tooltip-bottom"
+                                                    <div
+                                                        className="tooltip tooltip-bottom"
                                                         data-tip="Create People"
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setModals &&
-                                                                setModals({
-                                                                    show: true,
-                                                                    title: "EditPerson",
-                                                                    type: "add",
-                                                                });
-                                                        }}
                                                     >
-                                                        <UserPlusIcon
-                                                            strokeWidth={1.5}
-                                                            stroke="currentColor"
-                                                            className="w-8 h-8 justify-self-center"
-                                                        />
-                                                    </button>
+                                                        <button
+                                                            className="btn btn-ghost btn-circle"
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setModals &&
+                                                                    setModals({
+                                                                        show: true,
+                                                                        title: "EditPerson",
+                                                                        type: "add",
+                                                                    });
+                                                            }}
+                                                        >
+                                                            <UserPlusIcon
+                                                                strokeWidth={
+                                                                    1.5
+                                                                }
+                                                                stroke="currentColor"
+                                                                className="w-8 h-8"
+                                                            />
+                                                        </button>
+                                                    </div>
                                                 )}
                                             </label>
+                                        </div>
+                                    )}
+                                    {key === "date" && plannedVisit && (
+                                        <div
+                                            role="alert"
+                                            className="alert alert-info mt-2 py-2"
+                                        >
+                                            <InformationCircleIcon className="size-6" />
+                                            <span>
+                                                The selected date is in the
+                                                future: this visit will be saved
+                                                as a <strong>planned</strong>{" "}
+                                                visit.
+                                                <br />
+                                                <strong>
+                                                    Observation files cannot be
+                                                    uploaded
+                                                </strong>{" "}
+                                                until the visit takes place.
+                                            </span>
                                         </div>
                                     )}
                                     {key === "people" &&
@@ -693,11 +738,11 @@ const AddVisitModal = ({
                                         )}
 
                                     {showMenu?.show &&
-                                        showMenu.type === key &&
-                                        key === "campaign" ? (
+                                    showMenu.type === key &&
+                                    key === "campaign" ? (
                                         <Menu>
                                             {(matchingCampaigns &&
-                                                matchingCampaigns.length > 0
+                                            matchingCampaigns.length > 0
                                                 ? matchingCampaigns
                                                 : campaigns
                                             )?.map((campaign) => (
@@ -727,7 +772,7 @@ const AddVisitModal = ({
                                         key === "people" && (
                                             <Menu>
                                                 {(matchingPeople &&
-                                                    matchingPeople.length > 0
+                                                matchingPeople.length > 0
                                                     ? matchingPeople
                                                     : people
                                                 )?.map((ppl) => {
@@ -785,9 +830,9 @@ const AddVisitModal = ({
                                                                         (
                                                                             prev,
                                                                         ) => [
-                                                                                ...prev,
-                                                                                targetPerson,
-                                                                            ],
+                                                                            ...prev,
+                                                                            targetPerson,
+                                                                        ],
                                                                     );
                                                                 }
                                                             }}
@@ -831,25 +876,25 @@ const AddVisitModal = ({
                             >
                                 {images
                                     ? images?.map((img) => (
-                                        <div
-                                            key={img.id}
-                                            className="flex flex-col items-center break-words pb-2 rounded-md"
-                                        >
-                                            <img
-                                                src={`data:image/*;base64,${img.actual_image ?? ""}`}
-                                                alt={img.name}
-                                                className="size-60 object-cover rounded-md"
-                                            />
-                                            <span className="text-md font-medium mt-2 mx-auto w-auto">
-                                                {img.name}
-                                            </span>
-                                            {img.description && (
-                                                <span className="text-sm mt-2 mx-auto w-full">
-                                                    {img.description}
-                                                </span>
-                                            )}
-                                        </div>
-                                    ))
+                                          <div
+                                              key={img.id}
+                                              className="flex flex-col items-center break-words pb-2 rounded-md"
+                                          >
+                                              <img
+                                                  src={`data:image/*;base64,${img.actual_image ?? ""}`}
+                                                  alt={img.name}
+                                                  className="size-60 object-cover rounded-md"
+                                              />
+                                              <span className="text-md font-medium mt-2 mx-auto w-auto">
+                                                  {img.name}
+                                              </span>
+                                              {img.description && (
+                                                  <span className="text-sm mt-2 mx-auto w-full">
+                                                      {img.description}
+                                                  </span>
+                                              )}
+                                          </div>
+                                      ))
                                     : null}
                             </div>
                         </div>
@@ -859,24 +904,26 @@ const AddVisitModal = ({
                                 <div className="flex flex-col items-center rounded-md bg-neutral-content">
                                     <h3 className="font-bold inline-flex border-b-2 w-full justify-center items-center text-xl my-2">
                                         Visit Observation Files
-                                        <button
-                                            className="btn btn-ghost btn-circle ml-2"
-                                            type="button"
-                                            onClick={() => {
-                                                setFileType("gnss");
-                                                setModals({
-                                                    show: true,
-                                                    title: "AddFile",
-                                                    type: "add",
-                                                });
-                                            }}
-                                        >
-                                            <PlusCircleIcon
-                                                strokeWidth={1.5}
-                                                stroke="currentColor"
-                                                className="w-8 h-10"
-                                            />
-                                        </button>
+                                        {!createdPlanned && (
+                                            <button
+                                                className="btn btn-ghost btn-circle ml-2"
+                                                type="button"
+                                                onClick={() => {
+                                                    setFileType("gnss");
+                                                    setModals({
+                                                        show: true,
+                                                        title: "AddFile",
+                                                        type: "add",
+                                                    });
+                                                }}
+                                            >
+                                                <PlusCircleIcon
+                                                    strokeWidth={1.5}
+                                                    stroke="currentColor"
+                                                    className="w-8 h-10"
+                                                />
+                                            </button>
+                                        )}
                                     </h3>
                                     <div className="flex flex-col flex-grow w-full max-h-56 overflow-y-auto p-2">
                                         {loadingGnss ? (
@@ -891,11 +938,12 @@ const AddVisitModal = ({
                                             >
                                                 {(!gnssFiles ||
                                                     gnssFiles.length === 0) && (
-                                                        <div className="text-center text-neutral text-2xl font-bold w-full rounded-md bg-neutral-content p-4">
-                                                            There are no Observation
-                                                            Files
-                                                        </div>
-                                                    )}
+                                                    <div className="text-center text-neutral text-2xl font-bold w-full rounded-md bg-neutral-content p-4">
+                                                        {createdPlanned
+                                                            ? "Observation files are not available for planned visits"
+                                                            : "There are no Observation Files"}
+                                                    </div>
+                                                )}
                                                 {gnssFiles &&
                                                     gnssFiles.length > 0 &&
                                                     gnssFiles.map((f) => {
@@ -966,10 +1014,10 @@ const AddVisitModal = ({
                                             >
                                                 {(!files ||
                                                     files.length === 0) && (
-                                                        <div className="text-center text-neutral text-2xl font-bold w-full rounded-md bg-neutral-content p-4">
-                                                            There are no other files
-                                                        </div>
-                                                    )}
+                                                    <div className="text-center text-neutral text-2xl font-bold w-full rounded-md bg-neutral-content p-4">
+                                                        There are no other files
+                                                    </div>
+                                                )}
                                                 {files &&
                                                     files.length > 0 &&
                                                     files.map((f) => {
@@ -1014,44 +1062,38 @@ const AddVisitModal = ({
                         <span className="loading loading-spinner loading-lg self-center"></span>
                     </div>
                 )}
-                <div className="w-full flex flex-grow items-end justify-center">
-                    <div className="w-8/12 flex items-end justify-end">
-                        <button
-                            className="btn btn-success w-6/12"
-                            type={step !== 1 ? "button" : "submit"}
-                            onClick={() => {
-                                step === 2
-                                    ? setStep(step + 1)
-                                    : step === 3
-                                        ? closeModal()
-                                        : null;
-                            }}
-                            disabled={
-                                loading ||
-                                apiOkStatuses.includes(Number(msg?.status)) ||
-                                (step === 1 && visitId !== undefined)
-                            }
-                        >
-                            {step === 1
-                                ? "Create"
+                <div className={modalActions.container}>
+                    <button
+                        className={modalActions.primary}
+                        type={step !== 1 ? "button" : "submit"}
+                        onClick={() => {
+                            step === 2
+                                ? setStep(step + 1)
                                 : step === 3
-                                    ? "Finish"
-                                    : "Continue"}
-                        </button>
-                    </div>
-                    <div className="w-4/12 flex items-end justify-end">
+                                  ? closeModal()
+                                  : null;
+                        }}
+                        disabled={
+                            loading ||
+                            apiOkStatuses.includes(Number(msg?.status)) ||
+                            (step === 1 && visitId !== undefined)
+                        }
+                    >
+                        {step === 1
+                            ? "Create"
+                            : step === 3
+                              ? "Finish"
+                              : "Continue"}
+                    </button>
+                    {step !== 1 && step !== 3 && (
                         <button
                             type="button"
-                            className="btn btn-ghost"
-                            style={{
-                                display:
-                                    step === 1 || step === 3 ? "none" : "block",
-                            }}
+                            className={modalActions.secondary}
                             onClick={() => setStep(step + 1)}
                         >
                             <span className="font-light">skip ...</span>
                         </button>
-                    </div>
+                    )}
                 </div>
             </form>
 

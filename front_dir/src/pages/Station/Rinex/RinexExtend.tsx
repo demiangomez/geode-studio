@@ -182,12 +182,14 @@ const RinexExtend = ({
         if (stationInfoApiId) {
             getStationInfoByApiId(stationInfoApiId);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [stationInfoApiId]);
 
     useEffect(() => {
         if (stationInfo) {
             putStationInfo();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [stationInfo]);
 
     const confirmExtend = () => {

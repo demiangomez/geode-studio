@@ -2,6 +2,7 @@ import {
     FilterState,
     GapData,
     StationData,
+    StationEvents,
     TokenPayload,
     EarthquakeData,
     EarthQuakeFormState,
@@ -9,6 +10,8 @@ import {
 
 export * from "./lazyRetry";
 export * from "./coordinateConversion";
+export * from "./apiError";
+export * from "./stationCodes";
 
 export const downloadFromBase64 = (
     base64: string,
@@ -43,11 +46,29 @@ export const modalSizes = {
     fit: "fit-content",
 };
 
+/**
+ * Anchos de los botones de accion de los modales. `min-w` y no `w`: alinea las
+ * etiquetas cortas ("Add", "Save") sin truncar las largas ("Transfer visits").
+ * En px y no en fracciones porque `modalSizes` ya es un porcentaje del viewport
+ * — una fraccion adentro ata el boton al tamano del monitor (un `w-6/12` en un
+ * modal `md` mide 552px a 1920 y 744px a 2560). El ancho fijo ademas evita que
+ * el boton salte cuando entra el spinner de carga.
+ */
+export const buttonSizes = {
+    sm: "min-w-[110px]",
+    md: "min-w-[160px]",
+    lg: "min-w-[210px]",
+};
+
+/** Contenedor y roles del pie de un modal. Los colores son los que ya estaban. */
+export const modalActions = {
+    container: "flex w-full justify-center items-center gap-3 flex-wrap",
+    primary: `btn btn-success ${buttonSizes.md}`,
+    destructive: `btn btn-error ${buttonSizes.md}`,
+    secondary: `btn btn-ghost ${buttonSizes.sm}`,
+};
+
 export const apiMethods = ["get", "post", "put", "patch", "delete"];
-
-export const apiOkStatuses = [200, 201, 204];
-
-export const apiErrorStatuses = [400, 401, 403, 404, 405, 406, 415, 500];
 
 export const validateCatalogFields = (
     formState: Record<string, any>,
@@ -116,24 +137,6 @@ export const classHtml = (s: string) => {
     return updatedRichText;
 };
 
-export const datesFormatOpt: Intl.DateTimeFormatOptions = {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
-};
-
-export const datesFormatOptShort: Intl.DateTimeFormatOptions = {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-};
-
 export const getRandomColor = (index: number) => {
     const chosenColor = possibleColors[index];
     return chosenColor;
@@ -150,6 +153,24 @@ export const possibleColors = [
     "#631d76",
 ];
 
+const datesFormatOpt: Intl.DateTimeFormatOptions = {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+};
+
+const datesFormatOptShort: Intl.DateTimeFormatOptions = {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+};
+
 export const formattedDates = (
     date: Date | string | undefined,
     short: boolean = false,
@@ -163,13 +184,6 @@ export const formattedDates = (
     return formattedDate;
 };
 
-export const adjustToLocalTimezone = (dateString: string) => {
-    const localDate = new Date(dateString);
-    const timezoneOffset = localDate.getTimezoneOffset();
-    const adjustedDate = new Date(localDate.getTime() + timezoneOffset * 60000);
-    return adjustedDate;
-};
-
 export const isValidNumber = (num: string) => {
     if (num === "") return true;
     const regex = /^(0|[1-9]\d*)(\.\d+)?$/;
@@ -179,6 +193,14 @@ export const isValidNumber = (num: string) => {
 export const isValidDate = (dateString: string) => {
     const date = new Date(dateString);
     return !isNaN(date.getTime());
+};
+
+// "T00:00:00" fuerza el parseo en timezone local (sin sufijo un YYYY-MM-DD se parsea como UTC)
+export const isFutureDate = (dateString: string | null | undefined) => {
+    if (!dateString || !isValidDate(dateString)) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(`${dateString.slice(0, 10)}T00:00:00`) > today;
 };
 
 export const dateToUTC = (date: Date | string) => {
@@ -201,26 +223,6 @@ export const woTz = (d: Date | undefined) => {
     const dateWoTz = d && tz && new Date(d?.getTime() - tz);
 
     return dateWoTz;
-};
-
-export const doyToDate = (doy: string) => {
-    const [year, dayOfYear] = doy.split(".");
-
-    const date = new Date(`${year}-01-01`);
-
-    const leapYear =
-        (Number(year) % 4 == 0 && Number(year) % 100 != 0) ||
-        Number(year) % 400 == 0;
-
-    date.setTime(
-        date.getTime() +
-            (leapYear
-                ? (366 / 1000) * Number(dayOfYear)
-                : (365 / 1000) * Number(dayOfYear)) *
-                86400000,
-    );
-
-    return date;
 };
 
 export const dateFromDay = (day: string) => {
@@ -680,23 +682,89 @@ export const hasDifferences = (one: object, second: object) => {
     return JSON.stringify(one) !== JSON.stringify(second);
 };
 
+const FILE_MIME_TYPES_BY_EXTENSION: Record<string, string> = {
+    pdf: "application/pdf",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    bmp: "image/bmp",
+    svg: "image/svg+xml",
+    ico: "image/x-icon",
+    tif: "image/tiff",
+    tiff: "image/tiff",
+};
+
+export const getFileMimeType = (
+    filename: string | null | undefined,
+): string | undefined => {
+    if (!filename) return undefined;
+    const extension = filename.split(".").pop()?.toLowerCase();
+    return extension ? FILE_MIME_TYPES_BY_EXTENSION[extension] : undefined;
+};
+
+export const isPreviewableFile = (filename: string | null | undefined) => {
+    const mimeType = getFileMimeType(filename);
+    return mimeType === "application/pdf" || !!mimeType?.startsWith("image/");
+};
+
+const EVENTS_TITLE_KEYS_TO_IGNORE = [
+    "event_id",
+    "network_code",
+    "station_code",
+];
+const EVENTS_BODY_KEYS_TO_IGNORE = ["network_code", "station_code"];
+
+export const buildEventsTitles = (
+    events: StationEvents[] | undefined,
+    includeNetworkStation = false,
+): string[] => {
+    if (!events || events.length === 0) return [];
+    const ignore = includeNetworkStation
+        ? ["event_id"]
+        : EVENTS_TITLE_KEYS_TO_IGNORE;
+    const keys = Object.keys(events[0]).filter((key) => !ignore.includes(key));
+    return keys.map((key) => key.replace(/_/g, " "));
+};
+
+export const buildEventsBody = (
+    events: StationEvents[] | undefined,
+    includeNetworkStation = false,
+): any[][] => {
+    if (!events || events.length === 0) return [];
+    const ignore = includeNetworkStation ? [] : EVENTS_BODY_KEYS_TO_IGNORE;
+    return events.map((event) => {
+        const keys = Object.keys(event).filter((key) => !ignore.includes(key));
+        return keys.map((key) => event[key as keyof typeof event]);
+    });
+};
+
+const EVENTS_DATE_FILTER_KEYS = ["event_date_since", "event_date_until"];
+
+// los inputs datetime-local mandan "2026-08-05T00:00" (hora local, sin
+// timezone); el backend espera un instante en UTC, asi que hay que pasarlo
+// por Date (que interpreta ese formato como hora local del navegador) y
+// mandarlo como toISOString()
+export const normalizeEventDateFilters = (
+    filters: Record<string, any>,
+): Record<string, any> => {
+    const normalized = { ...filters };
+    for (const key of EVENTS_DATE_FILTER_KEYS) {
+        if (normalized[key]) {
+            normalized[key] = new Date(normalized[key]).toISOString();
+        }
+    }
+    return normalized;
+};
+
 export const transformParams = (params: any) => {
     return Object.entries(params)
+        .filter(([, value]) => value !== undefined)
         .map(
             ([key, value]) =>
                 `${encodeURIComponent(key)}=${encodeURIComponent(value as string)}`,
         )
-        .join("&");
-};
-
-export const transformParamsForFilter = (params: any) => {
-    return Object.entries(params)
-        .map(([key, value]) =>
-            value !== undefined
-                ? `${encodeURIComponent(key)}=${encodeURIComponent(value as string)}`
-                : null,
-        )
-        .filter((el: any) => el !== null)
         .join("&");
 };
 
@@ -710,8 +778,10 @@ export const jwtDeserializer = (token: string) => {
 };
 
 export const showModal = (title: string) => {
-    const modal = document.getElementById(title + "-modal") as HTMLFormElement;
-    if (modal) {
+    const modal = document.getElementById(
+        title + "-modal",
+    ) as HTMLDialogElement;
+    if (modal && !modal.open) {
         modal.showModal();
     }
 };
@@ -759,310 +829,4 @@ export const formatValue = (
     } else {
         return "-";
     }
-};
-
-export const rinexMockup = {
-    data: [
-        {
-            related_station_info: [
-                {
-                    date_start: "2024-01-01",
-                    date_end: "2024-01-02",
-                },
-                {
-                    date_start: "2024-01-03",
-                    date_end: "2024-01-04",
-                },
-            ],
-            rinex: [
-                {
-                    related_station_info: [
-                        {
-                            date_start: "2024-01-01",
-                            date_end: "2024-01-02",
-                        },
-                    ],
-                    rinex: [
-                        {
-                            network_code: "sag",
-                            station_code: "ceca",
-                            has_station_info: false,
-                            has_multiple_station_info_gap: false,
-                            metadata_mismatch: false,
-                            gap_type: null,
-                            year: null,
-                            doy: null,
-                            timestamp_start: null,
-                            timestamp_end: null,
-                            receiver: null,
-                            rx_sn: null,
-                            rx_firm: null,
-                            antenna: null,
-                            ant_sn: null,
-                            dome: null,
-                            offset: null,
-                            int: null,
-                            comp: 0.9,
-                        },
-                        {
-                            network_code: "sag",
-                            station_code: "ceca",
-                            has_station_info: false,
-                            has_multiple_station_info_gap: false,
-                            metadata_mismatch: false,
-                            gap_type: "AFTER LAST STATIONINFO",
-                            year: null,
-                            doy: null,
-                            timestamp_start: null,
-                            timestamp_end: null,
-                            receiver: null,
-                            rx_sn: null,
-                            rx_firm: null,
-                            antenna: null,
-                            ant_sn: null,
-                            dome: null,
-                            offset: null,
-                            int: null,
-                            comp: 0.81,
-                        },
-                    ],
-                },
-            ],
-        },
-        {
-            related_station_info: [
-                // STATIONS INFOS QUE ABARCA EL PRIMER GRUPO
-                {
-                    date_start: "2024-01-01",
-                    date_end: "2024-01-02",
-                },
-                {
-                    date_start: "2024-01-03",
-                    date_end: "2024-01-04",
-                },
-            ],
-            rinex: [
-                {
-                    // C/OBJETO CORRESPONDE AL SEGUNDO GRUPO, PUEDE TENR MAS DE UN RINEX ASOCIADO AL STATION INFO
-                    related_station_info: [
-                        {
-                            date_start: "2024-01-01",
-                            date_end: "2024-01-02",
-                        },
-                    ],
-                    rinex: [
-                        {
-                            network_code: "sag",
-                            station_code: "ceca",
-
-                            has_station_info: true,
-                            metadata_mismatch: false,
-                            has_multiple_station_info_gap: false,
-                            gap_type: null,
-
-                            year: null,
-                            doy: null,
-                            timestamp_start: null,
-                            timestamp_end: null,
-                            receiver: null,
-                            rx_sn: null,
-                            rx_firm: null,
-                            antenna: null,
-                            ant_sn: null,
-                            dome: null,
-                            offset: null,
-                            int: null,
-                            comp: 0.7,
-                        },
-                        {
-                            network_code: "sag",
-                            station_code: "ceca",
-
-                            has_station_info: false,
-                            metadata_mismatch: false,
-                            has_multiple_station_info_gap: false,
-                            gap_type: "AFTER LAST STATIONINFO",
-
-                            year: null,
-                            doy: null,
-                            timestamp_start: null,
-                            timestamp_end: null,
-                            receiver: null,
-                            rx_sn: null,
-                            rx_firm: null,
-                            antenna: null,
-                            ant_sn: null,
-                            dome: null,
-                            offset: null,
-                            int: null,
-                            comp: 0.86,
-                        },
-                        {
-                            network_code: "sag",
-                            station_code: "ceca",
-                            has_station_info: false,
-                            metadata_mismatch: false,
-                            has_multiple_station_info_gap: false,
-                            gap_type: "BEFORE FIRST STATIONINFO",
-                            year: null,
-                            doy: null,
-                            timestamp_start: null,
-                            timestamp_end: null,
-                            receiver: null,
-                            rx_sn: null,
-                            rx_firm: null,
-                            antenna: null,
-                            ant_sn: null,
-                            dome: null,
-                            offset: null,
-                            int: null,
-                            comp: 0.1,
-                        },
-                    ],
-                },
-                {
-                    related_station_info: [
-                        {
-                            date_start: "2024-01-01",
-                            date_end: "2024-01-02",
-                        },
-                    ],
-                    rinex: [
-                        {
-                            network_code: "sag",
-                            station_code: "ceca",
-                            has_station_info: false,
-                            has_multiple_station_info_gap: false,
-                            metadata_mismatch: false,
-                            gap_type: null,
-                            year: null,
-                            doy: null,
-                            timestamp_start: null,
-                            timestamp_end: null,
-                            receiver: null,
-                            rx_sn: null,
-                            rx_firm: null,
-                            antenna: null,
-                            ant_sn: null,
-                            dome: null,
-                            offset: null,
-                            int: null,
-                            comp: 0.7,
-                        },
-                        {
-                            network_code: "sag",
-                            station_code: "ceca",
-                            has_station_info: false,
-                            has_multiple_station_info_gap: false,
-                            metadata_mismatch: false,
-                            gap_type: "BEFORE FIRST STATIONINFO",
-                            year: null,
-                            doy: null,
-                            timestamp_start: null,
-                            timestamp_end: null,
-                            receiver: null,
-                            rx_sn: null,
-                            rx_firm: null,
-                            antenna: null,
-                            ant_sn: null,
-                            dome: null,
-                            offset: null,
-                            int: null,
-                            comp: 0.5,
-                        },
-                    ],
-                },
-            ],
-        },
-        {
-            related_station_info: [
-                {
-                    date_start: "2024-01-01",
-                    date_end: "2024-01-02",
-                },
-                {
-                    date_start: "2024-01-03",
-                    date_end: "2024-01-04",
-                },
-            ],
-            rinex: [
-                {
-                    related_station_info: [
-                        {
-                            date_start: "2024-01-01",
-                            date_end: "2024-01-02",
-                        },
-                    ],
-                    rinex: [
-                        {
-                            network_code: "sag",
-                            station_code: "ceca",
-                            has_station_info: true,
-                            has_multiple_station_info_gap: true,
-                            metadata_mismatch: false,
-                            gap_type: null,
-                            year: null,
-                            doy: null,
-                            timestamp_start: null,
-                            timestamp_end: null,
-                            receiver: null,
-                            rx_sn: null,
-                            rx_firm: null,
-                            antenna: null,
-                            ant_sn: null,
-                            dome: null,
-                            offset: null,
-                            int: null,
-                            comp: 0.3,
-                        },
-                    ],
-                },
-            ],
-        },
-        {
-            related_station_info: [
-                {
-                    date_start: "2024-01-01",
-                    date_end: "2024-01-02",
-                },
-                {
-                    date_start: "2024-01-03",
-                    date_end: "2024-01-04",
-                },
-            ],
-            rinex: [
-                {
-                    related_station_info: [
-                        {
-                            date_start: "2024-01-01",
-                            date_end: "2024-01-02",
-                        },
-                    ],
-                    rinex: [
-                        {
-                            network_code: "sag",
-                            station_code: "ceca",
-                            has_station_info: false,
-                            has_multiple_station_info_gap: false,
-                            metadata_mismatch: false,
-                            gap_type: "AFTER LAST STATIONINFO",
-                            year: null,
-                            doy: null,
-                            timestamp_start: null,
-                            timestamp_end: null,
-                            receiver: null,
-                            rx_sn: null,
-                            rx_firm: null,
-                            antenna: null,
-                            ant_sn: null,
-                            dome: null,
-                            offset: null,
-                            int: null,
-                            comp: 0.4,
-                        },
-                    ],
-                },
-            ],
-        },
-    ],
 };

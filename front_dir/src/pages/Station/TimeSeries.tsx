@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import {
     CardContainer,
+    EtmDebugOutputModal,
     EtmSolutionSelect,
     FormControlSelect,
     QueryCoordinatesModal,
@@ -11,7 +12,13 @@ import {
     TimeSeriesParams,
 } from "@componentsReact";
 
-import { DocumentChartBarIcon, BookmarkIcon, Cog8ToothIcon, MapPinIcon } from "@heroicons/react/24/outline";
+import {
+    BookmarkIcon,
+    Cog8ToothIcon,
+    CommandLineIcon,
+    DocumentChartBarIcon,
+    MapPinIcon,
+} from "@heroicons/react/24/outline";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -23,7 +30,7 @@ import {
     useStationTimeSeries,
 } from "@hooks/queries";
 import { useAuth, useApi } from "@hooks";
-import { showModal } from "@utils";
+import { ApiError, showModal } from "@utils";
 
 import { SERIES_FILTERS_STATE } from "@utils/reducerFormStates";
 
@@ -80,8 +87,7 @@ const TimeSeries = () => {
 
     const isGamit = solutionSelected === "GAMIT";
 
-    const gamitUnavailable =
-        !stacksLoading && (!stacks || stacks.length === 0);
+    const gamitUnavailable = !stacksLoading && (!stacks || stacks.length === 0);
 
     const tsEnabled =
         (appliedParams.solution === "GAMIT" && !!appliedParams.stack) ||
@@ -91,32 +97,36 @@ const TimeSeries = () => {
         enabled: !!station && tsEnabled,
     });
 
-    const tsData =
-        tsQuery.data && !("status" in tsQuery.data) ? tsQuery.data : undefined;
+    const tsData = tsQuery.data;
     const timeSeries = tsData?.time_series;
     const polynomialData = tsData?.etm_params?.polynomial;
     const periodicData = tsData?.etm_params?.periodic;
     const jumpsData = tsData?.etm_params?.jumps;
     const copyParams = tsData?.etm_params?.copy_params;
+    // Un 400 también puede traer debug_output si el ETM alcanzó a correr algo
+    // (p.ej. stack inválido): ahí está justo dónde se cortó.
+    const debugOutput =
+        tsData?.debug_output ??
+        (tsQuery.error instanceof ApiError
+            ? tsQuery.error.response?.debug_output
+            : undefined);
     const loading = tsQuery.isFetching;
 
     const plotMsg = useMemo(() => {
-        if (tsQuery.data && "status" in tsQuery.data) {
-            const err = tsQuery.data as ErrorResponse;
-            return {
-                status: err.statusCode,
-                msg: err.response.errors[0].detail,
-                errors: err.response,
-            };
-        }
-        if (tsQuery.isError) {
-            return { status: 500, msg: "Error fetching time series" };
-        }
-        return undefined;
-    }, [tsQuery.data, tsQuery.isError]);
+        const err = tsQuery.error;
+        if (!err) return undefined;
+        return err instanceof ApiError
+            ? {
+                  status: err.statusCode,
+                  msg:
+                      err.response?.errors?.[0]?.detail ??
+                      "Error fetching time series",
+                  errors: err.response,
+              }
+            : { status: 500, msg: "Error fetching time series" };
+    }, [tsQuery.error]);
 
     const msg = plotMsg ?? jsonMsg;
-
 
     const jsonMutation = useMutation({
         mutationFn: () =>
@@ -127,7 +137,9 @@ const TimeSeries = () => {
             if ("status" in res) {
                 setJsonMsg({
                     status: res.statusCode,
-                    msg: res.response.errors[0].detail,
+                    msg:
+                        res.response?.errors?.[0]?.detail ??
+                        "Error fetching time series",
                     errors: res.response,
                 });
                 return;
@@ -189,7 +201,9 @@ const TimeSeries = () => {
     // a PPP (o la primera disponible).
     useEffect(() => {
         if (solutions.length > 0 && !solutions.includes(solutionSelected)) {
-            handleSolutionChange(solutions.includes("PPP") ? "PPP" : solutions[0]);
+            handleSolutionChange(
+                solutions.includes("PPP") ? "PPP" : solutions[0],
+            );
         }
     }, [solutions]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -211,17 +225,41 @@ const TimeSeries = () => {
 
     return (
         <div className="">
-            <h1 className="text-2xl font-base text-center">{station ? "TIME SERIES" : "TIME SERIES NOT FOUND"}</h1>
-            {station &&
+            <h1 className="text-2xl font-base text-center">
+                {station ? "TIME SERIES" : "TIME SERIES NOT FOUND"}
+            </h1>
+            {station && (
                 <div className="flex flex-grow w-full justify-center pr-2 space-x-2 px-2 pb-4">
-
-                    <CardContainer title={""} height={false} addButton={false} >
+                    <CardContainer title={""} height={false} addButton={false}>
                         <div className="flex flex-col space-y-4 items-center w-[100%]">
                             <div className="flex flex-col space-y-2 items-center w-full">
-                                <div className="w-full flex flex-row">
-                                    <BookmarkIcon className="size-6 cursor-pointer"
-                                        onClick={handleShowReference}
-                                    />
+                                <div className="w-full flex flex-row gap-2">
+                                    <div className="flex items-start">
+                                        <button
+                                            type="button"
+                                            className="hover:scale-110 transition-transform"
+                                            onClick={handleShowReference}
+                                        >
+                                            <BookmarkIcon className="size-6" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="hover:scale-110 transition-transform disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
+                                            disabled={
+                                                loading ||
+                                                debugOutput === undefined
+                                            }
+                                            onClick={() =>
+                                                setModals({
+                                                    show: true,
+                                                    title: "EtmDebugOutput",
+                                                    type: "none",
+                                                })
+                                            }
+                                        >
+                                            <CommandLineIcon className="size-6" />
+                                        </button>
+                                    </div>
                                     <div className="w-full flex space-x-4 justify-center items-end flex-wrap gap-y-2">
                                         <EtmSolutionSelect
                                             solutions={solutions}
@@ -238,18 +276,23 @@ const TimeSeries = () => {
                                                 <FormControlSelect
                                                     title={"Stack"}
                                                     options={stacks ?? []}
-                                                    optionSelected={stackSelected}
-                                                    selectFunction={handleStackChange}
+                                                    optionSelected={
+                                                        stackSelected
+                                                    }
+                                                    selectFunction={
+                                                        handleStackChange
+                                                    }
                                                 />
                                             )}
 
-                                        <button className="btn self-end"
+                                        <button
+                                            className="btn self-end"
                                             onClick={() => {
                                                 setModals({
                                                     show: true,
                                                     title: "SeriesFilters",
                                                     type: "none",
-                                                })
+                                                });
                                             }}
                                         >
                                             Config
@@ -258,7 +301,9 @@ const TimeSeries = () => {
 
                                         <button
                                             className="btn self-end"
-                                            onClick={() => jsonMutation.mutate()}
+                                            onClick={() =>
+                                                jsonMutation.mutate()
+                                            }
                                         >
                                             Json
                                             {jsonMutation.isPending ? (
@@ -276,7 +321,7 @@ const TimeSeries = () => {
                                                     show: true,
                                                     title: "QueryCoordinates",
                                                     type: "none",
-                                                })
+                                                });
                                             }}
                                         >
                                             Query
@@ -292,7 +337,7 @@ const TimeSeries = () => {
                                 {msg && !loading && (
                                     <div className="font-bold text-xl p-4 flex relative items-center justify-center h-32">
                                         <span className="text-gray-300 text-base absolute right-3 self-end">
-                                            {msg.errors?.errors[0].code.toUpperCase()}
+                                            {msg.errors?.errors?.[0]?.code?.toUpperCase()}
                                         </span>
                                         <span className="text-neutral text-2xl">
                                             {msg.msg.toUpperCase()}
@@ -307,10 +352,12 @@ const TimeSeries = () => {
                                     />
                                 )}
                             </div>
-                            {!loading &&
+                            {!loading && (
                                 <div className="w-[95%]">
                                     <TimeSeriesParams
-                                        stationId={station.api_id ? station.api_id : 0}
+                                        stationId={
+                                            station.api_id ? station.api_id : 0
+                                        }
                                         refetch={() => {
                                             tsQuery.refetch();
                                         }}
@@ -333,10 +380,9 @@ const TimeSeries = () => {
                                         }}
                                     />
                                 </div>
-                            }
+                            )}
                         </div>
                     </CardContainer>
-
 
                     {modals?.show && modals?.title === "SeriesFilters" && (
                         <StationSeriesFiltersModal
@@ -356,9 +402,11 @@ const TimeSeries = () => {
                             }}
                         />
                     )}
-                    {modals?.show && modals?.title === "station-time-series-detail-modal" &&
-                        <StationTimeSeriesDetailModal />
-                    }
+                    {modals?.show &&
+                        modals?.title ===
+                            "station-time-series-detail-modal" && (
+                            <StationTimeSeriesDetailModal />
+                        )}
                     {modals?.show && modals?.title === "QueryCoordinates" && (
                         <QueryCoordinatesModal
                             stationId={stationId}
@@ -367,8 +415,16 @@ const TimeSeries = () => {
                             setStateModal={setModals}
                         />
                     )}
+                    {modals?.show &&
+                        modals?.title === "EtmDebugOutput" &&
+                        debugOutput !== undefined && (
+                            <EtmDebugOutputModal
+                                output={debugOutput}
+                                setStateModal={setModals}
+                            />
+                        )}
                 </div>
-            }
+            )}
         </div>
     );
 };

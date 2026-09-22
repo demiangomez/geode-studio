@@ -42,7 +42,7 @@ const StationTypesTable = () => {
         typesTotal,
         typesIsFetching,
         isLoading: loading,
-    } = useMetadata(api, {}, params);
+    } = useMetadata(api, { only: ["types"] }, params);
 
     const pages = useMemo(() => {
         if (typesTotal && params.limit) {
@@ -80,14 +80,12 @@ const StationTypesTable = () => {
     const titles = ["Name", "Image"];
 
     const body = useMemo(() => {
-        return stationTypes
-            ?.sort((a, b) => a.name.localeCompare(b.name))
-            .map((st) =>
-                Object.values({
-                    name: st.name,
-                    actual_image: st.image,
-                }),
-            );
+        return stationTypes?.map((st) =>
+            Object.values({
+                name: st.name,
+                actual_image: st.image,
+            }),
+        );
     }, [stationTypes]);
 
     useEffect(() => {

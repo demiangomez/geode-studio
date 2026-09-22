@@ -76,7 +76,7 @@ const DownloadAffectedStationsModal = ({
                 downloadBlob(
                     res.blob,
                     res.filename ??
-                    `etm_bulk_download_${new Date().toISOString().slice(0, 10)}.zip`,
+                        `etm_bulk_download_${new Date().toISOString().slice(0, 10)}.zip`,
                 );
                 setMsg(undefined);
                 setDone(true);
@@ -84,7 +84,10 @@ const DownloadAffectedStationsModal = ({
                 setDone(false);
                 setMsg({
                     status: res.statusCode,
-                    msg: res.statusCode === 400 ? "Invalid request" : "Download failed",
+                    msg:
+                        res.statusCode === 400
+                            ? "Invalid request"
+                            : "Download failed",
                     errors: {
                         errors: [
                             {
@@ -140,8 +143,8 @@ const DownloadAffectedStationsModal = ({
                         A <span className="font-semibold">.zip</span> archive
                         with one time-series JSON per station affected by the
                         selected{" "}
-                        {earthquakeCount === 1 ? "earthquake" : "earthquakes"} is
-                        generated, plus a{" "}
+                        {earthquakeCount === 1 ? "earthquake" : "earthquakes"}{" "}
+                        is generated, plus a{" "}
                         <span className="font-semibold">manifest.json</span>{" "}
                         listing the stations that succeeded or failed. Only
                         stations within the selected time window are included —
@@ -156,6 +159,19 @@ const DownloadAffectedStationsModal = ({
                         ? "station to download"
                         : "stations to download"}
                 </div>
+
+                {(msg || done) && (
+                    <div className="w-full">
+                        <Alert
+                            msg={
+                                msg ?? {
+                                    status: 200,
+                                    msg: "Your download has started. Check manifest.json for any stations that could not be processed.",
+                                }
+                            }
+                        />
+                    </div>
+                )}
 
                 <div className="mt-2 flex w-full items-center justify-center">
                     <button
@@ -181,19 +197,6 @@ const DownloadAffectedStationsModal = ({
                         Cancel
                     </a>
                 </div>
-
-                {(msg || done) && (
-                    <div className="w-full">
-                        <Alert
-                            msg={
-                                msg ?? {
-                                    status: 200,
-                                    msg: "Your download has started. Check manifest.json for any stations that could not be processed.",
-                                }
-                            }
-                        />
-                    </div>
-                )}
             </div>
         </Modal>
     );

@@ -82,6 +82,7 @@ const VisitsCampaignModal = ({
 
     useEffect(() => {
         if (campaingId) getVisits();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [campaingId]);
 
     useEffect(() => {

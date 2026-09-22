@@ -23,8 +23,8 @@ interface SearchInputProps {
         pos:
             | [number, number]
             | ((
-                prev: [number, number] | undefined,
-            ) => [number, number] | undefined)
+                  prev: [number, number] | undefined,
+              ) => [number, number] | undefined)
             | undefined,
     ) => void;
 }
@@ -62,7 +62,9 @@ const SearchInput = ({
     const dropdownRef = useRef<HTMLDivElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
 
-    const { countries, networks } = useMetadata(api);
+    const { countries, networks } = useMetadata(api, {
+        only: ["countries", "networks"],
+    });
 
     const filteredStations = useMemo(() => {
         const baseStations = stations ?? EMPTY_ARRAY;
@@ -271,8 +273,8 @@ const SearchInput = ({
                             !networkSelected && codeSelected
                                 ? "Select a network"
                                 : networkSelected && !codeSelected
-                                    ? "Select a country"
-                                    : undefined
+                                  ? "Select a country"
+                                  : undefined
                         }
                         aria-describedby="addon-wrapping"
                         onClick={handleInputClick}
@@ -295,7 +297,7 @@ const SearchInput = ({
                     disabled:cursor-not-allowed disabled:text-gray-500 disabled:text
                     "
                     type="submit"
-                // disabled={!networkSelected || !codeSelected}
+                    // disabled={!networkSelected || !codeSelected}
                 >
                     <svg
                         xmlns="http://www.w3.org/2000/svg"

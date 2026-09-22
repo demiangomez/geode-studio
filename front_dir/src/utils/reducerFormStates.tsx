@@ -88,11 +88,22 @@ export const SOURCES_SERVERS_STATE = {
     path: "",
     protocol: "",
     username: "",
+    metadata_source_id: "",
 };
 
 export const SOURCES_FORMATS_STATE = {
     format: "",
     api_id: "",
+};
+
+export const SOURCES_METADATA_STATE = {
+    id: "",
+    format: "",
+    fqdn: "",
+    password: "",
+    path: "",
+    protocol: "",
+    username: "",
 };
 
 export const METADATA_STATE = {

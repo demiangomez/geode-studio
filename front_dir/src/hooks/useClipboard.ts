@@ -15,5 +15,3 @@ export const useClipboard = (timeout = 2000) => {
 
     return { copied: showPopup, copy };
 };
-
-export default useClipboard;

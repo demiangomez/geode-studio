@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 
-import { Alert, CopyButton, GregorianDatePicker, Modal } from "@componentsReact";
+import {
+    Alert,
+    CopyButton,
+    GregorianDatePicker,
+    Modal,
+} from "@componentsReact";
 import { useApi, useAuth } from "@hooks";
 import { useModeObsTypes } from "@hooks/queries";
 import { useMutation } from "@tanstack/react-query";
@@ -150,7 +155,9 @@ const QueryCoordinatesModal = ({
                                         type="number"
                                         className="input input-bordered w-full"
                                         value={year}
-                                        onChange={(e) => setYear(e.target.value)}
+                                        onChange={(e) =>
+                                            setYear(e.target.value)
+                                        }
                                     />
                                 </div>
                                 <div className="flex flex-col">
@@ -192,15 +199,14 @@ const QueryCoordinatesModal = ({
                             <input
                                 type="checkbox"
                                 checked={doyCheck}
-                                onChange={() =>
-                                    setDoyCheck((prev) => !prev)
-                                }
+                                onChange={() => setDoyCheck((prev) => !prev)}
                                 className="checkbox"
                             />
                         </label>
-
                     </div>
                 </div>
+
+                {msg && <Alert msg={msg} />}
 
                 <button
                     type="submit"
@@ -213,12 +219,6 @@ const QueryCoordinatesModal = ({
                     Query
                 </button>
             </form>
-
-            {msg && (
-                <div className="mt-4">
-                    <Alert msg={msg} />
-                </div>
-            )}
 
             {result && (
                 <div className="mt-4 space-y-3">

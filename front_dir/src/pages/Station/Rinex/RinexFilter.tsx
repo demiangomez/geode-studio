@@ -77,7 +77,11 @@ const RinexFilter = ({
     >(undefined);
 
     const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     const [receivers, setReceivers] = useState<ReceiversData[]>([]);
     const [matchingReceivers, setMatchingReceivers] = useState<ReceiversData[]>(
@@ -150,6 +154,7 @@ const RinexFilter = ({
     const handleSubmitForm = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         getRinexFiltered(formState);
+        setStateModal(undefined);
     };
 
     useEffect(() => {
@@ -159,6 +164,7 @@ const RinexFilter = ({
                 payload: filters,
             });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filters]);
 
     useEffect(() => {
@@ -173,6 +179,7 @@ const RinexFilter = ({
             }
         };
         fetchAllData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const inputRefAntennaType = useRef<HTMLInputElement>(null);

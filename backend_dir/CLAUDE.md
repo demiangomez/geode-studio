@@ -8,7 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **Important context (2026-06):**
 > - This repository is **backend-only**. The frontend (time series / ETM / map pages, modals, jumps table) lives in a **separate repository** (UI screenshots under `iso/etapa_*/fotos_test/`).
-> - The scientific subsystem has been **migrated** from the now-frozen **`pgamit`** library to its successor **`geode-gnss`** (installed: `geode-gnss` **1.2.54**, `pip install geode-gnss`, import module `geode`, repo `github.com/demiangomez/geode`). **pgamit is no longer a dependency** — it is not imported anywhere and not installed in the venv; everything routes through `geode`. The ETM / time-series code uses geode's `EtmEngine` / `EtmConfig` API (geode has **no** `GamitETM` / `PPPETM` / `todictionary`). Station metadata comes from `geode.metadata.station_info` (class `StationInfo`); DB connection uses `gnss_data.cfg` `[postgres]` via `geode.dbConnection.Cnn` (the cfg is config-compatible with the old pgamit one). Note: a few identifiers/strings in `api/views.py` (the station-info parsing endpoints) and some Swagger descriptions still read "pgamit" by inertia, but they instantiate geode's `StationInfo` — cosmetic only.
+> - The stage-3 tables `gamit_projects`, `reference_frames` and `reference_frame_constraints` (geode 1.2.68 ships their DDL disabled, `run_this = False` in `dbConnection.py`) were created in the **development** db with `db/create_etapa3_schema.py`; they must exist in any db this backend runs against (`/api/gamit-projects`, `/api/reference-frames`, `/api/distinct-stack-names`), otherwise those endpoints fail with "relation does not exist". `gamit_projects` is the parent of `gamit_soln`/`gamit_soln_excl`/`gamit_subnets`/`gamit_stats`/`gamit_antenna_residuals` (FK `ON UPDATE/DELETE CASCADE`), so deleting or renaming a project through the API affects those tables too.
+> - **Campaign Planner** (issue 2026-09): `POST /api/campaign-planner` runs geode's `campaign_planner.planner.plan_campaign` (the web-safe entry point of `com/CampaignPlanner.py`) and returns `{html, plan}`; `GET /api/campaign-planner/geocode?q=` geocodes a city with the planner's geocoder (Nominatim), for the map before planning. The planner calls public services **from the backend** (Nominatim, the OSRM demo router, unpkg for Leaflet, OSM tiles for the print map), so the container needs outbound internet; a plan takes seconds. `campaign_plans` (`models.CampaignPlans`, CRUD `/api/campaign-plans`) is a **Django-managed** table created by migration `0066` (unlike the geode tables above), it stores only the parameters (no FK to `Campaigns`) and the plan is generated again from them. Its endpoints live in the **`campaigns`** clusters (migration `0067`), no resource of their own.
+> - The scientific subsystem has been **migrated** from the now-frozen **`pgamit`** library to its successor **`geode-gnss`** (installed: `geode-gnss` **1.2.68**, `pip install geode-gnss`, import module `geode`, repo `github.com/demiangomez/geode`). **pgamit is no longer a dependency** — it is not imported anywhere and not installed in the venv; everything routes through `geode`. The ETM / time-series code uses geode's `EtmEngine` / `EtmConfig` API (geode has **no** `GamitETM` / `PPPETM` / `todictionary`). Station metadata comes from `geode.metadata.station_info` (class `StationInfo`); DB connection uses `gnss_data.cfg` `[postgres]` via `geode.dbConnection.Cnn` (the cfg is config-compatible with the old pgamit one). Note: a few identifiers/strings in `api/views.py` (the station-info parsing endpoints) and some Swagger descriptions still read "pgamit" by inertia, but they instantiate geode's `StationInfo` — cosmetic only.
 
 ## Architecture
 
@@ -94,7 +96,7 @@ All endpoints follow RESTful patterns with pagination and filtering:
    - Example config template in `/backend/conf_example.txt`
 
 3. **Environment variables:**
-   - Create `.env` in project root with `MEDIA_FOLDER_HOST_PATH`, `USER_ID_TO_SAVE_FILES`, `GROUP_ID_TO_SAVE_FILES`
+   - Create `.env` in project root with `MEDIA_FOLDER_HOST_PATH`, `ARCHIVE_FOLDER_HOST_PATH` (rinex archive, `archive_osu` on the server; mounted read-only at `/code/backend_django_project/archive_osu`, which is what `[archive] path` of `gnss_data.cfg` must say), `USER_ID_TO_SAVE_FILES`, `GROUP_ID_TO_SAVE_FILES`
    - See `.env.sample` for template
 
 ### Running the Project
@@ -192,6 +194,7 @@ sudo docker run -p 8080:8080 -e SWAGGER_JSON=/schema.yml -v ${PWD}/schema.yml:/s
 - Special handling for "update-gaps-status" user
 - Token endpoints always allowed
 - Custom endpoint allowlist system
+- The check is a flat `(path, method)` lookup across every `EndPointsCluster` attached to the role (`check_has_endpoint_api`/`_frontend`) — a cluster's `resource` (e.g. "stations", "campaigns") is just a label for the Roles admin UI, it does **not** restrict which endpoints that cluster can contain or enforce. Because of this, clusters like `stations` intentionally duplicate GET endpoints that "belong" to other resources (`campaigns`, `sources-servers`, `overview`, `people`, `monument-types`, ...) whenever the Station page needs that data — granting a role `stations: read` also grants it those specific duplicated endpoints, not just `/api/stations*`. Some endpoints (e.g. `events`, `networks`) have no standalone `Resource`/cluster of their own at all — they're only reachable by being bundled into another resource's cluster.
 
 ### Utilities (api/utils.py)
 
@@ -212,7 +215,7 @@ Clear cache endpoint: `/api/remove-earthquakes-affected-stations-cache`
 
 - **Broker & Result Backend:** Redis
 - **Serialization:** JSON
-- **Main task:** `update_gaps_status` in `api/tasks.py` (gap status updates)
+- **Main tasks:** `update_gaps_status` (gap status updates) and `update_planned_visits_status` (marks planned visits as done once their date is reached) in `api/tasks.py`
 - Configured in `backend_django_project/celery.py`
 
 ## Configuration
@@ -222,6 +225,7 @@ Clear cache endpoint: `/api/remove-earthquakes-affected-stations-cache`
 Key config parameters:
 - `[postgres]` - DB connection (hostname, username, password, database, port)
 - `[django]` - DEBUG, HTTPS, SECRET_KEY, file size limits, rinex status span
+- `[archive]` (+ `[otl]`, `[ppp]` with `frames`/`atx`) - read by geode's `pyOptions.ReadOptions` (via `pyArchiveStruct.RinexStruct`) for the rinex download endpoint (`/api/rinex/<id>/download`, see `RinexUtils.get_rinex_file`); `path` is the archive root: in Docker `/code/backend_django_project/archive_osu`, where `ARCHIVE_FOLDER_HOST_PATH` (`archive_osu` on the server, next to the media folder) is mounted. The endpoint sends the archived CRINEZ as is (no `pyRinex.ReadRinex` / header normalization, so no external binaries needed).
 
 Configuration is loaded in `settings.py` via configparser.
 
@@ -260,7 +264,7 @@ Configuration is loaded in `settings.py` via configparser.
 2. Create serializer in `api/serializers.py`
 3. Create List/Detail views in `api/views.py`
 4. Add URL patterns in `api/urls.py`
-5. Define permissions in `api/permissions.py` if restricted
+5. If the endpoint should be restricted, write a data migration (`RunPython`, see `0061_register_reference_frames_endpoints.py`) that creates the `Endpoint` row and adds it to the `EndPointsCluster`(s) that need it — usually its own resource's cluster, but also any other resource's cluster whose front page consumes this endpoint (see the Permissions note above). Do **not** touch `api/permissions.py` for this — it's generic, DB-driven code.
 
 **Debug API request:**
 1. Check endpoint permissions in `api/permissions.py`

@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.postgres.fields import ArrayField
+from django.db.models.functions import Now
 from auditlog.registry import auditlog
 from . import custom_fields
 import sys
@@ -273,6 +274,54 @@ class GamitHtc(BaseModel):
         db_table = 'gamit_htc'
         ordering = ["antenna_code", "height_code"]
         unique_together = (('antenna_code', 'height_code'),)
+
+
+class GamitProjects(BaseModel):
+    """Per-project GAMIT processing configuration (table gamit_projects, created by
+    geode). Postgres enforces the CHECK constraints; the choices below mirror them so
+    the API rejects invalid values with a readable, per-field message before the insert."""
+
+    NETWORK_TYPE_CHOICES = [('regional', 'regional'), ('global', 'global')]
+    EXPERIMENT_TYPE_CHOICES = [('baseline', 'baseline'), ('relax', 'relax'), ('orbit', 'orbit')]
+    OVERCONST_ACTION_CHOICES = [('inflate', 'inflate'), ('relax', 'relax'),
+                                ('remove', 'remove'), ('delete', 'delete')]
+    SYSTEMS_CHOICES = [('G', 'GPS'), ('R', 'GLONASS'), ('E', 'Galileo'), ('C', 'BeiDou')]
+
+    # the table's real primary key; gamit_soln, gamit_soln_excl, gamit_subnets,
+    # gamit_stats and gamit_antenna_residuals reference it ON UPDATE/DELETE CASCADE
+    project = models.CharField(max_length=20, unique=True)
+    network_type = models.CharField(
+        max_length=20, choices=NETWORK_TYPE_CHOICES, default='global')
+    cluster_size = models.IntegerField(default=25)
+    ties = models.IntegerField(default=10)
+    # contents of the GAMIT process.defaults / sestbl. files
+    process_defaults = models.TextField(blank=True, null=True)
+    sestbl = models.TextField(blank=True, null=True)
+    solutions_dir = models.TextField(blank=True, null=True)
+    experiment_type = models.CharField(
+        max_length=20, choices=EXPERIMENT_TYPE_CHOICES, default='baseline')
+    experiment_name = models.CharField(max_length=4, blank=True, null=True)
+    org = models.CharField(max_length=3, blank=True, null=True)
+    noftp = models.BooleanField(default=True)
+    eop_type = models.CharField(max_length=10, default='usno')
+    # character(1)[] in the db, subset of G/R/E/C
+    systems = ArrayField(
+        models.CharField(max_length=1, choices=SYSTEMS_CHOICES), blank=True, null=True)
+    overconst_action = models.CharField(
+        max_length=10, choices=OVERCONST_ACTION_CHOICES, blank=True, null=True)
+    sigma_floor_h = models.DecimalField(
+        max_digits=6, decimal_places=4, default=Decimal('0.0100'))
+    sigma_floor_v = models.DecimalField(
+        max_digits=6, decimal_places=4, default=Decimal('0.0300'))
+    # stations processed under this project, as NetworkCode.StationCode entries
+    station_list = ArrayField(
+        models.CharField(max_length=8), blank=True, null=True)
+    api_id = models.AutoField(primary_key=True)
+
+    class Meta:
+        managed = False
+        db_table = 'gamit_projects'
+        ordering = ["project"]
 
 
 class GamitSoln(BaseModel):
@@ -555,6 +604,40 @@ class Receivers(BaseModel):
         db_table = 'receivers'
 
 
+class ReferenceFrames(BaseModel):
+    ENGINE_CHOICES = [('gamit', 'gamit'), ('pages', 'pages')]
+
+    frame_name = models.CharField(max_length=20)
+    engine = models.CharField(max_length=10, choices=ENGINE_CHOICES)
+    project = models.CharField(max_length=20)
+    fixed_plate = models.CharField(max_length=2, blank=True, null=True)
+    constraints_id = models.CharField(max_length=20, blank=True, null=True)
+    position_wrms = models.DecimalField(
+        max_digits=8, decimal_places=5, blank=True, null=True)
+    velocity_wrms = models.DecimalField(
+        max_digits=8, decimal_places=5, blank=True, null=True)
+    periodic_wrms = ArrayField(
+        models.DecimalField(max_digits=8, decimal_places=5), blank=True, null=True)
+    euler_pole = ArrayField(
+        models.DecimalField(max_digits=150, decimal_places=50), blank=True, null=True)
+    euler_pole_stations = ArrayField(
+        models.CharField(max_length=8), blank=True, null=True)
+    first_epoch = models.DateTimeField(blank=True, null=True)
+    last_epoch = models.DateTimeField(blank=True, null=True)
+    created = models.DateTimeField(db_default=Now(), editable=False)
+    modified = models.DateTimeField(db_default=Now(), editable=False)
+    api_id = models.AutoField(primary_key=True)
+
+    def get_stacks_count(self):
+        return Stacks.objects.filter(name=self.frame_name).count()
+
+    class Meta:
+        managed = False
+        db_table = 'reference_frames'
+        ordering = ["frame_name"]
+        unique_together = (('frame_name', 'engine'),)
+
+
 class Rinex(BaseModel):
     network_code = models.CharField(db_column='NetworkCode', max_length=3)
     # Field name made lowercase.
@@ -657,6 +740,29 @@ class SourcesFormats(BaseModel):
         db_table = 'sources_formats'
 
 
+class SourcesMetadata(BaseModel):
+    id = models.AutoField(primary_key=True)
+    protocol = models.CharField()
+    fqdn = models.CharField()
+    username = models.CharField(blank=True, null=True)
+    password = models.CharField(blank=True, null=True)
+    path = models.CharField(blank=True, null=True)
+    format = models.ForeignKey(
+        SourcesFormats, models.DO_NOTHING, db_column='format', to_field='format', blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        # '' -> NULL so geode's SyncMetadata COALESCE(metadata.x, server.x) falls back to the server value
+        for field in ('username', 'password', 'path', 'format'):
+            if getattr(self, field) == '':
+                setattr(self, field, None)
+        super().save(*args, **kwargs)
+
+    class Meta:
+        managed = False
+        db_table = 'sources_metadata'
+        ordering = ["fqdn"]
+
+
 class SourcesServers(BaseModel):
     server_id = models.AutoField(primary_key=True)
     protocol = models.CharField()
@@ -666,6 +772,8 @@ class SourcesServers(BaseModel):
     path = models.CharField(blank=True, null=True)
     format = models.ForeignKey(
         SourcesFormats, models.DO_NOTHING, db_column='format', to_field='format')
+    metadata_source_id = models.ForeignKey(
+        SourcesMetadata, models.DO_NOTHING, db_column='metadata_source_id', blank=True, null=True)
 
     class Meta:
         managed = False
@@ -858,6 +966,7 @@ class Stations(BaseModel):
     dome = models.CharField(max_length=9, blank=True, null=True)
     country_code = models.CharField(max_length=3, blank=True, null=True)
     marker = models.IntegerField(blank=True, null=True)
+    plate = models.CharField(max_length=2, blank=True, null=True)
 
     api_id = models.AutoField(primary_key=True)
 
@@ -1093,15 +1202,8 @@ class MonumentType(BaseModel):
 
 class StationType(BaseModel):
     name = models.CharField(max_length=100, unique=True)
-    # only true for station types created at the beginning
-    search_icon_on_assets_folder = models.BooleanField(default=False)
     icon = models.ImageField(
         upload_to='station_type_icons/')
-
-    def get_icon_url(self):
-        if self.search_icon_on_assets_folder:
-            return os.path.join(settings.ASSETS_FOLDER, self.icon.name)
-        return os.path.join(settings.MEDIA_ROOT, self.icon.name)
 
     def __str__(self):
         return self.name
@@ -1181,6 +1283,41 @@ class Campaigns(BaseModel):
         ordering = ["-start_date"]
 
 
+class CampaignPlans(BaseModel):
+    """Saved parameters of a campaign plan (table campaign_plans, created by this
+    backend, not by geode; no relation with Campaigns). Only the parameters are stored:
+    the plan is generated again from them by POST /api/campaign-planner, so the fields
+    and defaults mirror the config of geode.campaign_planner.planner.plan_campaign
+    (DEFAULT_CONFIG)."""
+
+    name = models.CharField(max_length=100)
+    start_city = models.CharField(max_length=255)
+    end_city = models.CharField(max_length=255)
+    start_date = models.DateField()
+    # geode station specs: NetworkCode.StationCode codes, but also country codes,
+    # wildcards and '-spec' removals as in the CLI (geode.Utils.process_stnlist)
+    stations = ArrayField(models.CharField(max_length=100), blank=True, default=list)
+    # planned sites not in the db: "lat,lon", "City, Country", {name, lat, lon} or {name, city}
+    new_sites = models.JSONField(blank=True, default=list)
+    time_on_site_minutes = models.IntegerField(default=120)
+    # {station code or new site name: minutes}, overrides time_on_site_minutes for those stops
+    station_time_overrides = models.JSONField(blank=True, default=dict)
+    fuel_cost_per_km = models.DecimalField(
+        max_digits=10, decimal_places=4, default=Decimal('0'))
+    # per person, multiplied by num_participants
+    lodging_cost_per_night = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('70'))
+    per_diem_cost_per_day = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'))
+    num_participants = models.IntegerField(default=1)
+    day_start = models.TimeField(default=datetime.time(8, 0))
+    hard_stop = models.TimeField(default=datetime.time(20, 0))
+
+    class Meta:
+        db_table = 'campaign_plans'
+        ordering = ["-start_date"]
+
+
 class Visits(BaseModel):
     date = models.DateField()
     campaign = models.ForeignKey(
@@ -1194,6 +1331,7 @@ class Visits(BaseModel):
         upload_to=visits_navigation_file_path, blank=True)
     navigation_filename = models.CharField(max_length=255, blank=True)
     comments = models.CharField(blank=True)
+    planned = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
@@ -1298,9 +1436,13 @@ def enable_automatic_auditlog():
     auditlog.register(EndPointsCluster)
     auditlog.register(StationAttachedFiles)
     auditlog.register(StationImages)
+    auditlog.register(SourcesMetadata)
     auditlog.register(SourcesServers)
     auditlog.register(SourcesStations)
+    auditlog.register(ReferenceFrames)
+    auditlog.register(GamitProjects)
     auditlog.register(Campaigns)
+    auditlog.register(CampaignPlans)
     auditlog.register(Visits)
     auditlog.register(VisitImages)
     auditlog.register(VisitAttachedFiles)

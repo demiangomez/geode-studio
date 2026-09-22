@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 //Components
-import { Spinner } from "@componentsReact";
+import { CountryFlag, Spinner } from "@componentsReact";
 
 //Utils
 import { dateFromDay, formattedDates } from "@utils";
@@ -18,7 +18,26 @@ import {
     EyeSlashIcon,
     TrashIcon,
 } from "@heroicons/react/24/outline";
-import { findFlagUrlByIso3Code } from "country-flags-svg-v2";
+
+const ISO_DATE_REGEX =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/;
+// Formato DOY: YYYY DDD HH MM SS
+const DOY_REGEX = /^\d{4}\s+\d{1,3}\s+\d{2}\s+\d{2}\s+\d{2}$/;
+
+const isDateFunc = (val: unknown) =>
+    typeof val === "string" && ISO_DATE_REGEX.test(val);
+
+const isDoyFormat = (val: unknown) =>
+    typeof val === "string" && DOY_REGEX.test(val.trim());
+
+const formatDoyDate = (doyString: string) => {
+    try {
+        const date = dateFromDay(doyString);
+        return date ? formattedDates(date) : doyString;
+    } catch {
+        return doyString;
+    }
+};
 
 interface TableProps {
     table: string;
@@ -85,8 +104,8 @@ const Table = ({
 
     const authErrorForThisTable =
         dataFetchUrl &&
-            unauthorizedOperations[unauthorizedOperationsKey] &&
-            unauthorizedOperations[unauthorizedOperationsKey].method === "get"
+        unauthorizedOperations[unauthorizedOperationsKey] &&
+        unauthorizedOperations[unauthorizedOperationsKey].method === "get"
             ? unauthorizedOperations[unauthorizedOperationsKey].msg
             : null;
 
@@ -134,7 +153,9 @@ const Table = ({
                                         <th className="text-center text-neutral">
                                             {table === "People"
                                                 ? "Detail"
-                                                : "Relations"}
+                                                : table === "sources"
+                                                  ? "Metadata Sources"
+                                                  : "Relations"}
                                         </th>
                                     )}
                                     {multipleSelect && (
@@ -193,38 +214,39 @@ const Table = ({
                                         {table === "People"
                                             ? "There are no people associated to this station"
                                             : table === "PeopleRelations"
-                                                ? "There are no people relations"
-                                                : `There is no information for this ${table}`}
+                                              ? "There are no people relations"
+                                              : `There is no information for this ${table}`}
                                     </th>
                                 )
                             )}
 
                             {titles.map((title, index) => (
                                 <th
-                                    className={`text-center text-neutral ${title?.toLowerCase() === "path" ||
-                                            (title?.toLowerCase() === "name" &&
-                                                table !== "People")
+                                    className={`text-center text-neutral ${
+                                        title?.toLowerCase() === "path" ||
+                                        (title?.toLowerCase() === "name" &&
+                                            table !== "People")
                                             ? "max-w-lg w-full"
                                             : title?.toLowerCase() === "name" &&
                                                 table === "People"
-                                                ? "max-w-[200px] w-[20%]"
-                                                : "max-w-[200px]"
-                                        }`}
+                                              ? "max-w-[200px] w-[20%]"
+                                              : "max-w-[200px]"
+                                    }`}
                                     key={index}
                                 >
                                     {title
                                         ? title
-                                            ?.toUpperCase()
-                                            .replace(/_/g, " ")
-                                            .replace("ANTENNA", "ANT")
-                                            .replace("RECEIVER", "RX")
-                                            .replace("RX FIRMWARE", "RX FW")
-                                            .replace("HEIGHT CODE", "HC")
-                                            .replace("RADOME CODE", "RAD")
-                                            .replace(
-                                                /ANT (HEIGHT|NORTH|EAST)/g,
-                                                "$1",
-                                            )
+                                              ?.toUpperCase()
+                                              .replace(/_/g, " ")
+                                              .replace("ANTENNA", "ANT")
+                                              .replace("RECEIVER", "RX")
+                                              .replace("RX FIRMWARE", "RX FW")
+                                              .replace("HEIGHT CODE", "HC")
+                                              .replace("RADOME CODE", "RAD")
+                                              .replace(
+                                                  /ANT (HEIGHT|NORTH|EAST)/g,
+                                                  "$1",
+                                              )
                                         : ""}
                                 </th>
                             ))}
@@ -353,7 +375,7 @@ const Table = ({
                                             >
                                                 <BookOpenIcon
                                                     className="size-6"
-                                                    onClick={() => { }}
+                                                    onClick={() => {}}
                                                 />
                                             </button>
                                         </td>
@@ -396,51 +418,10 @@ const Table = ({
                                             val: string | boolean | number,
                                             idx: number,
                                         ) => {
-                                            const isDateFunc = (val: any) => {
-                                                const isoDateRegex =
-                                                    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/;
-                                                return (
-                                                    typeof val === "string" &&
-                                                    isoDateRegex.test(val)
-                                                );
-                                            };
-
-                                            const isDoyFormat = (val: any) => {
-                                                // Regex para formato DOY: YYYY DDD HH MM SS
-                                                const doyRegex =
-                                                    /^\d{4}\s+\d{1,3}\s+\d{2}\s+\d{2}\s+\d{2}$/;
-                                                return (
-                                                    typeof val === "string" &&
-                                                    doyRegex.test(val.trim())
-                                                );
-                                            };
-
-                                            const formatDoyDate = (
-                                                doyString: string,
-                                            ) => {
-                                                try {
-                                                    const date =
-                                                        dateFromDay(doyString);
-                                                    return date
-                                                        ? formattedDates(date)
-                                                        : doyString;
-                                                } catch {
-                                                    return doyString;
-                                                }
-                                            };
-
                                             const isDate =
                                                 isDateFunc(val) && val !== "";
                                             const isDoy =
                                                 isDoyFormat(val) && val !== "";
-
-                                            const flag =
-                                                titles[idx] ===
-                                                "country_code" &&
-                                                val &&
-                                                findFlagUrlByIso3Code(
-                                                    val as string,
-                                                );
 
                                             const base64Str =
                                                 "data:image/png;base64,";
@@ -452,15 +433,15 @@ const Table = ({
                                                         titles[idx] !== "Visit"
                                                             ? isDate
                                                                 ? formattedDates(
-                                                                    new Date(
-                                                                        val as string,
-                                                                    ),
-                                                                )
+                                                                      new Date(
+                                                                          val as string,
+                                                                      ),
+                                                                  )
                                                                 : isDoy
-                                                                    ? formatDoyDate(
+                                                                  ? formatDoyDate(
                                                                         val as string,
                                                                     )
-                                                                    : (String(
+                                                                  : (String(
                                                                         val,
                                                                     ) ?? "")
                                                             : ""
@@ -472,14 +453,14 @@ const Table = ({
                                                     onClick={() => {
                                                         dataOnly &&
                                                             table ===
-                                                            "Stations" &&
+                                                                "Stations" &&
                                                             navigate(
                                                                 `/${state?.[index].network_code}/${state?.[index].station_code}`,
                                                                 {
                                                                     state: {
                                                                         station:
                                                                             state?.[
-                                                                            index
+                                                                                index
                                                                             ],
                                                                         mainParams:
                                                                             alterInfo,
@@ -514,7 +495,7 @@ const Table = ({
                                                                 dangerouslySetInnerHTML={{
                                                                     __html: String(
                                                                         val ??
-                                                                        "",
+                                                                            "",
                                                                     ),
                                                                 }}
                                                             />
@@ -522,11 +503,11 @@ const Table = ({
                                                     {titles[idx] ===
                                                         "country_code" &&
                                                         val && (
-                                                            <img
-                                                                width={30}
-                                                                height={30}
-                                                                className="mr-2"
-                                                                src={`${flag}`}
+                                                            <CountryFlag
+                                                                iso3={
+                                                                    val as string
+                                                                }
+                                                                className="mr-2 w-[30px] h-[30px]"
                                                             />
                                                         )}
                                                     {titles[idx] === "Image" &&
@@ -544,20 +525,20 @@ const Table = ({
                                                         )}
 
                                                     {val !== "" &&
-                                                        val != null &&
-                                                        titles[idx] !== "Photo" &&
-                                                        titles[idx] !== "Visit" &&
-                                                        titles[idx] !==
+                                                    val != null &&
+                                                    titles[idx] !== "Photo" &&
+                                                    titles[idx] !== "Visit" &&
+                                                    titles[idx] !==
                                                         "comments" &&
-                                                        titles[idx] !== "Image" &&
-                                                        titles[idx] !== "Color" ? (
+                                                    titles[idx] !== "Image" &&
+                                                    titles[idx] !== "Color" ? (
                                                         titles[idx] ===
-                                                            "password" ? (
+                                                        "password" ? (
                                                             <div className="overflow-hidden text-ellipsis flex flex-row justify-center items-center gap-">
                                                                 <input
                                                                     type={
                                                                         showPassword ===
-                                                                            index
+                                                                        index
                                                                             ? "text"
                                                                             : "password"
                                                                     }
@@ -582,7 +563,7 @@ const Table = ({
                                                                     }}
                                                                 >
                                                                     {showPassword ===
-                                                                        index ? (
+                                                                    index ? (
                                                                         <EyeSlashIcon className="size-6 self-center" />
                                                                     ) : (
                                                                         <EyeIcon className="size-6 self-center" />
@@ -590,60 +571,60 @@ const Table = ({
                                                                 </button>
                                                             </div>
                                                         ) : titles[idx] ===
-                                                            "path" ||
-                                                            titles[idx] ===
-                                                            "server" ||
-                                                            titles[idx] ===
-                                                            "fqdn" ||
-                                                            titles[idx] ===
-                                                            "Name" ? (
+                                                              "path" ||
+                                                          titles[idx] ===
+                                                              "server" ||
+                                                          titles[idx] ===
+                                                              "fqdn" ||
+                                                          titles[idx] ===
+                                                              "Name" ? (
                                                             <div className="w-full  overflow-auto whitespace-wrap">
                                                                 {val}
                                                             </div>
                                                         ) : typeof val ===
-                                                            "string" &&
-                                                            titles[idx] !==
-                                                            "Image" &&
-                                                            titles[idx] !==
-                                                            "Color" ? (
+                                                              "string" &&
+                                                          titles[idx] !==
+                                                              "Image" &&
+                                                          titles[idx] !==
+                                                              "Color" ? (
                                                             <div className="overflow-hidden text-ellipsis">
                                                                 {val?.length >
                                                                     15 &&
-                                                                    !isDate &&
-                                                                    !isDoy
+                                                                !isDate &&
+                                                                !isDoy
                                                                     ? val?.substring(
-                                                                        0,
-                                                                        15,
-                                                                    ) + "..."
+                                                                          0,
+                                                                          15,
+                                                                      ) + "..."
                                                                     : isDate
-                                                                        ? formattedDates(
+                                                                      ? formattedDates(
                                                                             new Date(
                                                                                 val,
                                                                             ),
                                                                         )
-                                                                        : isDoy
-                                                                            ? formatDoyDate(
-                                                                                val as string,
-                                                                            )
-                                                                            : val}
+                                                                      : isDoy
+                                                                        ? formatDoyDate(
+                                                                              val as string,
+                                                                          )
+                                                                        : val}
                                                             </div>
                                                         ) : typeof val ===
-                                                            "boolean" ? (
+                                                          "boolean" ? (
                                                             val ? (
                                                                 "✔"
                                                             ) : (
                                                                 "✘"
                                                             )
                                                         ) : typeof val ===
-                                                            "number" ? (
+                                                          "number" ? (
                                                             val
                                                         ) : (
                                                             "-"
                                                         )
                                                     ) : val !== "" &&
-                                                        val !== null &&
-                                                        titles[idx] ===
-                                                        "Photo" ? (
+                                                      val !== null &&
+                                                      titles[idx] ===
+                                                          "Photo" ? (
                                                         <div className="avatar">
                                                             <div className="w-14 mask mask-squircle ">
                                                                 <img
@@ -655,10 +636,10 @@ const Table = ({
                                                             </div>
                                                         </div>
                                                     ) : val !== "" &&
-                                                        val !== null &&
-                                                        typeof val === "string" &&
-                                                        titles[idx] ===
-                                                        "Visit" ? (
+                                                      val !== null &&
+                                                      typeof val === "string" &&
+                                                      titles[idx] ===
+                                                          "Visit" ? (
                                                         <div
                                                             className="relative group"
                                                             onMouseEnter={() =>
@@ -675,30 +656,30 @@ const Table = ({
                                                             <div>
                                                                 {val?.length >
                                                                     15 &&
-                                                                    !isDate &&
-                                                                    !isDoy
+                                                                !isDate &&
+                                                                !isDoy
                                                                     ? val?.substring(
-                                                                        0,
-                                                                        15,
-                                                                    ) + "..."
+                                                                          0,
+                                                                          15,
+                                                                      ) + "..."
                                                                     : isDate
-                                                                        ? formattedDates(
+                                                                      ? formattedDates(
                                                                             new Date(
                                                                                 val,
                                                                             ),
                                                                         )
-                                                                        : isDoy
-                                                                            ? formatDoyDate(
-                                                                                val,
-                                                                            )
-                                                                            : val}
+                                                                      : isDoy
+                                                                        ? formatDoyDate(
+                                                                              val,
+                                                                          )
+                                                                        : val}
                                                             </div>
                                                         </div>
                                                     ) : titles[idx] !==
-                                                        "comments" &&
-                                                        titles[idx] !== "Image" &&
-                                                        titles[idx] !==
-                                                        "Color" ? (
+                                                          "comments" &&
+                                                      titles[idx] !== "Image" &&
+                                                      titles[idx] !==
+                                                          "Color" ? (
                                                         "-"
                                                     ) : null}
                                                 </td>

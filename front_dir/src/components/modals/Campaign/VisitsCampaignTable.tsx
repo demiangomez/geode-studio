@@ -61,6 +61,7 @@ const VisitsCampaignTable = ({
 
     React.useEffect(() => {
         groupVisits();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visits]);
 
     const getPeopleString = (visit: StationVisitsData) => {

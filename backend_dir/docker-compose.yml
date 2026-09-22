@@ -9,4 +9,5 @@ services:
     volumes:
       - ./backend/backend_django_project/logs:/code/backend_django_project/logs
       - ${MEDIA_FOLDER_HOST_PATH}:/code/backend_django_project/media
+      - ${ARCHIVE_FOLDER_HOST_PATH}:/code/backend_django_project/archive_osu:ro
     restart: always

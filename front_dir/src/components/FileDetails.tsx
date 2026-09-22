@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import ConfirmDeleteModal from "./modals/ConfirmDeleteModal";
 import { showModal } from "@utils";
 
-
 interface FileDetailsProps {
     file: { id: string; name?: string };
     files: { file: File; description: string; id: number; name?: string }[];
@@ -15,7 +14,7 @@ interface FileDetailsProps {
         React.SetStateAction<
             { file: File; description: string; id: number; name?: string }[]
         >
-    >,
+    >;
     image?: string | undefined;
 }
 
@@ -26,11 +25,10 @@ const FileDetails = ({
     pageRecord,
     fileResults,
     setFiles,
-    image, 
+    image,
 }: FileDetailsProps) => {
     const { id, pageType } = pageRecord;
 
-  
     const [loading, setLoading] = useState<boolean>(false);
 
     const { formState, dispatch } = useFormReducer<
@@ -113,8 +111,8 @@ const FileDetails = ({
                 },
             });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [files]);
-
 
     const deleteFile = (id: string) => {
         setFiles((prev) => prev.filter((f) => String(f.id) !== id));
@@ -149,23 +147,22 @@ const FileDetails = ({
             title: "ConfirmDelete",
             type: "edit",
         });
-    }
+    };
 
     const [modals, setModals] = useState<
-            | { show: boolean; title: string; type: "add" | "edit" | "none" }
-            | undefined
-        >(undefined);
+        | { show: boolean; title: string; type: "add" | "edit" | "none" }
+        | undefined
+    >(undefined);
 
     const [msg, setMsg] = useState<
-            { status: number; msg: string; errors?: Errors } | undefined
-        >(undefined);
+        { status: number; msg: string; errors?: Errors } | undefined
+    >(undefined);
 
     useEffect(() => {
         setLoading(true);
         modals?.show && showModal(modals.title);
         setLoading(false);
     }, [modals]);
-    
 
     return (
         <div
@@ -173,17 +170,33 @@ const FileDetails = ({
             key={file.id}
         >
             <div className="ml-auto mr-2 mt-2 mb-2">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6 w-full cursor-pointer"
-                onClick={() => {confirmDeleteFile()}}
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
+                    className="size-6 w-full cursor-pointer"
+                    onClick={() => {
+                        confirmDeleteFile();
+                    }}
                 >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M6 18 18 6M6 6l12 12"
+                    />
                 </svg>
             </div>
-            { image?
-            <div className="mr-10 ml-10">
-                <img src={image ? image : ""} alt="" className="w-full max-h-40"/>
-            </div> : null
-            }
+            {image ? (
+                <div className="mr-10 ml-10">
+                    <img
+                        src={image ? image : ""}
+                        alt=""
+                        className="w-full max-h-40"
+                    />
+                </div>
+            ) : null}
             <div className="w-10/12">
                 <label className="label font-bold">FILE NAME</label>
                 <label

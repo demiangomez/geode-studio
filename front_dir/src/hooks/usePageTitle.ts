@@ -22,5 +22,3 @@ export const usePageTitle = () => {
         document.title = label ? `${BASE}: ${label}` : BASE;
     }, [matches]);
 };
-
-export default usePageTitle;

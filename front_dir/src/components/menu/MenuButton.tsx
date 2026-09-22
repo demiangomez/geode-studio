@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
 interface MenuButtonProps {
     setShowMenu: React.Dispatch<
@@ -10,12 +10,17 @@ interface MenuButtonProps {
             | undefined
         >
     >;
-    onMenuClick?: () => void
+    onMenuClick?: () => void;
     showMenu: { type: string; show: boolean } | undefined;
     typeKey: string;
 }
 
-const MenuButton = ({ setShowMenu, onMenuClick, showMenu, typeKey }: MenuButtonProps) => {
+const MenuButton = ({
+    setShowMenu,
+    onMenuClick,
+    showMenu,
+    typeKey,
+}: MenuButtonProps) => {
     const [isOpen, setIsOpen] = useState<boolean>();
 
     useEffect(() => {
@@ -23,19 +28,17 @@ const MenuButton = ({ setShowMenu, onMenuClick, showMenu, typeKey }: MenuButtonP
         setIsOpen(toggle);
     }, [showMenu, typeKey]);
 
-
     return (
         <div className="menu">
             <li
-                onClick={() =>
-                {
-                    onMenuClick && onMenuClick()
+                onClick={() => {
+                    onMenuClick && onMenuClick();
                     setShowMenu({
                         type: typeKey,
-                        show: showMenu?.type === typeKey ? !showMenu.show : true,
-                    })
-                }
-                }
+                        show:
+                            showMenu?.type === typeKey ? !showMenu.show : true,
+                    });
+                }}
             >
                 <details open={isOpen}>
                     <summary></summary>

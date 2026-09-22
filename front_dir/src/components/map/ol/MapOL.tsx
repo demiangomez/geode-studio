@@ -17,19 +17,19 @@ import type { Geometry } from "ol/geom";
 
 import { Style } from "ol/style";
 
-import { Slider, Popup, PopupChildren } from "@componentsReact";
+import { Slider, PopupChildren } from "@componentsReact";
+import Popup from "@components/map/Popup";
+import "ol/ol.css";
 import "./MapOL.css";
 
-import {
-    useAuth,
-    useApi,
-    useMapInit,
-    useMultiKmlLayer,
-    useClusterLayer,
-    useCesiumGlobe,
-} from "@hooks";
+import { useAuth, useApi } from "@hooks";
+import { useMapInit } from "@hooks/ol/useMapInit";
+import { useMultiKmlLayer } from "@hooks/ol/useKmlLayer";
+import { useClusterLayer } from "@hooks/ol/useClusterLayer";
+import { useCesiumGlobe } from "@hooks/ol/useCesiumGlobe";
+import { useTectonicPlatesLayer } from "@hooks/ol/useTectonicPlatesLayer";
 
-import { useMetadata } from "@hooks/queries";
+import { useMetadata, useTectonicPlates } from "@hooks/queries";
 
 import {
     EarthquakeData,
@@ -110,7 +110,9 @@ const MapOL: React.FC<MapOLProps> = ({
     const tooltipRef = useRef<HTMLDivElement>(null);
 
     // Metadata
-    const { types, statuses } = useMetadata(api);
+    const { types, statuses } = useMetadata(api, {
+        only: ["types", "statuses"],
+    });
 
     const [selectedStation, setSelectedStation] = useState<StationData | null>(
         null,
@@ -198,6 +200,18 @@ const MapOL: React.FC<MapOLProps> = ({
         mapInstance,
     });
 
+    // Tectonic plates overlay — fetched once and cached for the session, only
+    // enabled while the "Tectonic Plates" checkbox is on
+    const { data: tectonicPlatesData } = useTectonicPlates(api, {
+        enabled: mapLayerState.tectonicPlates,
+    });
+    const { layerRef: tectonicPlatesLayerRef } = useTectonicPlatesLayer({
+        mapInstance,
+        enabled: mapLayerState.tectonicPlates,
+        data: tectonicPlatesData,
+        zIndex: 45,
+    });
+
     // ---------- Cesium 3D Globe ----------
     const { ol3dRef, isGlobeActive } = useCesiumGlobe({
         mapInstance,
@@ -278,8 +292,11 @@ const MapOL: React.FC<MapOLProps> = ({
                 ];
             });
         },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [
+            // eslint-disable-next-line react-hooks/exhaustive-deps
             temporalFilter.exactDate ? null : temporalFilter.dateEnd,
+            // eslint-disable-next-line react-hooks/exhaustive-deps
             temporalFilter.exactDate ? null : temporalFilter.dateStart,
             temporalFilter.exactDate,
             temporalFilter.hiddenPoints,
@@ -336,8 +353,7 @@ const MapOL: React.FC<MapOLProps> = ({
             );
         }
         return applyTemporalFiltering(baseAffected);
-
-        return applyTemporalFiltering(baseAffected);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [affectedList, stations, applyTemporalFiltering]);
 
     // ---------- Filtered stations (OL Canvas handles viewport culling) ----------
@@ -357,6 +373,7 @@ const MapOL: React.FC<MapOLProps> = ({
             : stations;
 
         return applyTemporalFiltering(baseFiltered);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
         stations,
         mapState,
@@ -515,6 +532,7 @@ const MapOL: React.FC<MapOLProps> = ({
 
         earthquakeLayerRef.current?.setVisible(mapState);
         setShowScroller(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
         isMapReady,
         mapState,
@@ -642,6 +660,7 @@ const MapOL: React.FC<MapOLProps> = ({
         return () => {
             isCancelled = true;
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isMapReady, mapState, filteredStations, types, statuses]);
 
     // ---------- Earthquake features ----------
@@ -656,7 +675,7 @@ const MapOL: React.FC<MapOLProps> = ({
         let isCancelled = false;
         const eqs =
             earthQuakeChosen === undefined &&
-                earthquakeAffectedStations === undefined
+            earthquakeAffectedStations === undefined
                 ? earthquakesFiltered
                 : [];
 
@@ -943,6 +962,8 @@ const MapOL: React.FC<MapOLProps> = ({
                 (f: any) => f,
                 {
                     hitTolerance: 8,
+                    layerFilter: (layer) =>
+                        layer !== tectonicPlatesLayerRef.current,
                 },
             );
 
@@ -1103,6 +1124,8 @@ const MapOL: React.FC<MapOLProps> = ({
 
             const feature = map.forEachFeatureAtPixel(evt.pixel, (f) => f, {
                 hitTolerance: 8,
+                layerFilter: (layer) =>
+                    layer !== tectonicPlatesLayerRef.current,
             }) as Feature<Geometry> | undefined;
 
             if (feature === lastTooltipFeatureRef.current) return;
@@ -1332,6 +1355,18 @@ const MapOL: React.FC<MapOLProps> = ({
 
             const picked = scene.pick(movement.endPosition);
 
+            // tambien en picks sin tooltip propio (placas): si no queda pegado
+            const clearTooltip = () => {
+                canvas.style.cursor = "default";
+                cesiumTooltipCartesian.current = null;
+                if (cesiumTooltipRef.current) {
+                    cesiumTooltipRef.current.style.display = "none";
+                }
+                setIsCesiumTooltipActive(false);
+                setTooltipStation(null);
+                setTooltipEarthquake(null);
+            };
+
             if (Cesium.defined(picked)) {
                 const olFeature =
                     picked?.primitive?.olFeature ?? picked?.id?.olFeature;
@@ -1373,17 +1408,10 @@ const MapOL: React.FC<MapOLProps> = ({
                         return;
                     }
                 } else {
-                    canvas.style.cursor = "default";
+                    clearTooltip();
                 }
             } else {
-                canvas.style.cursor = "default";
-                cesiumTooltipCartesian.current = null;
-                if (cesiumTooltipRef.current) {
-                    cesiumTooltipRef.current.style.display = "none";
-                }
-                setIsCesiumTooltipActive(false);
-                setTooltipStation(null);
-                setTooltipEarthquake(null);
+                clearTooltip();
             }
         }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
@@ -1586,10 +1614,10 @@ const MapOL: React.FC<MapOLProps> = ({
                             style={
                                 selectedKmlPoint
                                     ? {
-                                        maxWidth: "600px",
-                                        minWidth: "300px",
-                                        pointerEvents: "auto",
-                                    }
+                                          maxWidth: "600px",
+                                          minWidth: "300px",
+                                          pointerEvents: "auto",
+                                      }
                                     : { pointerEvents: "auto" }
                             }
                         >

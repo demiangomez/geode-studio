@@ -1,28 +1,22 @@
 import { useEffect, useState } from "react";
 
+import { CardContainer } from "@componentsReact";
+import SourcesServersPage from "./SourcesServersTable";
+import SourcesFormatsPage from "./SourcesFormatsTable";
+import SourcesMetadataPage from "./SourcesMetadataTable";
+
+import { useAuth, useApi } from "@hooks";
 import {
-    SourcesServersPage,
-    SourcesFormatsPage,
-    CardContainer,
-} from "@componentsReact";
-
-import { getSourcesFormatsService, getSourcesServersService } from "@services";
-
-import { useAuth, useApi, useResize } from "@hooks";
+    useInvalidateSources,
+    useSourcesFormats,
+    useSourcesMetadata,
+    useSourcesServers,
+} from "@hooks/queries";
 
 import { showModal } from "@utils";
 
-import {
-    SourcesFormatData,
-    SourcesFormatServiceData,
-    SourcesServerData,
-    SourcesServerServiceData,
-} from "@types";
-
 const SourcesPage = () => {
     const { token, logout } = useAuth();
-
-    const height = useResize();
 
     const [modals, setModals] = useState<
         | {
@@ -33,55 +27,19 @@ const SourcesPage = () => {
         | undefined
     >(undefined);
 
-    const [loading, setLoading] = useState<boolean>(true);
-
-    const [sourcesServers, setSourcesServers] = useState<
-        SourcesServerData[] | undefined
-    >(undefined);
-
-    const [sourcesFormats, setSourcesFormats] = useState<
-        SourcesFormatData[] | undefined
-    >(undefined);
-
     const api = useApi(token, logout);
 
-    const getSourcesServers = async () => {
-        try {
-            const res =
-                await getSourcesServersService<SourcesServerServiceData>(api);
-            if (res.statusCode === 200 && res.data) {
-                setSourcesServers(res.data);
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    };
+    const { data: sourcesServers, isLoading: serversLoading } =
+        useSourcesServers(api);
+    const { data: sourcesFormats, isLoading: formatsLoading } =
+        useSourcesFormats(api);
+    const { data: sourcesMetadata, isLoading: metadataLoading } =
+        useSourcesMetadata(api);
 
-    const getSourcesFormats = async () => {
-        try {
-            const res =
-                await getSourcesFormatsService<SourcesFormatServiceData>(api);
-            if (res.statusCode === 200 && res.data) {
-                setSourcesFormats(res.data);
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    };
+    // isLoading: con isFetching las tablas se vaciaban en cada refetch
+    const loading = serversLoading || formatsLoading || metadataLoading;
 
-    const refetch = () => {
-        Promise.all([
-            setLoading(true),
-            getSourcesServers(),
-            getSourcesFormats(),
-        ]).then(() => {
-            setLoading(false);
-        });
-    };
-
-    useEffect(() => {
-        refetch();
-    }, []);
+    const refetch = useInvalidateSources();
 
     useEffect(() => {
         modals?.show && showModal(modals.title);
@@ -95,18 +53,19 @@ const SourcesPage = () => {
                 </div>
                 <div className="flex flex-grow w-full justify-center">
                     <div
-                        className={`flex lg flex-col min-w-[80%] 
+                        className={`flex lg flex-col min-w-[80%]
                             justify-center items-center gap-2 overflow-y-auto`}
                     >
                         <>
                             <CardContainer
                                 title={""}
-                                height={height}
+                                height={false}
                                 addButton={false}
                             >
                                 <SourcesServersPage
                                     loading={loading}
                                     sourcesFormats={sourcesFormats}
+                                    sourcesMetadata={sourcesMetadata}
                                     modals={modals}
                                     setModals={setModals}
                                     sourcesServers={sourcesServers}
@@ -121,6 +80,21 @@ const SourcesPage = () => {
                             >
                                 <SourcesFormatsPage
                                     setModals={setModals}
+                                    sourcesFormats={sourcesFormats}
+                                    api={api}
+                                    loading={loading}
+                                    modals={modals}
+                                    refetch={refetch}
+                                />
+                            </CardContainer>
+                            <CardContainer
+                                title={""}
+                                height={false}
+                                addButton={false}
+                            >
+                                <SourcesMetadataPage
+                                    setModals={setModals}
+                                    sourcesMetadata={sourcesMetadata}
                                     sourcesFormats={sourcesFormats}
                                     api={api}
                                     loading={loading}

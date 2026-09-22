@@ -16,6 +16,17 @@ interface GregorianDatePickerProps {
     labelAbove?: boolean;
 }
 
+// dateFromDay devuelve medianoche UTC y react-datepicker trabaja en hora local: al
+// oeste de Greenwich esa fecha cae el dia anterior (21:00 en UTC-3), el calendario
+// marcaba el dia previo y al elegir otro heredaba esa hora y sumaba un dia.
+const utcToLocalDay = (utc: Date) =>
+    new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
+const localDayToUtc = (local: Date) =>
+    new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()));
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const localIso = (d: Date) =>
+    `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
 const GregorianDatePicker = ({
     year,
     doy,
@@ -26,50 +37,59 @@ const GregorianDatePicker = ({
     labelAbove = false,
 }: GregorianDatePickerProps) => {
     const selectedDate = useMemo(() => {
-        if (year === "" || year === undefined || doy === "" || doy === undefined)
+        if (
+            year === "" ||
+            year === undefined ||
+            doy === "" ||
+            doy === undefined
+        )
             return null;
         const date = dateFromDay(`${year} ${doy}`);
-        return isNaN(date.getTime()) ? null : date;
+        return isNaN(date.getTime()) ? null : utcToLocalDay(date);
     }, [year, doy]);
 
     const handleChange = (date: Date | null) => {
         if (!date || isNaN(date.getTime())) return;
-        const [newYear, newDoy] = dayFromDate(date)?.split(" ") ?? ["", ""];
+        const [newYear, newDoy] = dayFromDate(localDayToUtc(date))?.split(
+            " ",
+        ) ?? ["", ""];
         onChange(newYear, newDoy);
     };
 
-    const formatted = selectedDate
-        ? selectedDate.toISOString().split("T")[0]
-        : "";
+    const formatted = selectedDate ? localIso(selectedDate) : "";
 
+    // El wrapper contiene el popup y sus divs de tab-loop: como hijos directos del
+    // <label> flex entraban en el layout (con su gap) y corrian el icono al abrir.
     const datePicker = (
-        <DatePicker
-            selected={selectedDate}
-            onChange={handleChange}
-            disabled={disabled}
-            showYearDropdown
-            scrollableYearDropdown
-            yearDropdownItemNumber={100}
-            showMonthDropdown
-            dateFormat="yyyy-MM-dd"
-            wrapperClassName="grow"
-            preventOpenOnFocus
-            // Portalea el calendario fuera del .modal-box (su overflow + transform
-            // lo recortarían/scrollearían) pero dentro del <dialog> (top layer).
-            portalId={portalId}
-            customInput={
-                <button
-                    type="button"
-                    disabled={disabled}
-                    className="flex items-center justify-between gap-2 grow text-left w-full disabled:cursor-not-allowed"
-                >
-                    <span className={formatted ? "" : "text-gray-500"}>
-                        {formatted || "Choose date"}
-                    </span>
-                    <CalendarDaysIcon className="size-5 flex-shrink-0" />
-                </button>
-            }
-        />
+        <div className="relative grow min-w-0">
+            <DatePicker
+                selected={selectedDate}
+                onChange={handleChange}
+                disabled={disabled}
+                showYearDropdown
+                scrollableYearDropdown
+                yearDropdownItemNumber={100}
+                showMonthDropdown
+                dateFormat="yyyy-MM-dd"
+                wrapperClassName="w-full"
+                preventOpenOnFocus
+                // Portalea el calendario fuera del .modal-box (su overflow + transform
+                // lo recortarían/scrollearían) pero dentro del <dialog> (top layer).
+                portalId={portalId}
+                customInput={
+                    <button
+                        type="button"
+                        disabled={disabled}
+                        className="flex items-center justify-between gap-2 grow text-left w-full disabled:cursor-not-allowed"
+                    >
+                        <span className={formatted ? "" : "text-gray-500"}>
+                            {formatted || "Choose date"}
+                        </span>
+                        <CalendarDaysIcon className="size-5 flex-shrink-0" />
+                    </button>
+                }
+            />
+        </div>
     );
 
     if (labelAbove) {

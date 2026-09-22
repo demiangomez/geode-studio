@@ -26,6 +26,12 @@ const EventsTable = ({
         );
     }, [body]);
 
+    const eventsById = useMemo(() => {
+        const byId = new Map<StationEvents["event_id"], StationEvents>();
+        events?.forEach((e) => byId.set(e.event_id, e));
+        return byId;
+    }, [events]);
+
     return (
         <div>
             <table className="w-full table z-10 table-zebra bg-neutral-content">
@@ -60,57 +66,64 @@ const EventsTable = ({
                             </td>
                         </tr>
                     ) : (
-                        memoizedBody?.map((row, rowIndex) => (
-                            <tr
-                                key={rowIndex + 1}
-                                className={"cursor-pointer hover"}
-                            >
-                                {row.map((data, dataIndex) => {
-                                    const isDescription =
-                                        titles[dataIndex] === "description";
+                        memoizedBody?.map((row, rowIndex) => {
+                            const event = eventsById.get(body?.[rowIndex]?.[0]);
+                            return (
+                                <tr
+                                    key={rowIndex + 1}
+                                    className={"cursor-pointer hover"}
+                                >
+                                    {row.map((data, dataIndex) => {
+                                        const isDescription =
+                                            titles[dataIndex] === "description";
 
-                                    const valueUnformatted =
-                                        body?.[rowIndex]?.slice(1)?.[dataIndex]; // slice bcs the first element is the id
+                                        const valueUnformatted =
+                                            body?.[rowIndex]?.slice(1)?.[
+                                                dataIndex
+                                            ]; // slice bcs the first element is the id
 
-                                    const event = events?.filter(
-                                        (e) =>
-                                            e.event_id ===
-                                            body?.[rowIndex]?.[0],
-                                    )[0];
-
-                                    return (
-                                        <td
-                                            key={dataIndex}
-                                            className={`text-center z-10 ${isDescription ? " flex items-center justify-center mx-auto relative" : "w-fit"}`}
-                                            onClick={() => {
-                                                onClickFunction(event);
-                                            }}
-                                            title={
-                                                isValidDate(data)
-                                                    ? formatValue(
-                                                          valueUnformatted,
-                                                      )
-                                                    : valueUnformatted
-                                            }
-                                        >
-                                            <span
-                                                className={`${isDescription ? "w-[115px]" : ""}`}
+                                        return (
+                                            <td
+                                                key={dataIndex}
+                                                className={`text-center z-10 ${isDescription ? " flex items-center justify-center mx-auto relative" : "w-fit"}`}
+                                                onClick={() => {
+                                                    onClickFunction(event);
+                                                }}
+                                                title={
+                                                    isValidDate(data)
+                                                        ? formatValue(
+                                                              valueUnformatted,
+                                                          )
+                                                        : valueUnformatted
+                                                }
                                             >
-                                                {data}{" "}
-                                            </span>
-                                            {isDescription && (
-                                                <span onClick={(e) => e.stopPropagation()} className="ml-3">
-                                                    <CopyButton
-                                                        text={event?.description ?? ""}
-                                                        iconClassName="size-6"
-                                                    />
+                                                <span
+                                                    className={`${isDescription ? "w-[115px]" : ""}`}
+                                                >
+                                                    {data}{" "}
                                                 </span>
-                                            )}
-                                        </td>
-                                    );
-                                })}
-                            </tr>
-                        ))
+                                                {isDescription && (
+                                                    <span
+                                                        onClick={(e) =>
+                                                            e.stopPropagation()
+                                                        }
+                                                        className="ml-3"
+                                                    >
+                                                        <CopyButton
+                                                            text={
+                                                                event?.description ??
+                                                                ""
+                                                            }
+                                                            iconClassName="size-6"
+                                                        />
+                                                    </span>
+                                                )}
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            );
+                        })
                     )}
                 </tbody>
             </table>

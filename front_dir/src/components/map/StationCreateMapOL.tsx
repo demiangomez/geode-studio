@@ -31,6 +31,10 @@ interface StationCreateMapOLProps {
         lat: number;
         lng: number;
     } | null;
+    /** Dibuja el catalogo entero; las que no pasan `polygon`/`highlightedApiIds` van al 30% */
+    showAll?: boolean;
+    polygon?: { lat: number; lng: number }[];
+    highlightedApiIds?: ReadonlySet<number>;
     tooltipRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -64,6 +68,40 @@ const isWithinDistance = (
     return calculateDistance(lat1, lon1, lat2, lon2) <= maxDistance * 1000;
 };
 
+// Ray casting sobre lat/lon; alcanza para los poligonos de seleccion
+const isInsidePolygon = (
+    lat: number,
+    lon: number,
+    ring: { lat: number; lng: number }[],
+): boolean => {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const a = ring[i];
+        const b = ring[j];
+        const crosses =
+            a.lat > lat !== b.lat > lat &&
+            lon < ((b.lng - a.lng) * (lat - a.lat)) / (b.lat - a.lat) + a.lng;
+        if (crosses) inside = !inside;
+    }
+    return inside;
+};
+
+interface Highlight {
+    polygon?: { lat: number; lng: number }[];
+    highlightedApiIds?: ReadonlySet<number>;
+}
+
+const isDimmed = (
+    station: StationData,
+    { polygon, highlightedApiIds }: Highlight,
+) =>
+    (!!polygon &&
+        polygon.length >= 3 &&
+        !isInsidePolygon(station.lat, station.lon, polygon)) ||
+    (!!highlightedApiIds &&
+        (station.api_id === undefined ||
+            !highlightedApiIds.has(station.api_id)));
+
 const StationCreateMapOL = ({
     mapInstance,
     stations,
@@ -71,6 +109,9 @@ const StationCreateMapOL = ({
     statuses,
     rangeValue,
     currentMarker,
+    showAll = false,
+    polygon,
+    highlightedApiIds,
     tooltipRef,
 }: StationCreateMapOLProps) => {
     const tooltipOverlayRef = useRef<Overlay | null>(null);
@@ -84,9 +125,9 @@ const StationCreateMapOL = ({
 
     // Filter stations in range
     const stationsInRange = useMemo(() => {
-        if (!stations || !Array.isArray(stations) || !currentMarker) {
-            return [];
-        }
+        if (!stations || !Array.isArray(stations)) return [];
+        if (showAll) return stations.filter((s) => s.lat && s.lon);
+        if (!currentMarker) return [];
 
         return stations.filter((station) => {
             if (!station.lat || !station.lon) return false;
@@ -98,7 +139,23 @@ const StationCreateMapOL = ({
                 rangeValue,
             );
         });
-    }, [stations, currentMarker, rangeValue]);
+    }, [stations, currentMarker, rangeValue, showAll]);
+
+    // Ref porque las features se crean en un loop async que lee el valor vigente
+    const highlightRef = useRef<Highlight>({ polygon, highlightedApiIds });
+    highlightRef.current = { polygon, highlightedApiIds };
+
+    useEffect(() => {
+        for (const feature of sourceRef.current.getFeatures()) {
+            const station = feature.get("nearbyStation") as StationData;
+            const icon = (feature.getStyle() as Style | undefined)?.getImage();
+            const opacity = isDimmed(station, highlightRef.current) ? 0.3 : 1;
+            if (icon && icon.getOpacity() !== opacity) {
+                icon.setOpacity(opacity);
+                feature.changed();
+            }
+        }
+    }, [polygon, highlightedApiIds]);
 
     // Setup layer and tooltip overlay on mount
     useEffect(() => {
@@ -127,19 +184,14 @@ const StationCreateMapOL = ({
 
         // Hover handler for tooltips
         const handlePointerMove = (e: MapBrowserEvent<PointerEvent>) => {
-            const feature = map.forEachFeatureAtPixel(
-                e.pixel,
-                (f) => {
-                    if (f.get("nearbyStation")) return f as Feature<Geometry>;
-                    return undefined;
-                },
-            );
+            const feature = map.forEachFeatureAtPixel(e.pixel, (f) => {
+                if (f.get("nearbyStation")) return f as Feature<Geometry>;
+                return undefined;
+            });
 
             if (feature) {
                 const station = feature.get("nearbyStation") as StationData;
-                const coord = (
-                    feature.getGeometry() as Point
-                ).getCoordinates();
+                const coord = (feature.getGeometry() as Point).getCoordinates();
                 tooltipOverlayRef.current?.setPosition(coord);
                 if (tooltipRef && tooltipRef.current) {
                     const label =
@@ -158,10 +210,7 @@ const StationCreateMapOL = ({
         };
 
         pointerMoveHandlerRef.current = handlePointerMove;
-        map.on(
-            "pointermove",
-            handlePointerMove as any,
-        );
+        map.on("pointermove", handlePointerMove as any);
 
         return () => {
             map.removeLayer(layer);
@@ -169,11 +218,9 @@ const StationCreateMapOL = ({
                 map.removeOverlay(tooltipOverlayRef.current);
             }
             if (pointerMoveHandlerRef.current) {
-                map.un(
-                    "pointermove",
-                    pointerMoveHandlerRef.current as any,
-                );
+                map.un("pointermove", pointerMoveHandlerRef.current as any);
             }
+            // eslint-disable-next-line react-hooks/exhaustive-deps
             sourceRef.current.clear();
         };
         // Run once on mount — mapInstance is a stable ref
@@ -220,6 +267,9 @@ const StationCreateMapOL = ({
                         image: new Icon({
                             src: finalIconSrc,
                             scale,
+                            opacity: isDimmed(s, highlightRef.current)
+                                ? 0.3
+                                : 1,
                             crossOrigin: "anonymous",
                         }),
                     }),

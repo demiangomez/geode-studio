@@ -13,6 +13,8 @@ import { useAuth, useApi } from "@hooks";
 
 import { People, Errors } from "@types";
 
+import { apiOkStatuses } from "@utils";
+
 interface MergePeopleModalProps {
     setStateModal: React.Dispatch<
         React.SetStateAction<
@@ -21,6 +23,7 @@ interface MergePeopleModalProps {
         >
     >;
     handleCloseModal: () => void;
+    reFetch: () => void;
     body: People[] | undefined;
 }
 
@@ -37,6 +40,7 @@ type MergeSucces = {
 const MergePeopleModal = ({
     setStateModal,
     handleCloseModal,
+    reFetch,
     body,
 }: MergePeopleModalProps) => {
     const searchPlaceholder = "Search by Name, Last Name...";
@@ -110,6 +114,7 @@ const MergePeopleModal = ({
                         status: res.statusCode,
                         msg: res.message,
                     });
+                    if (apiOkStatuses.includes(res.statusCode)) reFetch();
                 } else {
                     setMsg({
                         status: 500,
@@ -145,6 +150,7 @@ const MergePeopleModal = ({
             filteredPeople.sort((a, b) => a.name.localeCompare(b.name));
             setPeople(filteredPeople);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [body]);
 
     useEffect(() => {

@@ -14,6 +14,7 @@ from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 import country_converter as coco
 from geode.Utils import ecef2lla, lla2ecef
+from django.db.models.functions import Lower
 
 
 def validate_file_size(value):
@@ -56,6 +57,14 @@ class BulkDownloadTimeSeriesRequestSerializer(serializers.Serializer):
     """Body for POST /api/time-series/bulk-download. The front sends the final list of
     stations (earthquakes/layers/filters are already resolved on the front)."""
     stations = StationRefSerializer(many=True, allow_empty=False)
+
+
+class VisitsTransferRequestSerializer(serializers.Serializer):
+    """Body for POST /api/visits/transfer. 'visits' holds one or many visit ids and
+    'destination_station' is the api_id of the station the visits are moved to."""
+    visits = serializers.ListField(
+        child=serializers.IntegerField(), allow_empty=False)
+    destination_station = serializers.IntegerField()
 
 
 class MonumentTypeSerializer(serializers.ModelSerializer):
@@ -419,6 +428,22 @@ class StationSerializer(serializers.ModelSerializer):
 
         return data
 
+    def validate_plate(self, value):
+        """
+            Check the plate code exists in the PB2002 plates used by geode.
+            Empty means unset: geode auto-computes it from the coordinates.
+        """
+        if value in (None, ''):
+            return None
+
+        value = value.upper()
+
+        if not any(plate['code'] == value for plate in utils.TectonicPlatesUtils.get_plates_names()):
+            raise serializers.ValidationError(
+                "plate must be one of the PB2002 plate codes (see /api/tectonic-plates?only_names=true)")
+
+        return value
+
     def create(self, validated_data):
         validated_data.pop('harpos_coeff_otl_by_file', None)
 
@@ -439,6 +464,18 @@ class StationSerializer(serializers.ModelSerializer):
         validated_data.pop('station_code', None)
 
         return super().update(instance, validated_data)
+
+
+class StationOnlyMetadataSerializer(serializers.ModelSerializer):
+    """Lightweight station representation for 'only_metadata=true' on GET /api/stations
+    (~86% smaller than the full one, which is dominated by harpos_coeff_otl): the
+    identification fields plus what the main map needs. 'status', 'type', 'has_gaps',
+    'has_stationinfo' and 'gaps' are added later by StationUtils.get_station_meta_info."""
+
+    class Meta:
+        model = models.Stations
+        fields = ['api_id', 'network_code', 'station_code', 'station_name',
+                  'country_code', 'lat', 'lon', 'height', 'date_start', 'date_end']
 
 
 class StationMetaGapsSerializer(serializers.ModelSerializer):
@@ -583,17 +620,11 @@ class StationTypeSerializer(serializers.ModelSerializer):
     def validate_icon(self, value):
         return validate_image_size(value)
 
-    def to_internal_value(self, data):
-        # Always set search_icon_on_assets_folder to False because it its true only on default station types (created at start up)
-        internal_value = super().to_internal_value(data)
-        internal_value['search_icon_on_assets_folder'] = False
-        return internal_value
-
     def get_actual_image(self, obj):
         # return the image encoded in base 64
         if obj.icon and obj.icon.name:
             try:
-                with open(obj.get_icon_url(), 'rb') as icon_file:
+                with open(obj.icon.path, 'rb') as icon_file:
                     return base64.b64encode(icon_file.read()).decode('utf-8')
             except FileNotFoundError:
                 return None
@@ -701,6 +732,135 @@ class CampaignSerializer(serializers.ModelSerializer):
         return data
 
 
+def get_existing_station_codes(codes):
+    """{code.lower(): code as in the db} for the given NetworkCode.StationCode codes,
+    matched case-insensitively (station codes are not always lowercase, e.g. arg.DYNA)"""
+    return {(network_code + '.' + station_code).lower(): network_code + '.' + station_code
+            for network_code, station_code in models.Stations.objects.annotate(
+                station_code_lower=Lower('station_code')).filter(
+                station_code_lower__in=[code.split('.', 1)[-1].lower() for code in codes]
+            ).values_list('network_code', 'station_code')}
+
+
+class CampaignPlanSerializer(serializers.ModelSerializer):
+    """Parameters of a campaign plan, the config of geode's campaign planner (see POST
+    /api/campaign-planner). 'stations': geode station specs (NetworkCode.StationCode
+    codes; also country codes, wildcards and '-spec' removals as in the CLI).
+    'new_sites': planned sites not in the db, each "lat,lon", "City, Country" (geocoded),
+    {"name", "lat", "lon"} or {"name", "city"}. 'station_time_overrides': {station code
+    or new site name: minutes}, overrides 'time_on_site_minutes' for those stops.
+    At least one station or new site is required; 'hard_stop' must be later than
+    'day_start'."""
+
+    class Meta:
+        model = models.CampaignPlans
+        fields = '__all__'
+        extra_kwargs = {
+            'day_start': {'format': '%H:%M', 'input_formats': ['%H:%M', '%H:%M:%S']},
+            'hard_stop': {'format': '%H:%M', 'input_formats': ['%H:%M', '%H:%M:%S']},
+            'time_on_site_minutes': {'min_value': 1},
+            'num_participants': {'min_value': 1},
+            'fuel_cost_per_km': {'min_value': decimal.Decimal('0')},
+            'lodging_cost_per_night': {'min_value': decimal.Decimal('0')},
+            'per_diem_cost_per_day': {'min_value': decimal.Decimal('0')},
+        }
+
+    def validate_stations(self, value):
+        value = [spec.strip() for spec in value]
+
+        if '' in value:
+            raise serializers.ValidationError("entries can not be empty")
+
+        # plain NetworkCode.StationCode codes are checked against the db and replaced by
+        # the exact codes of the db (geode matches them exactly and skips silently the
+        # ones not found; codes are not always lowercase, e.g. arg.DYNA). Other geode
+        # specs (country codes, filters, wildcards, removals) are passed as is
+        def is_plain_code(spec):
+            network_code, _, station_code = spec.partition('.')
+
+            return network_code != '' and station_code != '' and station_code != 'all' \
+                and not spec.startswith(('-', '*')) and not any(c in spec for c in ':[]%_| ')
+
+        codes = [spec for spec in value if is_plain_code(spec)]
+
+        existing = get_existing_station_codes(codes)
+
+        unknown = [code for code in codes if code.lower() not in existing]
+
+        if len(unknown) > 0:
+            raise serializers.ValidationError(
+                "unknown stations (NetworkCode.StationCode codes must be of existing stations): "
+                + ', '.join(unknown[:10]) + (', ...' if len(unknown) > 10 else ''))
+
+        return [existing[spec.lower()] if is_plain_code(spec) else spec for spec in value]
+
+    def validate_new_sites(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("must be a list")
+
+        def is_number(number):
+            return isinstance(number, (int, float)) and not isinstance(number, bool)
+
+        for site in value:
+            if isinstance(site, str):
+                valid = site.strip() != ''
+            elif isinstance(site, dict) and 'lat' in site and 'lon' in site:
+                valid = is_number(site['lat']) and is_number(site['lon']) \
+                    and -90 <= site['lat'] <= 90 and -180 <= site['lon'] <= 180
+            elif isinstance(site, dict):
+                valid = isinstance(site.get('city'), str) and site['city'].strip() != ''
+            else:
+                valid = False
+
+            if isinstance(site, dict) and 'name' in site and not isinstance(site['name'], str):
+                valid = False
+
+            if not valid:
+                raise serializers.ValidationError(
+                    "each entry must be \"lat,lon\", \"City, Country\", {\"name\", \"lat\", \"lon\"} "
+                    "or {\"name\", \"city\"}: " + str(site))
+
+        return value
+
+    def validate_station_time_overrides(self, value):
+        if not isinstance(value, dict) or not all(
+                isinstance(minutes, int) and not isinstance(minutes, bool) and minutes > 0
+                for minutes in value.values()):
+            raise serializers.ValidationError(
+                "must be {station code or new site name: minutes}, with minutes a positive integer")
+
+        return value
+
+    def validate(self, data):
+        def get(field):
+            # on update, fields not sent keep the stored values; on create, the defaults
+            if field in data:
+                return data[field]
+            elif self.instance is not None:
+                return getattr(self.instance, field)
+            else:
+                return models.CampaignPlans._meta.get_field(field).get_default()
+
+        if len(get('stations')) == 0 and len(get('new_sites')) == 0:
+            raise serializers.ValidationError(
+                "at least one of 'stations' or 'new_sites' is required")
+
+        if get('hard_stop') <= get('day_start'):
+            raise serializers.ValidationError(
+                "'hard_stop' must be later than 'day_start'")
+
+        return data
+
+
+class CampaignPlannerSerializer(CampaignPlanSerializer):
+    """Request of POST /api/campaign-planner: the parameters of CampaignPlanSerializer
+    without 'name' (nothing is saved)."""
+
+    class Meta(CampaignPlanSerializer.Meta):
+        fields = None
+        exclude = ['id', 'name']
+
+
 class VisitSerializer(serializers.ModelSerializer):
     log_sheet_actual_file = serializers.SerializerMethodField()
     navigation_actual_file = serializers.SerializerMethodField()
@@ -745,6 +905,15 @@ class VisitSerializer(serializers.ModelSerializer):
             if date < campaign.start_date or date > campaign.end_date:
                 raise serializers.ValidationError(
                     "The visit date is NOT within the campaign date range")
+
+        # Check that a visit with observation files is not marked as planned
+        planned = data['planned'] if 'planned' in data else (
+            self.instance.planned if self.instance is not None and hasattr(self.instance, 'planned') else False)
+
+        if planned and self.instance is not None and models.VisitGNSSDataFiles.objects.filter(visit=self.instance).exists():
+            raise serializers.ValidationError(
+                "A visit with observation files cannot be marked as planned")
+
         return data
 
     def get_campaign_name(self, obj):
@@ -1000,6 +1169,12 @@ class VisitGNSSDataFilesSerializer(serializers.ModelSerializer):
     def validate_file(self, value):
         return validate_file_size(value)
 
+    def validate_visit(self, value):
+        if value.planned:
+            raise serializers.ValidationError(
+                "Observation files cannot be uploaded to a planned visit")
+        return value
+
 
 class VisitGNSSDataFilesOnlyMetadataSerializer(serializers.ModelSerializer):
     class Meta:
@@ -1116,6 +1291,122 @@ class GamitHtcSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class GamitProjectsSerializer(serializers.ModelSerializer):
+    """'process_defaults' and 'sestbl' can be sent as text or, as multipart, loaded
+    from a file with 'process_defaults_by_file' / 'sestbl_by_file' (same as
+    harpos_coeff_otl on stations). 'station_list' holds NetworkCode.StationCode codes
+    of existing stations; POST /api/processing-station-list builds it by station type,
+    country, location or polygon."""
+
+    process_defaults_by_file = serializers.FileField(
+        write_only=True, required=False)
+    sestbl_by_file = serializers.FileField(write_only=True, required=False)
+
+    class Meta:
+        model = models.GamitProjects
+        fields = '__all__'
+
+    def validate_process_defaults_by_file(self, value):
+        return validate_file_size(value)
+
+    def validate_sestbl_by_file(self, value):
+        return validate_file_size(value)
+
+    def validate_station_list(self, value):
+        if value is None:
+            return None
+
+        # case-insensitive match, deduplicated keeping the order; stored with the exact
+        # case of the db codes (station codes are not always lowercase, e.g. arg.DYNA)
+        codes = list(dict.fromkeys(code.strip().lower() for code in value))
+
+        existing = get_existing_station_codes(codes)
+
+        unknown = [code for code in codes if code not in existing]
+
+        if len(unknown) > 0:
+            raise serializers.ValidationError(
+                "unknown stations (entries must be NetworkCode.StationCode codes of existing stations): "
+                + ', '.join(unknown[:10]) + (', ...' if len(unknown) > 10 else ''))
+
+        return [existing[code] for code in codes]
+
+    def validate(self, data):
+        # empty means unset: stored as NULL, like the rows geode backfilled (an empty
+        # array or '' would be stored as is, and '' violates the overconst_action CHECK)
+        for field in ('systems', 'station_list', 'process_defaults', 'sestbl', 'solutions_dir',
+                      'experiment_name', 'org', 'overconst_action'):
+            if field in data and data[field] in ([], ''):
+                data[field] = None
+
+        # set process_defaults / sestbl by file
+        for field in ('process_defaults', 'sestbl'):
+            file = data.pop(field + '_by_file', None)
+
+            if file is not None:
+                try:
+                    data[field] = file.read().decode('utf-8')
+                except UnicodeDecodeError:
+                    raise serializers.ValidationError(
+                        {field + '_by_file': "must be a UTF-8 text file"})
+
+        return data
+
+
+class ProcessingStationListPointSerializer(serializers.Serializer):
+    lat = serializers.FloatField(min_value=-90, max_value=90)
+    lon = serializers.FloatField(min_value=-180, max_value=180)
+
+
+class ProcessingStationListSerializer(serializers.Serializer):
+    """Filters for POST /api/processing-station-list, combined with AND. At least one
+    is required: 'station_type', 'country_code', a location ('lat', 'lon' and
+    'distance_km' together) and/or 'polygon'; or 'all': true for every station
+    (geode's 'all' keyword)."""
+
+    all = serializers.BooleanField(
+        required=False,
+        help_text="true: every station (except the '?' placeholder networks), like geode's 'all'; any other filter given still applies")
+    station_type = serializers.PrimaryKeyRelatedField(
+        queryset=models.StationType.objects.all(), required=False,
+        help_text="id of the station type (see /api/station-types)")
+    country_code = serializers.ListField(
+        child=serializers.CharField(max_length=3), required=False, allow_empty=False,
+        help_text="ISO3 country codes, e.g. [\"ARG\", \"CHL\"]")
+    lat = serializers.FloatField(min_value=-90, max_value=90, required=False,
+                                 help_text="latitude of the location center, degrees")
+    lon = serializers.FloatField(min_value=-180, max_value=180, required=False,
+                                 help_text="longitude of the location center, degrees")
+    distance_km = serializers.FloatField(
+        required=False, help_text="great-circle radius around the location center, km")
+    polygon = ProcessingStationListPointSerializer(
+        many=True, required=False, min_length=3,
+        help_text="vertices [{lat, lon}, ...] (3 or more, closing vertex optional)")
+
+    def validate_country_code(self, value):
+        return [code.upper() for code in value]
+
+    def validate_distance_km(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("must be greater than 0")
+
+        return value
+
+    def validate(self, data):
+        location = [field for field in (
+            'lat', 'lon', 'distance_km') if field in data]
+
+        if len(location) not in (0, 3):
+            raise serializers.ValidationError(
+                "'lat', 'lon' and 'distance_km' must be provided together")
+
+        if len([field for field in data if field != 'all']) == 0 and not data.get('all'):
+            raise serializers.ValidationError(
+                "at least one filter is required: 'station_type', 'country_code', 'lat' + 'lon' + 'distance_km' or 'polygon'; or 'all': true for every station")
+
+        return data
+
+
 class GamitSolnSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.GamitSoln
@@ -1178,6 +1469,19 @@ class ReceiversSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class ReferenceFramesSerializer(serializers.ModelSerializer):
+    stacks_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.ReferenceFrames
+        fields = '__all__'
+
+    def get_stacks_count(self, obj):
+        if hasattr(obj, 'stacks_count'):
+            return obj.stacks_count
+        return obj.get_stacks_count()
+
+
 class RinexSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Rinex
@@ -1202,11 +1506,16 @@ class SourcesFormatsSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class SourcesMetadataSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.SourcesMetadata
+        fields = '__all__'
+
+
 class SourcesServersSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.SourcesServers
         fields = '__all__'
-
 
 class SourcesStationsSerializer(serializers.ModelSerializer):
     class Meta:

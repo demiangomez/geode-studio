@@ -37,7 +37,7 @@ const MonumentsTable = () => {
         monumentsTotal,
         monumentsIsFetching,
         isLoading: loading,
-    } = useMetadata(api, {}, params);
+    } = useMetadata(api, { only: ["monuments"] }, params);
 
     const pages = useMemo(() => {
         if (monumentsTotal && params.limit) {
@@ -47,7 +47,13 @@ const MonumentsTable = () => {
     }, [monumentsTotal, params.limit]);
 
     useEffect(() => {
-        if (!loading && !monumentsIsFetching && monuments && monuments.length === 0 && activePage > 1) {
+        if (
+            !loading &&
+            !monumentsIsFetching &&
+            monuments &&
+            monuments.length === 0 &&
+            activePage > 1
+        ) {
             handlePage(activePage - 1);
         }
     }, [monuments, activePage, loading, monumentsIsFetching]); // eslint-disable-line
@@ -69,15 +75,13 @@ const MonumentsTable = () => {
     const titles = ["Name", "Photo"];
 
     const body = useMemo(() => {
-        return monuments
-            ?.sort((a, b) => a.name.localeCompare(b.name))
-            .map((monument) =>
-                Object.values({
-                    // id: monument.id,
-                    name: monument.name,
-                    photo: monument.photo_file,
-                }),
-            );
+        return monuments?.map((monument) =>
+            Object.values({
+                // id: monument.id,
+                name: monument.name,
+                photo: monument.photo_file,
+            }),
+        );
     }, [monuments]);
 
     useEffect(() => {

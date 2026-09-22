@@ -9,8 +9,8 @@ import type { Geometry } from "ol/geom";
 const SPIDER_LEG_SEPARATION = 28;
 const SPIDER_START_ANGLE = Math.PI / 2;
 
-export const SPIDER_LEG_REACH = 0.7; // leg line reaches 70% of the way to the icon
-export const SPIDER_ANIM_DURATION = 300; // ms
+const SPIDER_LEG_REACH = 0.7; // leg line reaches 70% of the way to the icon
+const SPIDER_ANIM_DURATION = 300; // ms
 
 export const SPIDER_LEG_STYLE = new Style({
     stroke: new Stroke({

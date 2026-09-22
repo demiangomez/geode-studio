@@ -12,13 +12,15 @@ interface AlertProps {
 }
 
 const Alert = ({ msg }: AlertProps) => {
+    if (!msg) return null;
+
     const errorDetail =
-        msg?.errors && "errors" in msg.errors
+        msg.errors && "errors" in msg.errors
             ? msg.errors.errors?.[0]?.detail
             : undefined;
 
     const rinexErrorMessages =
-        msg?.errors && "error_message" in msg.errors
+        msg.errors && "error_message" in msg.errors
             ? msg.errors.error_message
             : undefined;
 
@@ -28,80 +30,78 @@ const Alert = ({ msg }: AlertProps) => {
 
     return (
         <div className="flex flex-col w-full">
-            {msg && (
-                <div
-                    role="alert"
-                    className={`alert ${msg && "errors" in msg ? "alert-error" : msg.status === 199 ? "alert-warning" : "alert-success"}`}
-                >
-                    {"errors" in msg ? (
-                        <>
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="stroke-current shrink-0 h-6 w-6"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth="2"
-                                    d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                />
-                            </svg>
-                            <div className="flex flex-col text-xl">
-                                <span>
-                                    {(
-                                        msg?.msg?.charAt(0).toUpperCase() +
-                                        msg?.msg?.slice(1)
-                                    )?.replace("_", " ")}
-                                </span>
-                                <span className="font-light text-sm">
-                                    {errorDetail
-                                        ? `${errorDetail}`
-                                        : extractedErrorMessages}
-                                </span>
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="stroke-current shrink-0 h-6 w-6"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth="2"
-                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                />
-                            </svg>
-                            <span className="">
-                                {msg.msg && msg.msg.includes("\n")
-                                    ? msg.msg.split("\n").map((l, idx) => (
-                                          <ul
-                                              key={idx + l}
-                                              className="list-disc ml-3"
-                                          >
-                                              <li
-                                                  className={
-                                                      idx === 0
-                                                          ? "font-bold list-none -ml-4"
-                                                          : "ml-4"
-                                                  }
-                                              >
-                                                  {l}
-                                              </li>
-                                          </ul>
-                                      ))
-                                    : msg.msg}
+            <div
+                role="alert"
+                className={`alert ${"errors" in msg ? "alert-error" : msg.status === 199 ? "alert-warning" : "alert-success"}`}
+            >
+                {"errors" in msg ? (
+                    <>
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="stroke-current shrink-0 h-6 w-6"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                        </svg>
+                        <div className="flex flex-col text-xl">
+                            <span>
+                                {(
+                                    msg?.msg?.charAt(0).toUpperCase() +
+                                    msg?.msg?.slice(1)
+                                )?.replace("_", " ")}
                             </span>
-                        </>
-                    )}
-                </div>
-            )}
-            {msg?.rinex_other_errors && (
+                            <span className="font-light text-sm">
+                                {errorDetail
+                                    ? `${errorDetail}`
+                                    : extractedErrorMessages}
+                            </span>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="stroke-current shrink-0 h-6 w-6"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                        </svg>
+                        <span className="">
+                            {msg.msg && msg.msg.includes("\n")
+                                ? msg.msg.split("\n").map((l, idx) => (
+                                      <ul
+                                          key={idx + l}
+                                          className="list-disc ml-3"
+                                      >
+                                          <li
+                                              className={
+                                                  idx === 0
+                                                      ? "font-bold list-none -ml-4"
+                                                      : "ml-4"
+                                              }
+                                          >
+                                              {l}
+                                          </li>
+                                      </ul>
+                                  ))
+                                : msg.msg}
+                        </span>
+                    </>
+                )}
+            </div>
+            {msg.rinex_other_errors && (
                 <div
                     role="alert"
                     className="alert alert-warning font-light text-sm mt-4"

@@ -1,11 +1,13 @@
-import { ReactNode } from "react";
+import { Children, ReactNode } from "react";
 
 interface MenuProps {
-
+    emptyText?: string;
     children: ReactNode;
 }
 
-const Menu = ({ children, }: MenuProps) => {
+const Menu = ({ emptyText = "No options", children }: MenuProps) => {
+    const hasItems = Children.toArray(children).length > 0;
+
     return (
         <ul
             tabIndex={0}
@@ -13,7 +15,13 @@ const Menu = ({ children, }: MenuProps) => {
              bg-neutral-content rounded-box overflow-y-auto divide-y-2 divide-base-100`}
             style={{ flexWrap: "nowrap" }}
         >
-            {children}
+            {hasItems ? (
+                children
+            ) : (
+                <li className="disabled py-2 px-4 w-full">
+                    <span className="text-base-content/60">{emptyText}</span>
+                </li>
+            )}
         </ul>
     );
 };

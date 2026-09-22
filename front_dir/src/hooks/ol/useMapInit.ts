@@ -10,11 +10,10 @@ import Overlay from "ol/Overlay";
 import { fromLonLat } from "ol/proj";
 import { ScaleLine, Zoom } from "ol/control";
 
-import "ol/ol.css";
-
 export interface MapLayerState {
     topo: boolean;
     satellite: boolean;
+    tectonicPlates: boolean;
 }
 
 // Zoom maximo de la View segun la capa base activa. ArcGIS World Imagery se queda sin

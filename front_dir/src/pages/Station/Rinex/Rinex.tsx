@@ -14,10 +14,12 @@ import {
     StationInfoModal,
     StatsModal,
     TableCard,
-    RinexCompletionPlot,
+    Toast,
 } from "@componentsReact";
+import RinexCompletionPlot from "./RinexCompletionPlot";
 
 import {
+    ArrowDownTrayIcon,
     BookmarkIcon,
     CheckCircleIcon,
     ExclamationCircleIcon,
@@ -28,6 +30,7 @@ import {
 } from "@heroicons/react/24/outline";
 
 import { useAuth, useApi } from "@hooks";
+import { useDownloadRinex } from "@hooks/queries";
 
 import { getRinexWithStatusService, getCompletionPlotService } from "@services";
 
@@ -83,6 +86,10 @@ const Actions = ({ close }: { close: CloseFunction }) => {
                         <span>
                             <strong>+</strong> = Add station information using
                             RINEX metadata
+                        </span>
+                        <span className="flex items-center gap-1">
+                            <ArrowDownTrayIcon className="size-5" /> = Download
+                            RINEX file
                         </span>
                     </div>
                 </div>
@@ -148,6 +155,8 @@ const Rinex = () => {
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
 
+    const downloadRinex = useDownloadRinex(api);
+
     const { station, getReStation } = useOutletContext<OutletContext>();
 
     const [lastGroupIdPreviousPage, setLastGroupIdPreviousPage] = useState<
@@ -167,7 +176,7 @@ const Rinex = () => {
             RINEX_FILTERS_STATE,
         );
 
-    const [operatorSelected, setOperatorSelected] = useState<string>("<"); // eslint-disable-line
+    const [operatorSelected, setOperatorSelected] = useState<string>("<");
 
     const [rinexFilterData, setRinexFilterData] = useState<
         RinexObject[] | undefined
@@ -319,8 +328,8 @@ const Rinex = () => {
                     operatorSelected === "<"
                         ? "LESS_THAN"
                         : operatorSelected === ">"
-                            ? "GREATER_THAN"
-                            : "EQUAL",
+                          ? "GREATER_THAN"
+                          : "EQUAL",
                 completion: filtersObj.completion,
                 interval: filtersObj.interval,
                 offset: 0,
@@ -540,6 +549,7 @@ const Rinex = () => {
 
     useEffect(() => {
         getCompletionPlot();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -756,6 +766,12 @@ const Rinex = () => {
                             setRinexGroup={setRinexGroup}
                             setSingleRinex={setSingleRinex}
                             setExtendTypeRinex={setExtendTypeRinex}
+                            onDownload={downloadRinex.mutate}
+                            downloadingId={
+                                downloadRinex.isPending
+                                    ? downloadRinex.variables?.api_id
+                                    : undefined
+                            }
                         />
                         {paginatedRinexs && paginatedRinexs?.length > 0 ? (
                             <Pagination
@@ -773,6 +789,14 @@ const Rinex = () => {
                     </TableCard>
                 </CardContainer>
             </div>
+            {downloadRinex.isError && (
+                <Toast
+                    error={true}
+                    msg={downloadRinex.error.message}
+                    duration={5000}
+                    onClose={() => downloadRinex.reset()}
+                />
+            )}
             {modals?.show && modals.title === "RinexFilters" && (
                 <RinexFilter
                     filters={filters}

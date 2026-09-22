@@ -184,7 +184,11 @@ export const useClusterLayer = ({
 
     // ── Sync options ──
     useEffect(() => {
-        if (clusterSourceRef.current && typeof distance === "number" && !isNaN(distance)) {
+        if (
+            clusterSourceRef.current &&
+            typeof distance === "number" &&
+            !isNaN(distance)
+        ) {
             clusterSourceRef.current.setDistance(distance);
         }
     }, [distance]);
@@ -198,7 +202,7 @@ export const useClusterLayer = ({
         }
         spiderfySourceRef.current.clear();
     }, []);
-    
+
     // ── Internal: expand spider ──
     const expandSpider = useCallback(
         (
@@ -325,7 +329,6 @@ export const useClusterLayer = ({
             const clusterMembers = feature.get("features") as
                 | Feature<Geometry>[]
                 | undefined;
-
 
             if (!clusterMembers) return { consumed: false };
 

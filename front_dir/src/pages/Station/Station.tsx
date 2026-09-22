@@ -10,7 +10,7 @@ import React, { useEffect, useMemo, useState } from "react";
 
 import Sidebar from "@components/Sidebar";
 import StationButtons from "@components/station/StationButtons";
-import Skeleton from "@components/skeleton/Skeleton";
+import StationSkeleton from "@components/skeleton/StationSkeleton";
 import Breadcrumb from "@components/Breadcrumb";
 import Toast from "@components/Message";
 import StationCommentsModal from "@components/modals/Station/StationCommentsModal";
@@ -99,7 +99,9 @@ const Station = () => {
 
     const getStation = async () => {
         try {
-            setLoading(true);
+            // se saco para que no rompa el modal de metadata cuando se haga refetch.
+            // setLoading(true)
+
             const res = await getStationsService<StationServiceData>(api, {
                 network_code: nc,
                 station_code: sc,
@@ -249,10 +251,22 @@ const Station = () => {
         return `${baseClasses} ${additionalClasses}`;
     };
 
-    const refetch = () => {
-        getStation();
+    // si el caller ya tiene los datos frescos, evita GETs duplicados
+    const refetch = (
+        freshStation?: StationData,
+        freshStationMeta?: StationMetadataServiceData,
+    ) => {
+        if (freshStation) {
+            setStation(freshStation);
+        } else {
+            getStation();
+        }
+        if (freshStationMeta) {
+            setStationMeta(freshStationMeta);
+        } else {
+            getStationMeta();
+        }
         setVisits(undefined);
-        setStationMeta(undefined);
     };
 
     const closeToast = () => {
@@ -289,8 +303,10 @@ const Station = () => {
             }
             getStationMeta();
         }
+        // depende de api_id, no de `station` entero: solo se re-dispara al
+        // navegar a otra estacion, no en cada refresh (ver refetch() arriba)
         // eslint-disable-next-line
-    }, [station, isMainLocation]);
+    }, [station?.api_id, isMainLocation]);
 
     useEffect(() => {
         // This effect is used to handle the case when te user
@@ -342,6 +358,7 @@ const Station = () => {
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [kmzFile]);
 
     useEffect(() => {
@@ -364,9 +381,7 @@ const Station = () => {
                     />
                 )}
             {loading ? (
-                <div className="mt-24">
-                    <Skeleton />
-                </div>
+                <StationSkeleton />
             ) : (
                 <div className="flex w-full">
                     <Sidebar
@@ -378,7 +393,6 @@ const Station = () => {
                                 : station
                         }
                         mainParams={locationState?.mainParams ?? undefined}
-                        stationMeta={stationMeta}
                         refetchStationMeta={getStationMeta}
                         refetch={refetch}
                     />
@@ -438,6 +452,7 @@ const Station = () => {
                                 onHide={() => setModals(undefined)}
                                 setModal={setModals}
                                 station={station}
+                                refetch={refetch}
                             />
                         )}
 

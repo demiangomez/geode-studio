@@ -8,6 +8,7 @@ import Pako from "pako";
 import ExifReader from "exifreader";
 
 import { useAuth, useApi } from "@hooks";
+import { modalActions } from "@utils";
 
 import {
     postStationsImagesService,
@@ -388,6 +389,7 @@ const StationPhotoModal = ({
         if (edit && photo) {
             setGlobalDescription(photo.description);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [photo]);
 
     const getPreviewImage = (id: string) => {
@@ -425,6 +427,7 @@ const StationPhotoModal = ({
         if (modalType === "edit") {
             getOriginalPhoto();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [photo]);
 
     return (
@@ -582,7 +585,7 @@ const StationPhotoModal = ({
                 <div className="flex w-full justify-center space-x-4">
                     <button
                         type="submit"
-                        className="btn btn-success w-5/12"
+                        className={modalActions.primary}
                         disabled={
                             ((loading || success || progressBar) && edit) ||
                             ((files.length === 0 ||

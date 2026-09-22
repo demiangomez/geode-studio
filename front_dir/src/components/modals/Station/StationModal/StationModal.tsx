@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 
-import { Modal, AddStationByFile, AddStationManual } from "@componentsReact";
+import { Modal } from "@componentsReact";
+import AddStationByFile from "@components/modals/Station/StationModal/AddStationByFile";
+import AddStationManual from "@components/modals/Station/StationModal/AddStationManual";
 
 import { useFormReducer } from "@hooks";
 
 import { METADATA_STATE } from "@utils/reducerFormStates";
+import { showModal } from "@utils";
 
 import { Errors } from "@types";
 import { useLocation } from "react-router-dom";
@@ -37,6 +40,7 @@ const StationModal = ({ handleCloseModal, setModals }: Props) => {
             type: "set",
             payload: METADATA_STATE,
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const [addType, setAddType] = useState<"by file" | "manual" | undefined>(
@@ -48,6 +52,7 @@ const StationModal = ({ handleCloseModal, setModals }: Props) => {
             type: "set",
             payload: METADATA_STATE,
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const [msg, setMsg] = useState<
@@ -60,6 +65,11 @@ const StationModal = ({ handleCloseModal, setModals }: Props) => {
 
     useEffect(() => {
         setAddType("manual");
+    }, []);
+
+    // Nav lo monta lazy: un showModal del padre correría sin el <dialog> en el DOM
+    useEffect(() => {
+        showModal("station");
     }, []);
 
     const internalHandleCloseModal = () => {

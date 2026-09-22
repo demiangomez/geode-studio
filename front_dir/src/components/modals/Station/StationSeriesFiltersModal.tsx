@@ -38,8 +38,7 @@ const StationSeriesFiltersModal = ({
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
 
-    const { adjustmentModels, covarianceFunctions } =
-        useAdjustmentOptions(api);
+    const { adjustmentModels, covarianceFunctions } = useAdjustmentOptions(api);
 
     const { formState, dispatch } = useFormReducer(SERIES_FILTERS_STATE);
 
@@ -72,7 +71,7 @@ const StationSeriesFiltersModal = ({
     };
 
     const handleChange = (
-        e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+        e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
     ) => {
         const { value, name } = e.target;
         const type = (e.target as any).type;
@@ -123,7 +122,11 @@ const StationSeriesFiltersModal = ({
     };
 
     useEffect(() => {
-        if (Object.values(filters).some((r) => r !== undefined && r !== null && r !== "")) {
+        if (
+            Object.values(filters).some(
+                (r) => r !== undefined && r !== null && r !== "",
+            )
+        ) {
             dispatch({
                 type: "set",
                 payload: filters,
@@ -211,19 +214,25 @@ const StationSeriesFiltersModal = ({
                                         // PLOT OUTLIERS habilita la selección de MISSING DATA
                                         // Si se selecciona ROBUST LEAST SQUARES deshabilita REMOVE STOCHASTIC NOISE y COVARIANCE
                                         const isDisabled =
-                                            (key === "missing_data" && !formState.plot_outliers) ||
-                                            (key === "remove_stochastic" && isRobust);
+                                            (key === "missing_data" &&
+                                                !formState.plot_outliers) ||
+                                            (key === "remove_stochastic" &&
+                                                isRobust);
 
                                         const normalizedKey =
                                             LABEL_OVERRIDES[key] ??
-                                            key.replace(/_/g, " ").toUpperCase();
-
+                                            key
+                                                .replace(/_/g, " ")
+                                                .toUpperCase();
 
                                         return (
                                             <div
                                                 key={key}
-                                                className={`flex flex-col col-span-full ${key === 'residuals' ? '2xl:col-span-1' : '2xl:col-span-2'
-                                                    } text-sm space-y-2 my-2 overflow-x-auto justify-center`}
+                                                className={`flex flex-col col-span-full ${
+                                                    key === "residuals"
+                                                        ? "2xl:col-span-1"
+                                                        : "2xl:col-span-2"
+                                                } text-sm space-y-2 my-2 overflow-x-auto justify-center`}
                                             >
                                                 <label
                                                     htmlFor={key}
@@ -266,16 +275,25 @@ const StationSeriesFiltersModal = ({
                                         htmlFor="least_squares_strategy"
                                         className="input input-bordered flex items-center w-full justify-between"
                                     >
-                                        <span className="font-bold">LEAST SQUARES STRATEGY</span>
+                                        <span className="font-bold">
+                                            LEAST SQUARES STRATEGY
+                                        </span>
                                         <select
                                             name="least_squares_strategy"
                                             id="least_squares_strategy"
                                             className="select select-ghost select-sm max-w-xs pl-2 font-semibold text-right"
-                                            value={formState["least_squares_strategy"]}
+                                            value={
+                                                formState[
+                                                    "least_squares_strategy"
+                                                ]
+                                            }
                                             onChange={handleChange}
                                         >
                                             {adjustmentModels.map((m) => (
-                                                <option key={m.id} value={m.type}>
+                                                <option
+                                                    key={m.id}
+                                                    value={m.type}
+                                                >
                                                     {humanize(m.type)}
                                                 </option>
                                             ))}
@@ -283,22 +301,31 @@ const StationSeriesFiltersModal = ({
                                     </label>
                                 </div>
 
-                                <div className={`flex flex-col col-span-full 2xl:col-span-2 text-sm space-y-2 my-2 ${isRobust ? "opacity-50" : ""}`}>
+                                <div
+                                    className={`flex flex-col col-span-full 2xl:col-span-2 text-sm space-y-2 my-2 ${isRobust ? "opacity-50" : ""}`}
+                                >
                                     <label
                                         htmlFor="covariance_model"
                                         className="input input-bordered flex items-center w-full justify-between"
                                     >
-                                        <span className="font-bold">COVARIANCE</span>
+                                        <span className="font-bold">
+                                            COVARIANCE
+                                        </span>
                                         <select
                                             name="covariance_model"
                                             id="covariance_model"
                                             className="select select-ghost select-sm max-w-xs pl-2 font-semibold text-right"
-                                            value={formState["covariance_model"]}
+                                            value={
+                                                formState["covariance_model"]
+                                            }
                                             disabled={isRobust}
                                             onChange={handleChange}
                                         >
                                             {covarianceFunctions.map((c) => (
-                                                <option key={c.id} value={c.type}>
+                                                <option
+                                                    key={c.id}
+                                                    value={c.type}
+                                                >
                                                     {humanize(c.type)}
                                                 </option>
                                             ))}
@@ -312,10 +339,16 @@ const StationSeriesFiltersModal = ({
                                             htmlFor="fit_window_start"
                                             className="input join-item input-bordered flex items-center w-full"
                                         >
-                                            <span className="font-bold">FIT WINDOW</span>
+                                            <span className="font-bold">
+                                                FIT WINDOW
+                                            </span>
                                             <input
                                                 type="date"
-                                                value={formState["fit_window_start"]}
+                                                value={
+                                                    formState[
+                                                        "fit_window_start"
+                                                    ]
+                                                }
                                                 name="fit_window_start"
                                                 id="fit_window_start"
                                                 className="grow pl-2"
@@ -331,7 +364,9 @@ const StationSeriesFiltersModal = ({
                                         >
                                             <input
                                                 type="date"
-                                                value={formState["fit_window_end"]}
+                                                value={
+                                                    formState["fit_window_end"]
+                                                }
                                                 name="fit_window_end"
                                                 id="fit_window_end"
                                                 className="w-full"
@@ -357,7 +392,9 @@ const StationSeriesFiltersModal = ({
                                             placeholder="years"
                                             className="grow min-w-0 text-center"
                                             onChange={(e) =>
-                                                setRelaxationInput(e.target.value)
+                                                setRelaxationInput(
+                                                    e.target.value,
+                                                )
                                             }
                                             onKeyDown={(e) => {
                                                 if (e.key === "Enter") {

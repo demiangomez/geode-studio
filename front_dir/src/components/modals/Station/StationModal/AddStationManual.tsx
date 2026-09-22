@@ -1,12 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-import {
-    Alert,
-    Menu,
-    MenuButton,
-    MenuContent,
-    MapModal,
-} from "@componentsReact";
+import { Alert, Menu, MenuButton, MenuContent } from "@componentsReact";
+import MapModal from "@components/map/MapModalOL";
 
 import { METADATA_STATE } from "@utils/reducerFormStates";
 
@@ -18,7 +13,7 @@ import { postCreateStationService } from "@services";
 
 import { Errors } from "@types";
 
-import { showModal } from "@utils";
+import { ecef2lla, lla2ecef, showModal } from "@utils";
 import { useMetadata } from "@hooks/queries";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -34,10 +29,10 @@ interface StationMetadataProps {
     setMsg: React.Dispatch<
         React.SetStateAction<
             | {
-                status: number;
-                msg: string;
-                errors?: Errors;
-            }
+                  status: number;
+                  msg: string;
+                  errors?: Errors;
+              }
             | undefined
         >
     >;
@@ -62,7 +57,7 @@ const AddStationManual = ({
 
     const api = useApi(token, logout);
 
-    const { networks } = useMetadata(api);
+    const { networks } = useMetadata(api, { only: ["networks"] });
     const queryClient = useQueryClient();
 
     const generalFields = [
@@ -75,7 +70,11 @@ const AddStationManual = ({
     const inputRefNetworkCode = useRef<HTMLInputElement>(null);
 
     const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     const [createLoading, setCreateLoading] = useState<boolean>(false);
 
@@ -188,71 +187,6 @@ const AddStationManual = ({
         createStation();
     };
 
-    function lla2ecef(llaArr: number[]): { x: number; y: number; z: number } {
-        const [lat, lon, alt] = llaArr;
-
-        // Convertir a radianes
-        const rad_lat = (lat * Math.PI) / 180;
-        const rad_lon = (lon * Math.PI) / 180;
-
-        // Parámetros WGS84
-        const a = 6378137.0;
-        const finv = 298.257223563;
-        const f = 1 / finv;
-        const e2 = 1 - (1 - f) * (1 - f);
-
-        const v = a / Math.sqrt(1 - e2 * Math.pow(Math.sin(rad_lat), 2));
-
-        const x = (v + alt) * Math.cos(rad_lat) * Math.cos(rad_lon);
-        const y = (v + alt) * Math.cos(rad_lat) * Math.sin(rad_lon);
-        const z = (v * (1 - e2) + alt) * Math.sin(rad_lat);
-
-        // Redondear a 8 decimales
-        return {
-            x: parseFloat(x.toFixed(3)),
-            y: parseFloat(y.toFixed(3)),
-            z: parseFloat(z.toFixed(3)),
-        };
-    }
-
-    function ecef2lla(ecefArr: number[]): {
-        lat: number;
-        lon: number;
-        alt: number;
-    } {
-        const [x, y, z] = ecefArr;
-
-        // Parámetros WGS84
-        const a = 6378137; // Semieje mayor (m)
-        const e = 8.1819190842622e-2; // Excentricidad
-
-        const asq = Math.pow(a, 2);
-        const esq = Math.pow(e, 2);
-
-        const b = Math.sqrt(asq * (1 - esq));
-        const bsq = Math.pow(b, 2);
-
-        const ep = Math.sqrt((asq - bsq) / bsq);
-        const p = Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2));
-        const th = Math.atan2(a * z, b * p);
-
-        const lon = Math.atan2(y, x);
-        const lat = Math.atan2(
-            z + Math.pow(ep, 2) * b * Math.pow(Math.sin(th), 3),
-            p - esq * a * Math.pow(Math.cos(th), 3),
-        );
-
-        const N = a / Math.sqrt(1 - esq * Math.pow(Math.sin(lat), 2));
-        const alt = p / Math.cos(lat) - N;
-
-        // Convertir a grados y redondear a 8 decimales
-        return {
-            lat: parseFloat(((lat * 180) / Math.PI).toFixed(8)),
-            lon: parseFloat(((lon * 180) / Math.PI).toFixed(8)),
-            alt: parseFloat(alt.toFixed(3)),
-        };
-    }
-
     useEffect(() => {
         if (showMenu) {
             const ref = inputRefNetworkCode;
@@ -326,6 +260,7 @@ const AddStationManual = ({
                 },
             });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [coordinatesType]);
 
     useEffect(() => {
@@ -371,7 +306,7 @@ const AddStationManual = ({
                                                             className="text-sm font-bold flex items-center"
                                                             title={
                                                                 generalFields[
-                                                                idx
+                                                                    idx
                                                                 ]
                                                             }
                                                         >
@@ -380,7 +315,7 @@ const AddStationManual = ({
                                                                 className={`size-3  rounded-full ml-3`}
                                                                 title={
                                                                     generalFields[
-                                                                    idx
+                                                                        idx
                                                                     ]
                                                                 }
                                                             ></div>
@@ -401,26 +336,26 @@ const AddStationManual = ({
                                                                     errorBadge
                                                                         ? errorBadge.detail
                                                                         : key ===
-                                                                            "max_dist" &&
+                                                                                "max_dist" &&
                                                                             maxDistErrorBadge
-                                                                            ? maxDistErrorBadge.detail
-                                                                            : ""
+                                                                          ? maxDistErrorBadge.detail
+                                                                          : ""
                                                                 }
                                                             >
                                                                 {key ===
                                                                     "network_code" && (
-                                                                        <MenuButton
-                                                                            setShowMenu={
-                                                                                setShowMenu
-                                                                            }
-                                                                            showMenu={
-                                                                                showMenu
-                                                                            }
-                                                                            typeKey={
-                                                                                key
-                                                                            }
-                                                                        />
-                                                                    )}
+                                                                    <MenuButton
+                                                                        setShowMenu={
+                                                                            setShowMenu
+                                                                        }
+                                                                        showMenu={
+                                                                            showMenu
+                                                                        }
+                                                                        typeKey={
+                                                                            key
+                                                                        }
+                                                                    />
+                                                                )}
                                                                 <input
                                                                     className={
                                                                         "w-full "
@@ -429,14 +364,14 @@ const AddStationManual = ({
                                                                     type="text"
                                                                     ref={
                                                                         key ===
-                                                                            "network_code"
+                                                                        "network_code"
                                                                             ? inputRefNetworkCode
                                                                             : null
                                                                     }
                                                                     value={
                                                                         formState
                                                                             .stationMeta[
-                                                                        key as keyof typeof formState.stationMeta
+                                                                            key as keyof typeof formState.stationMeta
                                                                         ] ?? ""
                                                                     }
                                                                     name={
@@ -475,8 +410,8 @@ const AddStationManual = ({
                                                                         }
                                                                     </span>
                                                                 ) : key ===
-                                                                    "max_dist" &&
-                                                                    maxDistErrorBadge ? (
+                                                                      "max_dist" &&
+                                                                  maxDistErrorBadge ? (
                                                                     <span className="badge badge-error self-start -mt-2">
                                                                         {
                                                                             maxDistErrorBadge.code
@@ -486,15 +421,14 @@ const AddStationManual = ({
                                                             </label>
                                                             {showMenu?.show &&
                                                                 showMenu.type ===
-                                                                key &&
+                                                                    key &&
                                                                 key ===
-                                                                "network_code" && (
+                                                                    "network_code" && (
                                                                     <div className="absolute w-full z-10 top-full">
-                                                                        <Menu
-                                                                        >
+                                                                        <Menu>
                                                                             {networks &&
                                                                                 (filtredNC.length ===
-                                                                                    0
+                                                                                0
                                                                                     ? networks
                                                                                     : filtredNC
                                                                                 ).map(
@@ -592,7 +526,7 @@ const AddStationManual = ({
                                                         className="input input-bordered w-full"
                                                         value={
                                                             formState.station[
-                                                            key as keyof typeof formState.station
+                                                                key as keyof typeof formState.station
                                                             ]
                                                         }
                                                         name={"station." + key}
@@ -626,7 +560,7 @@ const AddStationManual = ({
                                                     name={"station." + key}
                                                     value={
                                                         formState.station[
-                                                        key as keyof typeof formState.station
+                                                            key as keyof typeof formState.station
                                                         ]
                                                     }
                                                     onChange={(e) =>

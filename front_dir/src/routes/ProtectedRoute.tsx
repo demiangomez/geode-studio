@@ -3,11 +3,13 @@ import { Navigate, Outlet } from "react-router-dom";
 import Toast from "@components/Message";
 import Layout from "@pages/Layout";
 
-import { useUser, useAuth, usePageTitle } from "@hooks";
+import { useAuth } from "@hooks/useAuth";
+import { useUser } from "@hooks/user/userInfo.context";
+import { usePageTitle } from "@hooks/usePageTitle";
 
 import { apiMethods } from "@utils";
 
-export const ProtectedRoute = () => {
+const ProtectedRoute = () => {
     const { token } = useAuth();
 
     usePageTitle();
@@ -17,7 +19,9 @@ export const ProtectedRoute = () => {
             status: userFetchStatus,
             method: userFetchMethod,
             msg: userMsg,
+            serverError,
         },
+        dispatch: userDispatch,
     } = useUser();
 
     let msg = null;
@@ -31,6 +35,14 @@ export const ProtectedRoute = () => {
     return token ? (
         <Layout>
             {userFetchStatus === "unAuthorized" && msg}
+            {serverError && (
+                <Toast
+                    error={true}
+                    msg={serverError.msg}
+                    duration={6000}
+                    onClose={() => userDispatch({ type: "CLEAR_SERVER_ERROR" })}
+                />
+            )}
             <Outlet />
         </Layout>
     ) : (

@@ -9,33 +9,22 @@ import {
 } from "@services";
 import {
     AntennaServiceData,
-    ErrorResponse,
     GamitHTCServiceData,
     RadomesServiceData,
     ReceiversServiceData,
 } from "@types";
+import { unwrapApiResponse } from "@utils";
 
 const staticOptions = {
     staleTime: 24 * 60 * 60 * 1000,
     refetchOnWindowFocus: false,
 };
 
-// el interceptor de useApi nunca rechaza: hay que chequear statusCode y tirar acá
-function check<T extends { statusCode: number }>(res: T | ErrorResponse): T {
-    if (res.statusCode !== 200) {
-        const err = res as ErrorResponse;
-        throw new Error(
-            err.response?.errors?.[0]?.detail ?? err.msg ?? "Request failed",
-        );
-    }
-    return res as T;
-}
-
 export const useReceivers = (api: AxiosInstance) => {
     return useQuery({
         queryKey: ["receivers"],
         queryFn: async () => {
-            const res = check(
+            const res = unwrapApiResponse(
                 await getReceiversService<ReceiversServiceData>(api),
             );
             return res.data;
@@ -48,7 +37,7 @@ export const useAntennas = (api: AxiosInstance) => {
     return useQuery({
         queryKey: ["antennaCodes"],
         queryFn: async () => {
-            const res = check(
+            const res = unwrapApiResponse(
                 await getAntennasService<AntennaServiceData>(api),
             );
             return res.data;
@@ -61,7 +50,7 @@ export const useRadomes = (api: AxiosInstance, antennaCode: string) => {
     return useQuery({
         queryKey: ["radomeCodes", antennaCode],
         queryFn: async () => {
-            const res = check(
+            const res = unwrapApiResponse(
                 await getRadomesService<RadomesServiceData>(api, {
                     limit: 0,
                     offset: 0,
@@ -78,7 +67,7 @@ export const useHeightCodes = (api: AxiosInstance, antennaCode: string) => {
     return useQuery({
         queryKey: ["heightCodes", antennaCode],
         queryFn: async () => {
-            const res = check(
+            const res = unwrapApiResponse(
                 await getHeightCodesService<GamitHTCServiceData>(api, {
                     limit: 0,
                     offset: 0,

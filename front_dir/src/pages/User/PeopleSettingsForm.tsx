@@ -78,7 +78,11 @@ const PeopleSettingsForm = ({ person, getData }: Props) => {
     >(undefined);
 
     const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     const getUsers = async () => {
         try {
@@ -217,6 +221,7 @@ const PeopleSettingsForm = ({ person, getData }: Props) => {
             getUsers();
         }
         getPeopleData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [person]);
 
     useEffect(() => {
@@ -228,6 +233,7 @@ const PeopleSettingsForm = ({ person, getData }: Props) => {
                 inputValue: image,
             },
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [image]);
 
     return person !== null ? (

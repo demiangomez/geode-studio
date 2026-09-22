@@ -38,9 +38,7 @@ function cesiumAssets(base: string): Plugin {
         },
         configureServer(server) {
             server.middlewares.use(`/${base}`, (req, res, next) => {
-                const rel = decodeURIComponent(
-                    (req.url ?? "").split("?")[0],
-                );
+                const rel = decodeURIComponent((req.url ?? "").split("?")[0]);
                 const file = path.join(CESIUM_SOURCE, rel);
                 const resolved = path.resolve(file);
                 if (
@@ -87,11 +85,10 @@ export default defineConfig(({ mode }) => {
                     // estáticamente y debe vivir detrás de su import() dinámico
                     manualChunks(id) {
                         const path = id.replace(/^\0/, "").split("?")[0];
-                        // rbush/quickselect/tslib: compartidas entre cesium y el grafo
-                        // eager — si caen dentro del chunk cesium, este queda importado
-                        // estáticamente y se precarga en el arranque
+                        // Micro-deps compartidas entre chunks pesados y el resto: al vendor
+                        // para que no acoplen chunks (clsx dentro de pdf ataba datepicker→pdf)
                         if (
-                            /node_modules\/(rbush|quickselect|tslib)\//.test(
+                            /node_modules\/(rbush|quickselect|tslib|clsx)\//.test(
                                 path,
                             )
                         )
@@ -111,10 +108,12 @@ export default defineConfig(({ mode }) => {
                             )
                         )
                             return "vendor";
-                        // helpers virtuales de rollup: al chunk eager para que
-                        // ningún chunk lazy los capture
+                        // Solo virtuales sin paquete (commonjsHelpers, preload-helper): eager
+                        // para que ningún lazy los capture. Los ?commonjs-proxy por-paquete
+                        // no: pinearlos arrastraba todas las deps CJS al vendor eager
                         if (
-                            id.startsWith("\0") ||
+                            (id.startsWith("\0") &&
+                                !path.includes("node_modules/")) ||
                             id.includes("commonjsHelpers")
                         )
                             return "vendor";

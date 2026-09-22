@@ -27,8 +27,12 @@ export const useKmlLayer = ({
     mapInstance,
 }: UseKmlLayerOptions): UseKmlLayerReturn => {
     const kmlLayerRef = useRef<VectorLayer | null>(null);
+    // Invalida cargas en vuelo: un loadKml/clearKml posterior gana siempre,
+    // si no un parse lento terminaba agregando una capa que ya nadie referencia
+    const loadIdRef = useRef(0);
 
     const clearKml = useCallback(() => {
+        loadIdRef.current++;
         if (kmlLayerRef.current && mapInstance.current) {
             mapInstance.current.removeLayer(kmlLayerRef.current);
             kmlLayerRef.current = null;
@@ -40,9 +44,13 @@ export const useKmlLayer = ({
             if (!mapInstance.current) return;
 
             clearKml();
+            const loadId = loadIdRef.current;
 
             try {
                 const features = await parseKmlFromBase64(base64Data);
+                if (loadId !== loadIdRef.current || !mapInstance.current) {
+                    return;
+                }
                 const kmlLayer = createKmlLayer(features, options);
 
                 kmlLayerRef.current = kmlLayer;
@@ -159,12 +167,14 @@ export const useMultiKmlLayer = ({
                 }
             }
         },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [getLayer],
     );
 
     useEffect(() => {
         return () => {
             if (multiKmlLayerRef.current && mapInstance.current) {
+                // eslint-disable-next-line react-hooks/exhaustive-deps
                 mapInstance.current.removeLayer(multiKmlLayerRef.current);
             }
             multiKmlLayerRef.current = null;

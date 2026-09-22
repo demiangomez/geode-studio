@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
     ArrowRightEndOnRectangleIcon,
+    MapIcon,
     TruckIcon,
     PlusIcon,
     ServerIcon,
@@ -13,13 +14,22 @@ import {
     ShareIcon,
     Cog6ToothIcon,
     UsersIcon,
+    ClipboardDocumentListIcon,
+    GlobeAltIcon,
+    RectangleStackIcon,
+    Square3Stack3DIcon,
 } from "@heroicons/react/24/outline";
 
-import StationModal from "@components/modals/Station/StationModal/StationModal";
+import NavDropdown, { NavDropdownLink } from "@components/NavDropdown";
+import useApi from "@hooks/useApi";
+import { useAuth } from "@hooks/useAuth";
+import { useServerHealth } from "@hooks/queries/useServerHealth";
+import { jwtDeserializer, lazyRetry } from "@utils";
 
-import { useApi, useAuth, useClickOutside } from "@hooks";
-import { useServerHealth } from "@hooks/queries";
-import { jwtDeserializer, showModal } from "@utils";
+// Lazy: su subárbol (metadata, dropzone, pako, mapa) no debe entrar al chunk eager
+const StationModal = lazyRetry(
+    () => import("@components/modals/Station/StationModal/StationModal"),
+);
 
 const Nav = () => {
     const { logout, token, userPhoto } = useAuth();
@@ -35,10 +45,6 @@ const Nav = () => {
         | undefined
     >(undefined);
 
-    const [isDroped, setIsDroped] = useState<boolean>(false);
-
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
     const createStation = () => {
         setModals({
             show: true,
@@ -46,12 +52,6 @@ const Nav = () => {
             type: "add",
         });
     };
-
-    useClickOutside(dropdownRef, () => setIsDroped(false), isDroped);
-
-    useEffect(() => {
-        modals?.show && showModal(modals.title);
-    }, [modals]);
 
     return (
         <>
@@ -86,13 +86,27 @@ const Nav = () => {
                     >
                         <PlusIcon className="size-8" onClick={createStation} />
                     </div>
-                    <Link
-                        className="btn btn-ghost btn-circle"
-                        to={"/campaigns"}
+                    <NavDropdown
                         title="Campaigns"
+                        trigger={<TruckIcon className="size-8" />}
                     >
-                        <TruckIcon className="size-8" />
-                    </Link>
+                        {(close) => (
+                            <>
+                                <NavDropdownLink
+                                    to="/campaigns"
+                                    icon={<TruckIcon className="size-6" />}
+                                    label="Campaigns"
+                                    onClick={close}
+                                />
+                                <NavDropdownLink
+                                    to="/campaign-plans"
+                                    icon={<MapIcon className="size-6" />}
+                                    label="Plans"
+                                    onClick={close}
+                                />
+                            </>
+                        )}
+                    </NavDropdown>
                     <Link
                         className="btn btn-ghost btn-circle"
                         to={"/people"}
@@ -121,15 +135,40 @@ const Nav = () => {
                     >
                         <ShareIcon className="size-8" />
                     </Link>
-                    <div className="" ref={dropdownRef}>
-                        <div
-                            tabIndex={0}
-                            role="button"
-                            className="btn btn-ghost btn-circle avatar"
-                            title="User"
-                            onClick={() => setIsDroped((prev) => !prev)}
-                        >
-                            {!userPhoto ? (
+                    <Link
+                        className="btn btn-ghost btn-circle"
+                        to={"/events"}
+                        title="General Events"
+                    >
+                        <ClipboardDocumentListIcon className="size-8" />
+                    </Link>
+                    <NavDropdown
+                        title="Processing and Frames"
+                        trigger={<Square3Stack3DIcon className="size-8" />}
+                    >
+                        {(close) => (
+                            <>
+                                <NavDropdownLink
+                                    to="/processing-projects/gamit"
+                                    icon={
+                                        <RectangleStackIcon className="size-6" />
+                                    }
+                                    label="GAMIT Projects"
+                                    onClick={close}
+                                />
+                                <NavDropdownLink
+                                    to="/reference-frames"
+                                    icon={<GlobeAltIcon className="size-6" />}
+                                    label="Reference Frames"
+                                    onClick={close}
+                                />
+                            </>
+                        )}
+                    </NavDropdown>
+                    <NavDropdown
+                        title="User"
+                        trigger={
+                            !userPhoto ? (
                                 <UserCircleIcon className="size-8" />
                             ) : (
                                 <img
@@ -137,73 +176,52 @@ const Nav = () => {
                                     className="rounded-full w-6 h-6"
                                     src={`data:image/*;base64,${userPhoto}`}
                                 />
-                            )}
-                        </div>
-
-                        {isDroped && (
-                            <ul
-                                tabIndex={0}
-                                className="menu menu-sm mt-3 absolute right-1 top-[70px] z-[10000000000000000] space-y-1 p-2 shadow bg-gray-800 border-[1px] border-gray-600 rounded-box w-52"
-                            >
-                                <div className=" border-b-[1px] border-gray-600 flex justify-center">
-                                    <span className="mb-2">
-                                        <strong>
-                                            {userName?.toUpperCase()}
-                                        </strong>
-                                    </span>
-                                </div>
-                                <li className="">
-                                    <Link
-                                        className="hover:bg-slate-600 flex justify-start focus:text-primary"
-                                        to={"/users"}
-                                        onClick={() =>
-                                            setIsDroped((prev) => !prev)
-                                        }
-                                    >
-                                        <UserGroupIcon className="size-6" />
-                                        <span className="ml-[40px]">Users</span>
-                                    </Link>
-                                </li>
-                                <li className="">
-                                    <Link
-                                        className="hover:bg-slate-600 flex justify-start focus:text-primary"
-                                        to={"/settings"}
-                                        onClick={() =>
-                                            setIsDroped((prev) => !prev)
-                                        }
-                                    >
-                                        <Cog6ToothIcon className="size-6" />
-                                        <span className="ml-[40px]">
-                                            Settings
-                                        </span>
-                                    </Link>
-                                </li>
-                                <li className="">
-                                    <a
-                                        className="hover:bg-slate-600 flex w-full justify-start"
-                                        onClick={() => {
-                                            logout();
-                                        }}
-                                    >
+                            )
+                        }
+                        header={
+                            <div className="border-b-[1px] border-gray-600 flex justify-center">
+                                <span className="mb-2">
+                                    <strong>{userName?.toUpperCase()}</strong>
+                                </span>
+                            </div>
+                        }
+                    >
+                        {(close) => (
+                            <>
+                                <NavDropdownLink
+                                    to="/users"
+                                    icon={<UserGroupIcon className="size-6" />}
+                                    label="Users"
+                                    onClick={close}
+                                />
+                                <NavDropdownLink
+                                    to="/settings"
+                                    icon={<Cog6ToothIcon className="size-6" />}
+                                    label="Settings"
+                                    onClick={close}
+                                />
+                                <NavDropdownLink
+                                    icon={
                                         <ArrowRightEndOnRectangleIcon className="size-6" />
-                                        <span className="ml-[40px]">
-                                            Logout
-                                        </span>
-                                    </a>
-                                </li>
-                            </ul>
+                                    }
+                                    label="Logout"
+                                    onClick={logout}
+                                />
+                            </>
                         )}
-                    </div>
+                    </NavDropdown>
                 </div>
             </div>
             {modals && modals.show && modals.title === "station" && (
-                <StationModal
-                    handleCloseModal={() => {
-                        setModals(undefined);
-                        window.location.href = "/";
-                    }}
-                    setModals={setModals}
-                />
+                <Suspense fallback={null}>
+                    <StationModal
+                        handleCloseModal={() => {
+                            setModals(undefined);
+                            window.location.href = "/";
+                        }}
+                        setModals={setModals}
+                    />
+                </Suspense>
             )}
         </>
     );

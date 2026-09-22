@@ -16,6 +16,8 @@ class ApiConfig(AppConfig):
         from django.conf import settings
         from django.core.exceptions import ImproperlyConfigured
 
+        from api import signals  # noqa: F401 (connects auditlog->events bridge)
+
         if int(getattr(settings, 'MAX_SIZE_IMAGE_MB', None)) > 75:
             raise ImproperlyConfigured(
                 "MAX_SIZE_IMAGE_MB must be equal or less than 75 MB")

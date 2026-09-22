@@ -1,31 +1,38 @@
-import {
-    StationData,
-    SourcesServerData,
-    SourcesServerServiceData,
-    SourcesFormatServiceData,
-    SourcesFormatData,
-    SourcesStationsData,
-    SourcesStationsServiceData,
-} from "@types";
+import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import {
-    getSourcesServersService,
-    getSourcesFormatsService,
-    getSourcesStationsByStationIdService,
-} from "@services";
+
 import {
     CardContainer,
     StationChangeTryOrderModal,
+    StationSourceMetadataModal,
     StationSourcesModal,
     Table,
     TableCard,
 } from "@componentsReact";
-import { showModal } from "@utils";
+
 import { useAuth, useApi } from "@hooks";
-import { useEffect, useMemo, useState } from "react";
+import {
+    useInvalidateSources,
+    useSourcesFormats,
+    useSourcesMetadataById,
+    useSourcesServers,
+    useStationSources,
+} from "@hooks/queries";
+
+import { showModal } from "@utils";
+
+import {
+    inheritedFromServer,
+    rinexServerLabel,
+} from "../SourcesServers/sourcesCatalog";
+
+import { SourcesServerData, SourcesStationsData, StationData } from "@types";
+
 interface OutletContext {
     station: StationData;
 }
+
+const RINEX_TITLES = ["try_order", "server", "path", "format"];
 
 const Sources = () => {
     const { station } = useOutletContext<OutletContext>();
@@ -36,157 +43,71 @@ const Sources = () => {
 
     const [modals, setModals] = useState<
         | {
-            show: boolean;
-            title: string;
-            type: "add" | "edit" | "none";
-        }
+              show: boolean;
+              title: string;
+              type: "add" | "edit" | "none";
+          }
         | undefined
     >(undefined);
-
-    const [loading, setLoading] = useState<boolean>(false);
-
-    const [sourcesServers, setSourcesServers] = useState<
-        SourcesServerData[] | undefined
-    >(undefined);
-
-    const [sourcesFormats, setSourcesFormats] = useState<
-        SourcesFormatData[] | undefined
-    >(undefined);
-
-    const [sourcesStations, setSourcesStations] = useState<
-        SourcesStationsData[]
-    >([]);
-
-    const [data, setData] = useState<string[][]>([]);
 
     const [sourceStation, setSourceStation] = useState<
         SourcesStationsData | undefined
     >(undefined);
 
-    const titles =
-        sourcesStations.length > 0
-            ? ["try_order", "server", "path", "format"]
-            : [];
+    const { data: sourcesServers, isFetching: serversFetching } =
+        useSourcesServers(api);
+    const { data: sourcesFormats } = useSourcesFormats(api);
+    const { data: sourcesStations, isFetching: stationsFetching } =
+        useStationSources(api, station.network_code, station.station_code);
 
-    const getSourcesServers = async () => {
-        try {
-            const res =
-                await getSourcesServersService<SourcesServerServiceData>(api);
-            if (res.statusCode === 200 && res.data) {
-                setSourcesServers(res.data);
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    };
+    const loading = serversFetching || stationsFetching;
 
-    const getSourcesFormats = async () => {
-        try {
-            const res =
-                await getSourcesFormatsService<SourcesFormatServiceData>(api);
-            if (res.statusCode === 200 && res.data) {
-                setSourcesFormats(res.data);
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    };
+    const refetch = useInvalidateSources();
 
-    const getSourcesStations = async () => {
-        try {
-            const res =
-                await getSourcesStationsByStationIdService<SourcesStationsServiceData>(
-                    api,
-                    station.network_code,
-                    station.station_code,
-                );
-            if (res.statusCode === 200 && res.data) {
-                const orderedSourcesStations = res.data.sort(
-                    (a, b) => a.try_order - b.try_order,
-                );
-                setSourcesStations(orderedSourcesStations);
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    };
+    const serversById = useMemo(
+        () =>
+            new Map<number, SourcesServerData>(
+                (sourcesServers ?? []).map((server) => [
+                    server.server_id,
+                    server,
+                ]),
+            ),
+        [sourcesServers],
+    );
+
+    const rinexRows = useMemo(
+        () =>
+            (sourcesStations ?? []).map((sourceStation) => {
+                const server = serversById.get(sourceStation.server_id);
+                return [
+                    sourceStation.try_order.toString(),
+                    server ? rinexServerLabel(server) : "N/A",
+                    inheritedFromServer(sourceStation.path, server?.path ?? ""),
+                    inheritedFromServer(
+                        sourceStation.format,
+                        server?.format ?? "",
+                    ),
+                ];
+            }),
+        [sourcesStations, serversById],
+    );
+
+    const viewingMetadata =
+        !!modals?.show && modals.title === "Station Source Metadata";
+
+    const selectedServer = sourceStation
+        ? serversById.get(sourceStation.server_id)
+        : undefined;
+
+    const { data: viewedMetadata, isFetching: metadataFetching } =
+        useSourcesMetadataById(api, selectedServer?.metadata_source_id, {
+            enabled: viewingMetadata && !!selectedServer?.metadata_source_id,
+        });
 
     const handleCloseModal = () => {
         setModals(undefined);
         setSourceStation(undefined);
     };
-
-    const handleEdit = () => {
-        setModals({
-            show: true,
-            title: "Station Sources",
-            type: "edit",
-        });
-    };
-
-    const refetch = () => {
-        Promise.all([
-            setLoading(true),
-            getSourcesServers(),
-            getSourcesStations(),
-            getSourcesFormats(),
-        ]).then(() => {
-            setLoading(false);
-        });
-    };
-
-    const getDefaultFormat = (serverId: number) => {
-        const server = sourcesServers?.find((sv) => sv.server_id === serverId);
-        if (server) {
-            return server.format;
-        } else {
-            return "";
-        }
-    };
-
-    const getDefaultPath = (serverId: number) => {
-        const server = sourcesServers?.find((sv) => sv.server_id === serverId);
-        if (server) {
-            return server.path;
-        } else {
-            return "";
-        }
-    };
-
-    useMemo(() => {
-        if (sourcesStations && sourcesServers && sourcesFormats) {
-            const newData: string[][] = [];
-            sourcesStations.forEach((sourceStation) => {
-                const server = sourcesServers.find(
-                    (server) => server.server_id === sourceStation.server_id,
-                );
-                const serverData = server
-                    ? server.fqdn + " " + server.protocol
-                    : "N/A";
-                const format =
-                    sourceStation.format && sourceStation.format !== ""
-                        ? sourceStation.format
-                        : "* " + getDefaultFormat(sourceStation.server_id);
-                const path =
-                    typeof sourceStation.path === "string" &&
-                        sourceStation.path !== ""
-                        ? sourceStation.path
-                        : "* " + getDefaultPath(sourceStation.server_id);
-                const auxNewData = [
-                    sourceStation.try_order.toString(),
-                    serverData,
-                    path,
-                    format,
-                ];
-                newData.push(auxNewData);
-            });
-            setData(newData);
-        }
-    }, [sourcesStations, sourcesServers, sourcesFormats]);
-
-    useEffect(() => {
-        refetch();
-    }, []);
 
     useEffect(() => {
         modals?.show && showModal(modals.title);
@@ -209,18 +130,33 @@ const Sources = () => {
                         secondModalTitle="Change Try Order"
                     >
                         <p className="text-sm italic text-gray-600 mb-2">
-                            Server default values are marked with "*",
+                            Server default values are marked with "*". Click the
+                            book icon to view the linked metadata source.
                         </p>
-                        {data.length > 0 ? (
+                        {rinexRows.length > 0 ? (
                             <Table
                                 table="sources"
-                                titles={titles ?? []}
-                                body={data}
+                                titles={RINEX_TITLES}
+                                body={rinexRows}
                                 loading={loading}
-                                onClickFunction={handleEdit}
+                                onClickFunction={() =>
+                                    setModals({
+                                        show: true,
+                                        title: "Station Sources",
+                                        type: "edit",
+                                    })
+                                }
                                 deleteRegister={false}
                                 state={sourcesStations}
                                 setState={setSourceStation}
+                                viewRegister={true}
+                                onViewClickFunction={() =>
+                                    setModals({
+                                        show: true,
+                                        title: "Station Source Metadata",
+                                        type: "edit",
+                                    })
+                                }
                                 dataFetchUrl="api/sources-stations"
                             />
                         ) : (
@@ -247,12 +183,17 @@ const Sources = () => {
                 <StationChangeTryOrderModal
                     api={api}
                     sourcesServers={sourcesServers}
-                    sourcesStations={sourcesStations}
-                    handleCloseModal={() => {
-                        setModals(undefined);
-                        setSourceStation(undefined);
-                    }}
+                    sourcesStations={sourcesStations ?? []}
+                    handleCloseModal={handleCloseModal}
                     refetch={refetch}
+                />
+            )}
+            {viewingMetadata && (
+                <StationSourceMetadataModal
+                    metadata={viewedMetadata}
+                    loading={metadataFetching}
+                    linked={!!selectedServer?.metadata_source_id}
+                    handleCloseModal={handleCloseModal}
                 />
             )}
         </div>

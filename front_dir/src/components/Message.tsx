@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface MessageProps {
     error: boolean | undefined;
@@ -10,6 +11,7 @@ interface MessageProps {
 const Message = ({ error, msg, duration = 3000, onClose }: MessageProps) => {
     const [value, setValue] = useState(0);
     const [show, setShow] = useState(true);
+    const [dialogHost, setDialogHost] = useState<HTMLElement | null>(null);
 
     const alertType = error
         ? "inline-flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg bg-red-800 text-red-200"
@@ -23,7 +25,7 @@ const Message = ({ error, msg, duration = 3000, onClose }: MessageProps) => {
 
     const MAX = 100;
     // Tick frequency in ms
-    const tickMs = 20; 
+    const tickMs = 20;
 
     useEffect(() => {
         setValue(0);
@@ -47,16 +49,29 @@ const Message = ({ error, msg, duration = 3000, onClose }: MessageProps) => {
             clearInterval(interval);
             clearTimeout(timeout);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [msg, duration]);
+
+    useEffect(() => {
+        if (!msg) return;
+        const open =
+            document.querySelectorAll<HTMLDialogElement>("dialog[open]");
+        const top = open.length > 0 ? open[open.length - 1] : null;
+        setDialogHost(top);
+        if (!top) return;
+        const onClose = () => setDialogHost(null);
+        top.addEventListener("close", onClose);
+        return () => top.removeEventListener("close", onClose);
+    }, [msg]);
 
     if (!show || !msg) {
         return null;
     }
 
-    return (
+    const toast = (
         <div
             id="toasty"
-            className={`flex flex-col fixed z-[1000000] right-6 top-12 mt-10 ${error ? "border-t-2 border-t-red-500" : "border-t-2 border-t-green-500"} items-center w-full max-w-xs p-4 mb-4 rounded-lg shadow text-gray-400 bg-gray-800 `}
+            className={`flex flex-col fixed z-[1000000] right-4 top-4 mt-10 ${error ? "border-t-2 border-t-red-500" : "border-t-2 border-t-green-500"} items-center w-full max-w-xs p-4 mb-4 rounded-lg shadow text-gray-400 bg-gray-800 `}
             role="alert"
         >
             <div className="flex items-center justify-between w-full space-x-2">
@@ -108,6 +123,10 @@ const Message = ({ error, msg, duration = 3000, onClose }: MessageProps) => {
             ></progress>
         </div>
     );
+
+    // se necesita el portal ya que el modal utiliza un backdrop situado en la top-layer del DOM
+    // layer que no es alcanzable jerarquicamente.
+    return dialogHost ? createPortal(toast, dialogHost) : toast;
 };
 
 export default Message;

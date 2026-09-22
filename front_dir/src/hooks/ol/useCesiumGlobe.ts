@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Map from "ol/Map";
 import { toLonLat } from "ol/proj";
 import { dynamicImportRetry } from "@utils";
+import { createGeodeFeatureConverter } from "./cesium/createGeodeFeatureConverter";
 
 import { useMapStore } from "@store";
 
@@ -15,7 +16,6 @@ interface UseCesiumGlobeOptions {
 }
 
 interface UseCesiumGlobeReturn {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ol3dRef: React.RefObject<any>;
     isGlobeActive: boolean;
     isGlobeLoading: boolean;
@@ -27,7 +27,6 @@ export const useCesiumGlobe = ({
     globeEnabled,
     mapLayerState,
 }: UseCesiumGlobeOptions): UseCesiumGlobeReturn => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ol3dRef = useRef<any>(null);
     const [isGlobeActive, setIsGlobeActive] = useState(false);
 
@@ -45,13 +44,14 @@ export const useCesiumGlobe = ({
             (async () => {
                 try {
                     // lazy load with retry
-                    const [CesiumModule, OLCesiumModule] = await dynamicImportRetry(
-                        () =>
-                            Promise.all([
-                                import("cesium"),
-                                import("olcs"),
-                            ]) as Promise<[any, any]>,
-                    );
+                    const [CesiumModule, OLCesiumModule] =
+                        await dynamicImportRetry(
+                            () =>
+                                Promise.all([
+                                    import("cesium"),
+                                    import("olcs"),
+                                ]) as Promise<[any, any]>,
+                        );
 
                     if (cancelled) return;
 
@@ -62,10 +62,18 @@ export const useCesiumGlobe = ({
                     // Most WebGL implementations only support a maximum lineWidth of 1.0.
                     // When ol-cesium synchronizes OpenLayers features with thick strokes (e.g., width: 6),
                     // Cesium tries to create a RenderState with that lineWidth, which throws a DeveloperError.
+                    // CesiumModule is the same cached ES module namespace on every activation, so guard
+                    // against re-wrapping fromCache each time the globe is toggled on.
                     const originalRenderState = CesiumModule.RenderState;
-                    if (originalRenderState && originalRenderState.fromCache) {
+                    if (
+                        originalRenderState &&
+                        originalRenderState.fromCache &&
+                        !originalRenderState.__geodeLineWidthPatched
+                    ) {
                         const originalFromCache = originalRenderState.fromCache;
-                        originalRenderState.fromCache = function (settings: any) {
+                        originalRenderState.fromCache = function (
+                            settings: any,
+                        ) {
                             if (
                                 settings &&
                                 typeof settings.lineWidth === "number" &&
@@ -78,10 +86,11 @@ export const useCesiumGlobe = ({
                                 settings,
                             );
                         };
+                        originalRenderState.__geodeLineWidthPatched = true;
                     }
 
-                    await dynamicImportRetry(() =>
-                        import("cesium/Build/Cesium/Widgets/widgets.css"),
+                    await dynamicImportRetry(
+                        () => import("cesium/Build/Cesium/Widgets/widgets.css"),
                     ).catch(() => {
                         console.warn(
                             "Could not load Cesium widgets.css — non-critical",
@@ -91,10 +100,36 @@ export const useCesiumGlobe = ({
                     if (cancelled || !mapInstance.current) return;
 
                     const OLCesium = OLCesiumModule.default ?? OLCesiumModule;
-                    const ol3d = new OLCesium({ map: mapInstance.current });
+                    const {
+                        FeatureConverter,
+                        RasterSynchronizer,
+                        VectorSynchronizer,
+                        OverlaySynchronizer,
+                    } = OLCesiumModule;
+                    const ol3d = new OLCesium({
+                        map: mapInstance.current,
+                        createSynchronizers: (map: any, scene: any) => [
+                            new RasterSynchronizer(map, scene),
+                            new VectorSynchronizer(
+                                map,
+                                scene,
+                                createGeodeFeatureConverter(
+                                    FeatureConverter,
+                                    CesiumModule,
+                                    scene,
+                                ),
+                            ),
+                            new OverlaySynchronizer(map, scene),
+                        ],
+                    });
 
                     // Configure the Cesium scene
                     const scene = ol3d.getCesiumScene();
+                    scene.renderError.addEventListener(
+                        (_scene: any, error: unknown) => {
+                            console.error("Cesium scene render error:", error);
+                        },
+                    );
                     scene.globe.enableLighting = false;
                     if (scene.skyAtmosphere) {
                         scene.skyAtmosphere.show = true;
@@ -159,7 +194,8 @@ export const useCesiumGlobe = ({
         const applyZoomLimit = () => {
             const center = view.getCenter();
             if (!center) return;
-            const latRad = (toLonLat(center, view.getProjection())[1] * Math.PI) / 180;
+            const latRad =
+                (toLonLat(center, view.getProjection())[1] * Math.PI) / 180;
             const minResolution = view.getResolutionForZoom(view.getMaxZoom());
             const distance = ol3d
                 .getCamera()

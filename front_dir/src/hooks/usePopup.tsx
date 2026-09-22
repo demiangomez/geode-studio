@@ -13,5 +13,3 @@ export const usePopup = (timeout = 3000) => {
 
     return { showPopup, show };
 };
-
-export default usePopup;

@@ -23,63 +23,6 @@ const CAUTION_STYLE = new Style({
     }),
 });
 
-export const clusterMemberStyle = (clusterMember: Feature<Geometry>): Style => {
-    const existingStyle = clusterMember.getStyle();
-    if (existingStyle) {
-        return existingStyle as Style;
-    }
-    return CAUTION_STYLE;
-};
-
-export const clusterStyle = (feature: Feature<Geometry>): Style => {
-    const size = feature.get("features").length;
-    if (size === 1) {
-        return clusterMemberStyle(feature.get("features")[0]);
-    }
-
-    const clusterMembers = feature.get("features");
-    const hasProblems = clusterMembers.some((memberFeature: Feature) => {
-        const station = memberFeature.get("station") as StationData;
-        return station && (!station.has_stationinfo || station.has_gaps);
-    });
-
-    const cacheKey = size * (hasProblems ? -1 : 1);
-
-    if (clusterStyleCache.has(cacheKey)) {
-        return clusterStyleCache.get(cacheKey)!;
-    }
-
-    const clusterColor = hasProblems
-        ? "rgba(255, 59, 48, 0.85)"
-        : "rgba(52, 199, 89, 0.85)";
-
-    const newClusterStyle = new Style({
-        image: new CircleStyle({
-            radius: 15,
-            fill: new Fill({ color: clusterColor }),
-            stroke: new Stroke({
-                color: "rgba(255, 255, 255, 0.8)",
-                width: 2,
-            }),
-        }),
-        text: new Text({
-            text: size.toString(),
-            fill: new Fill({ color: "#fff" }),
-            stroke: new Stroke({
-                color: "rgba(0,0,0,0.2)",
-                width: 1,
-            }),
-            font: "bold 16px Arial",
-            textAlign: "center",
-            textBaseline: "middle",
-            offsetY: 0,
-        }),
-    });
-
-    clusterStyleCache.set(cacheKey, newClusterStyle);
-    return newClusterStyle;
-};
-
 export const earthquakeSelectedStyle = (
     isChosen: boolean,
     scale?: number,
@@ -93,8 +36,6 @@ export const earthquakeSelectedStyle = (
         }),
     });
 };
-
-export const EMPTY_STYLE = new Style({});
 
 export const clusterStyleFn = (feature: Feature<Geometry>): Style | void => {
     const members = feature.get("features") as Feature<Geometry>[] | undefined;

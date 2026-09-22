@@ -39,9 +39,7 @@ const Breadcrumb = ({ state, setters }: Props) => {
         .map((match: any) => match.handle.crumb(match));
 
     return (
-        <div
-            className="breadcrumbs absolute left-24 mt-4 badge overflow-hidden text-sm"
-        >
+        <div className="breadcrumbs absolute left-24 mt-4 badge overflow-hidden text-sm">
             <ul>
                 {crumbs.map((c: string, idx: number) => {
                     const isLast = idx === crumbs.length - 1;
@@ -57,7 +55,7 @@ const Breadcrumb = ({ state, setters }: Props) => {
                                 onClick={() =>
                                     (matches as any)[idx]?.handle.crumb() ===
                                         "Station" &&
-                                        actualMatch.pathname !== stationPath
+                                    actualMatch.pathname !== stationPath
                                         ? handleStation()
                                         : null
                                 }

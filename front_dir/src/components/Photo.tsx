@@ -4,11 +4,15 @@ import {
     CardContainer,
     ConfirmDeleteModal,
     ImageModal,
+    MissingPhoto,
     PhotoSkeleton,
     StationPhotoModal,
 } from "@componentsReact";
 
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import {
+    MagnifyingGlassPlusIcon,
+    XMarkIcon,
+} from "@heroicons/react/24/outline";
 
 import { delStationsImagesService } from "@services";
 
@@ -16,17 +20,10 @@ import { showModal } from "@utils";
 
 import { useAuth, useApi } from "@hooks";
 
-import { ErrorResponse, Errors, StationData } from "@types";
-
-type Photo = {
-    id: number;
-    actual_image: string;
-    description: string;
-    name: string;
-};
+import { ErrorResponse, Errors, Photo as PhotoType, StationData } from "@types";
 
 interface Props {
-    phArray: Photo[];
+    phArray: PhotoType[];
     loader: boolean;
     reFetch: () => void;
 }
@@ -47,8 +44,8 @@ const Photo = ({ phArray, loader, reFetch }: Props) => {
     const [blurPhoto, setBlurPhoto] = useState<
         { blur: boolean; id: number } | undefined
     >(undefined);
-    const [delPhoto, setDelPhoto] = useState<Photo | undefined>(undefined);
-    const [photo, setPhoto] = useState<Photo | undefined>(undefined);
+    const [delPhoto, setDelPhoto] = useState<PhotoType | undefined>(undefined);
+    const [photo, setPhoto] = useState<PhotoType | undefined>(undefined);
 
     const [loading, setLoading] = useState<boolean>(false);
     const [msg, setMsg] = useState<
@@ -113,46 +110,63 @@ const Photo = ({ phArray, loader, reFetch }: Props) => {
                     <PhotoSkeleton />
                 ) : phArray.length !== 0 ? (
                     <div className="grid grid-cols-2 w-full gap-6 overflow-auto pr-2">
-                        {phArray.map((s: Photo, idx) => {
+                        {phArray.map((s: PhotoType, idx) => {
+                            const hasImage = !!s.actual_image;
+                            const openPhoto = () => {
+                                setPhoto(s);
+                                setModals({
+                                    show: true,
+                                    title: edit
+                                        ? "AddStationPhoto"
+                                        : "ViewStationPhoto",
+                                    type: "edit",
+                                });
+                            };
+                            const handlePhotoClick = () => {
+                                if (edit || hasImage) openPhoto();
+                            };
                             return (
                                 <div
                                     key={"photo" + String(idx)}
-                                    className="relative flex flex-col justify-between rounded-md card-compact bg-base-100 
-                                    h-80 shadow-xl hover:cursor-zoom-in transition-all duration-200 ease-in-out group"
+                                    className={`relative flex flex-col justify-between rounded-md card-compact bg-base-100
+                                    h-80 shadow-xl hover:shadow-2xl transition-all duration-200 ease-in-out group ${
+                                        hasImage
+                                            ? "hover:cursor-zoom-in"
+                                            : edit
+                                              ? "hover:cursor-pointer"
+                                              : ""
+                                    }`}
                                     onMouseEnter={() =>
                                         setBlurPhoto({ blur: true, id: s.id })
                                     }
                                     onMouseLeave={() => setBlurPhoto(undefined)}
                                 >
-                                    <figure className="my-auto">
-                                        <img
-                                            src={
-                                                "data:image/png;base64," +
-                                                s.actual_image
-                                            }
-                                            alt={"photo" + String(idx)}
-                                            className={` 
-                                                object-center object-cover w-full h-full `}
-                                            onClick={() => {
-                                                if (edit) {
-                                                    setPhoto(s);
-                                                    setModals({
-                                                        show: true,
-                                                        title: "AddStationPhoto",
-                                                        type: "edit",
-                                                    });
+                                    <figure className="relative my-auto overflow-hidden rounded-md h-full">
+                                        {hasImage ? (
+                                            <img
+                                                src={
+                                                    "data:image/png;base64," +
+                                                    s.actual_image
                                                 }
-                                                if (!edit) {
-                                                    setPhoto(s);
-
-                                                    setModals({
-                                                        show: true,
-                                                        title: "ViewStationPhoto",
-                                                        type: "edit",
-                                                    });
-                                                }
-                                            }}
-                                        />
+                                                alt={"photo" + String(idx)}
+                                                className={`
+                                                object-center object-cover w-full h-full transition-transform duration-200 ease-in-out group-hover:scale-110 `}
+                                                onClick={handlePhotoClick}
+                                            />
+                                        ) : (
+                                            <MissingPhoto className="w-full h-full" />
+                                        )}
+                                        {hasImage && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors duration-200 pointer-events-none">
+                                                <MagnifyingGlassPlusIcon className="size-10 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                                            </div>
+                                        )}
+                                        {!hasImage && edit && (
+                                            <div
+                                                className="absolute inset-0"
+                                                onClick={handlePhotoClick}
+                                            />
+                                        )}
                                         {edit && (
                                             <div
                                                 className="absolute top-0 right-0 text-black 
@@ -178,25 +192,7 @@ const Photo = ({ phArray, loader, reFetch }: Props) => {
                                     <div
                                         className={`${blurPhoto && blurPhoto.id === s.id ? "bg-gray-300 " : ""} 
                                             flex flex-col space-y-2 p-4 text-center`}
-                                        onClick={() => {
-                                            if (edit) {
-                                                setPhoto(s);
-                                                setModals({
-                                                    show: true,
-                                                    title: "AddStationPhoto",
-                                                    type: "edit",
-                                                });
-                                            }
-                                            if (!edit) {
-                                                setPhoto(s);
-
-                                                setModals({
-                                                    show: true,
-                                                    title: "ViewStationPhoto",
-                                                    type: "edit",
-                                                });
-                                            }
-                                        }}
+                                        onClick={handlePhotoClick}
                                     >
                                         <p className="break-words text-md">
                                             {s.description

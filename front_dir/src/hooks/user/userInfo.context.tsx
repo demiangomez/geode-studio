@@ -1,18 +1,16 @@
 import React, { createContext, useReducer, useContext } from "react";
 
-import {
-    UserState,
-    Dispatch,
-    initialState,
-} from "./useUserInfo.reducer";
+import { UserState, Dispatch, initialState } from "./useUserInfo.reducer";
 
 import { useUserInfo } from "./useUserInfo.reducer";
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const UserContext = createContext<
     { state: UserState; dispatch: Dispatch } | undefined
 >(undefined);
 
 // exporting context
+// eslint-disable-next-line react-refresh/only-export-components
 export const useUser = () => {
     const context = useContext(UserContext);
     if (context === undefined) {

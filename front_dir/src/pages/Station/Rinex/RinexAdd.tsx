@@ -115,11 +115,11 @@ const RinexAdd = ({ stationApiId, handleCloseModal, setModalState }: Props) => {
     const [loading, setLoading] = useState<boolean>(false);
     const [msg, setMsg] = useState<
         | {
-            status: number;
-            msg: string;
-            errors?: RinexFileResponse | Errors;
-            rinex_other_errors?: { [key: string]: string[] };
-        }
+              status: number;
+              msg: string;
+              errors?: RinexFileResponse | Errors;
+              rinex_other_errors?: { [key: string]: string[] };
+          }
         | undefined
     >(undefined);
 
@@ -147,7 +147,6 @@ const RinexAdd = ({ stationApiId, handleCloseModal, setModalState }: Props) => {
         "ANT DAZ",
         "COMMENTS",
     ];
-
 
     const getRecords = async () => {
         try {
@@ -354,6 +353,7 @@ const RinexAdd = ({ stationApiId, handleCloseModal, setModalState }: Props) => {
         if (file != undefined) {
             getRecords();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [file]);
 
     return (
@@ -380,10 +380,14 @@ const RinexAdd = ({ stationApiId, handleCloseModal, setModalState }: Props) => {
                     onAlterClickFunction={() => addAllRecords()}
                     state={records}
                     setState={setRecords}
-                    onClickFunction={() => { }}
+                    onClickFunction={() => {}}
                     dataFetchUrl="api/station"
                 />
             )}
+
+            <div className="flex justify-center mt-4">
+                {msg && <Alert msg={msg} />}
+            </div>
 
             <div className="w-full flex flex-col items-center mt-2">
                 <button
@@ -402,10 +406,6 @@ const RinexAdd = ({ stationApiId, handleCloseModal, setModalState }: Props) => {
                         <span className="loading loading-spinner loading-sm self-center"></span>
                     )}
                 </button>
-            </div>
-
-            <div className="flex justify-center mt-4">
-                {msg && <Alert msg={msg} />}
             </div>
         </Modal>
     );

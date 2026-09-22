@@ -111,7 +111,11 @@ const TraceReceiverModal = ({
     >(undefined);
 
     const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     const [searched, setSearched] = useState(false);
 
@@ -137,6 +141,7 @@ const TraceReceiverModal = ({
     // ============ EFECTOS ============
     useEffect(() => {
         fetchReceivers();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -158,6 +163,7 @@ const TraceReceiverModal = ({
         if (searched) {
             fetchTraceData();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [useRinex]);
 
     // ============ FUNCIONES DE DATOS ============

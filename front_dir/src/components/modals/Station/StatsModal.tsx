@@ -52,6 +52,7 @@ import {
     formattedDates,
     showModal,
     validateCatalogFields,
+    modalActions,
 } from "@utils";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 
@@ -174,9 +175,7 @@ const EditStatsModal = ({
 
     // DHARP siempre debe estar en la lista de height codes, aunque el back no lo
     // devuelva para esta antena (requerimiento)
-    const heightCodeOptions = heightcodes.some(
-        (h) => h.height_code === "DHARP",
-    )
+    const heightCodeOptions = heightcodes.some((h) => h.height_code === "DHARP")
         ? heightcodes
         : [DHARP_HEIGHT_CODE, ...heightcodes];
 
@@ -225,7 +224,6 @@ const EditStatsModal = ({
             action?.type === "change_value" &&
             action.payload?.inputName === "antenna_code"
         ) {
-
             const nextCode = action.payload.inputValue ?? "";
 
             prevAntennaCode.current = antennas.some(
@@ -283,7 +281,7 @@ const EditStatsModal = ({
                     : "";
             stationInfo.antenna_azimuth =
                 stationInfo.antenna_azimuth !== null &&
-                    stationInfo.antenna_azimuth !== undefined
+                stationInfo.antenna_azimuth !== undefined
                     ? stationInfo.antenna_azimuth.toString()
                     : "";
 
@@ -500,12 +498,12 @@ const EditStatsModal = ({
         return key === "receiver_code"
             ? inputRefReceiverCode
             : key === "antenna_code"
-                ? inputRefAntenaCode
-                : key === "radome_code"
-                    ? inputRefRadomeCode
-                    : key === "height_code"
-                        ? inputRefHeightCode
-                        : null;
+              ? inputRefAntenaCode
+              : key === "radome_code"
+                ? inputRefRadomeCode
+                : key === "height_code"
+                  ? inputRefHeightCode
+                  : null;
     };
 
     useEffect(() => {
@@ -557,8 +555,9 @@ const EditStatsModal = ({
                 <div className="flex w-full items-center gap-1">
                     <label
                         id={key}
-                        className={`input input-bordered flex items-center gap-2 grow min-w-0 ${errorBadge ? "input-error" : ""
-                            }`}
+                        className={`input input-bordered flex items-center gap-2 grow min-w-0 ${
+                            errorBadge ? "input-error" : ""
+                        }`}
                         title={errorBadge ? errorBadge.detail : ""}
                     >
                         <input
@@ -571,18 +570,18 @@ const EditStatsModal = ({
                                         ? doyCheck[key].input.trim() !== ""
                                             ? doyCheck[key].input
                                             : dayFromDate(
-                                                formState?.[key],
-                                            )?.trim() !== ""
-                                                ? (dayFromDate(
+                                                    formState?.[key],
+                                                )?.trim() !== ""
+                                              ? (dayFromDate(
                                                     formState?.[key],
                                                 ) ?? "")
-                                                : ""
+                                              : ""
                                         : formState[key] !== "" &&
                                             formState[key] !== null
-                                            ? formattedDates(
+                                          ? formattedDates(
                                                 new Date(formState[key]),
                                             )
-                                            : ""
+                                          : ""
                                     : (formState[key] ?? "")
                             }
                             onChange={(e) => {
@@ -787,13 +786,13 @@ const EditStatsModal = ({
                     {modalType === "none"
                         ? "Add"
                         : modalType.charAt(0).toUpperCase() +
-                        modalType.slice(1) +
-                        (modalType === "edit"
-                            ? " " +
-                            stationInfo?.network_code.toUpperCase() +
-                            "." +
-                            stationInfo?.station_code.toUpperCase()
-                            : "")}
+                          modalType.slice(1) +
+                          (modalType === "edit"
+                              ? " " +
+                                stationInfo?.network_code.toUpperCase() +
+                                "." +
+                                stationInfo?.station_code.toUpperCase()
+                              : "")}
                 </h3>
             </div>
             <form className="form-control space-y-4" onSubmit={handleSubmit}>
@@ -811,14 +810,15 @@ const EditStatsModal = ({
                     {FIELD_LAYOUT.map((line, lineIdx) => (
                         <div
                             key={lineIdx}
-                            className={`grid gap-2 ${line.length === 4
-                                ? "grid-cols-2"
-                                : line.length === 3
-                                    ? "grid-cols-3"
-                                    : line.length === 1
+                            className={`grid gap-2 ${
+                                line.length === 4
+                                    ? "grid-cols-2"
+                                    : line.length === 3
+                                      ? "grid-cols-3"
+                                      : line.length === 1
                                         ? "grid-cols-1"
                                         : "grid-cols-2"
-                                }`}
+                            }`}
                         >
                             {line.map(({ key, label }, fieldIdx) =>
                                 renderField(
@@ -832,35 +832,11 @@ const EditStatsModal = ({
                 </div>
 
                 <Alert msg={msg} />
-                <div className="flex w-full justify-center space-x-4">
-                    <button
-                        type="submit"
-                        className="btn btn-success w-5/12"
-                        disabled={
-                            apiOkStatuses.includes(Number(msg?.status)) ||
-                            loading
-                        }
-                    >
-                        {loading && (
-                            <span className="loading loading-spinner loading-md"></span>
-                        )}
-                        Submit
-                    </button>
-
-                    {typeAddition === "last" && (
-                        <a
-                            className="link-hover cursor-pointer"
-                            style={{ marginTop: "10px", marginLeft: "10px" }}
-                            onClick={dispatchAndClearDoys}
-                        >
-                            Clear
-                        </a>
-                    )}
-
+                <div className={modalActions.container}>
                     {modalType === "edit" && (
                         <button
                             type="button"
-                            className="btn btn-error w-3/12"
+                            className={modalActions.destructive}
                             disabled={apiOkStatuses.includes(
                                 Number(msg?.status),
                             )}
@@ -874,6 +850,29 @@ const EditStatsModal = ({
                         >
                             Remove
                         </button>
+                    )}
+
+                    <button
+                        type="submit"
+                        className={modalActions.primary}
+                        disabled={
+                            apiOkStatuses.includes(Number(msg?.status)) ||
+                            loading
+                        }
+                    >
+                        {loading && (
+                            <span className="loading loading-spinner loading-md"></span>
+                        )}
+                        Submit
+                    </button>
+                    {typeAddition === "last" && (
+                        <a
+                            className="link link-hover cursor-pointer self-end"
+                            style={{ marginTop: "10px", marginLeft: "10px" }}
+                            onClick={dispatchAndClearDoys}
+                        >
+                            Clear
+                        </a>
                     )}
                     {modals && modals?.title === "ConfirmDelete" && (
                         <ConfirmDeleteModal

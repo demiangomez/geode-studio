@@ -27,7 +27,6 @@
             "@routes": ["./routes/index.tsx"],
             "@componentsReact": ["./components/index.tsx"],
             "@olUtils": ["./components/map/ol/utils/index.ts"],
-            "@pagesReact": ["./pages/index.tsx"],
             "@services": ["./services/index.ts"],
             "@utils": ["./utils/index.ts"],
             "@types": ["./interfaces/index.d.ts"],

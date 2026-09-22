@@ -16,6 +16,9 @@ interface Props {
     >;
     onSubmit: () => void;
     handleCleanFilters: () => void;
+    showNetworkStationFilters?: boolean;
+    onlyEmptyNetwork?: boolean;
+    setOnlyEmptyNetwork?: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const EventsFilter = ({
@@ -24,6 +27,9 @@ const EventsFilter = ({
     setStateModal,
     onSubmit,
     handleCleanFilters,
+    showNetworkStationFilters = false,
+    onlyEmptyNetwork = false,
+    setOnlyEmptyNetwork,
 }: Props) => {
     const { formState, dispatch } = useFormReducer(EVENTS_FILTERS_STATE);
 
@@ -43,26 +49,52 @@ const EventsFilter = ({
         });
     };
 
+    const handleNetworkCodeChange = (
+        e: React.ChangeEvent<HTMLInputElement>,
+    ) => {
+        handleChange(e);
+        if (e.target.value !== "" && onlyEmptyNetwork) {
+            setOnlyEmptyNetwork?.(false);
+        }
+    };
+
+    const handleOnlyEmptyNetworkChange = (checked: boolean) => {
+        setOnlyEmptyNetwork?.(checked);
+        if (checked) {
+            dispatch({
+                type: "change_value",
+                payload: { inputName: "network_code", inputValue: "" },
+            });
+            setFilters({ ...filters, network_code: "" });
+        }
+    };
+
     const handleSubmitForm = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         onSubmit();
+        setStateModal(undefined);
     };
 
     useEffect(() => {
-        if (Object.values(filters).some((r) => r.length > 0)) {
-            const { station_code, network_code, ...rest } = filters; // eslint-disable-line
-            dispatch({
-                type: "set",
-                payload: rest,
-            });
+        if (showNetworkStationFilters) {
+            dispatch({ type: "set", payload: filters });
+            return;
         }
-    }, [filters]);
+        const { station_code, network_code, ...rest } = filters; // eslint-disable-line
+        dispatch({
+            type: "set",
+            payload: rest,
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filters, showNetworkStationFilters]);
 
     const titlesToIgnore = [
         "event_date_since",
         "event_date_until",
         "year",
         "doy",
+        "network_code",
+        "station_code",
     ];
 
     return (
@@ -83,6 +115,74 @@ const EventsFilter = ({
                         </h2>
                         <div className="card-body">
                             <div className="grid grid-cols-1 gap-4">
+                                {showNetworkStationFilters && (
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="flex flex-col text-sm space-y-2 my-2">
+                                            <span className="font-bold">
+                                                STATION CODE
+                                            </span>
+                                            <label
+                                                htmlFor="station_code"
+                                                className="input input-bordered flex items-center w-full"
+                                            >
+                                                <input
+                                                    type="text"
+                                                    value={
+                                                        formState[
+                                                            "station_code" as keyof typeof formState
+                                                        ] ?? ""
+                                                    }
+                                                    name="station_code"
+                                                    id="station_code"
+                                                    className="w-full"
+                                                    onChange={(e) => {
+                                                        handleChange(e);
+                                                    }}
+                                                />
+                                            </label>
+                                        </div>
+                                        <div className="flex flex-col text-sm space-y-2 my-2">
+                                            <span className="font-bold">
+                                                NETWORK CODE
+                                            </span>
+                                            <label
+                                                htmlFor="network_code"
+                                                className="input input-bordered flex items-center w-full"
+                                            >
+                                                <input
+                                                    type="text"
+                                                    value={
+                                                        formState[
+                                                            "network_code" as keyof typeof formState
+                                                        ] ?? ""
+                                                    }
+                                                    name="network_code"
+                                                    id="network_code"
+                                                    className="w-full"
+                                                    onChange={
+                                                        handleNetworkCodeChange
+                                                    }
+                                                />
+                                            </label>
+                                            <label className="label cursor-pointer justify-start gap-2 px-0">
+                                                <input
+                                                    type="checkbox"
+                                                    className="checkbox checkbox-sm"
+                                                    checked={onlyEmptyNetwork}
+                                                    onChange={(e) =>
+                                                        handleOnlyEmptyNetworkChange(
+                                                            e.target.checked,
+                                                        )
+                                                    }
+                                                />
+                                                <span className="label-text">
+                                                    Only stations without an
+                                                    assigned network
+                                                </span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                )}
                                 {Object.entries(formState).map(
                                     ([key, value]) => {
                                         if (titlesToIgnore.includes(key)) {
@@ -234,7 +334,10 @@ const EventsFilter = ({
                     <a
                         className="link link-hover h-full self-end ml-4"
                         type="button"
-                        onClick={handleCleanFilters}
+                        onClick={() => {
+                            handleCleanFilters();
+                            setStateModal(undefined);
+                        }}
                     >
                         Clean filters
                     </a>

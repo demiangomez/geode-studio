@@ -8,7 +8,7 @@ import {
     Modal,
 } from "@componentsReact";
 import { useApi, useAuth, useClickOutside, useFormReducer } from "@hooks";
-import { apiOkStatuses, showModal } from "@utils";
+import { apiOkStatuses, showModal, modalActions } from "@utils";
 import {
     ErrorResponse,
     Errors,
@@ -73,7 +73,11 @@ const StationPersonModal = ({
     >(undefined);
 
     const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     const { formState, dispatch } = useFormReducer({
         role: "",
@@ -397,7 +401,7 @@ const StationPersonModal = ({
                 <div className="flex w-full justify-center space-x-4">
                     {modalType === "edit" && (
                         <button
-                            className="btn btn-error w-5/12"
+                            className={modalActions.destructive}
                             type="button"
                             disabled={
                                 apiOkStatuses.includes(Number(msg?.status)) ||
@@ -416,7 +420,7 @@ const StationPersonModal = ({
                     )}
                     <button
                         type="submit"
-                        className="btn btn-success w-5/12"
+                        className={modalActions.primary}
                         disabled={
                             apiOkStatuses.includes(Number(msg?.status)) ||
                             loading

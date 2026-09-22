@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import {
     AddFileModal,
     Alert,
     ConfirmDeleteModal,
     ImageModal,
+    MissingPhoto,
     Modal,
-    RenderFileModal,
     Spinner,
     StationPeopleModal,
     VisitCampaignModal,
@@ -24,6 +24,9 @@ import defPhoto from "@assets/images/placeholder.png";
 import {
     ArrowDownTrayIcon,
     BookOpenIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon,
+    InformationCircleIcon,
     PencilSquareIcon,
     PlusCircleIcon,
     TrashIcon,
@@ -46,11 +49,24 @@ import {
 
 import { useFormReducer, useWaitCursor, useApi, useAuth } from "@hooks";
 
-import { apiOkStatuses, classHtml, showModal } from "@utils";
+import {
+    apiOkStatuses,
+    classHtml,
+    isFutureDate,
+    isPreviewableFile,
+    lazyRetry,
+    showModal,
+} from "@utils";
+
+// Lazy: pdf.js (~110KB gz) solo baja al abrir un preview de archivo
+const RenderFileModal = lazyRetry(
+    () => import("@components/modals/RenderFileModal"),
+);
 
 import {
     People,
     PeopleServiceData,
+    Photo,
     StationVisitsData,
     StationVisitsFilesData,
     StationVisitsFilesServiceData,
@@ -72,16 +88,31 @@ interface Props {
     >;
 }
 
-type Photo = {
-    id: number;
-    actual_image: string;
-    description: string;
-    name: string;
-};
-
 type expandedStationVisitData = StationVisitsData & {
     statusCode: number;
 };
+
+const SlickArrow = ({
+    direction,
+    onClick,
+}: {
+    direction: "prev" | "next";
+    onClick?: () => void;
+}) => (
+    <button
+        type="button"
+        className={`btn btn-circle btn-ghost btn-sm bg-base-100 shadow-md absolute top-1/2 -translate-y-1/4 z-10 ${
+            direction === "prev" ? "-left-10" : "-right-10"
+        }`}
+        onClick={onClick}
+    >
+        {direction === "prev" ? (
+            <ChevronLeftIcon className="size-4" />
+        ) : (
+            <ChevronRightIcon className="size-4" />
+        )}
+    </button>
+);
 
 const StationVisitDetailModal = ({
     campaigns,
@@ -178,6 +209,10 @@ const StationVisitDetailModal = ({
         StationVisitsFilesData | undefined
     >(undefined);
 
+    const [otherFileToShow, setOtherFileToShow] = useState<
+        StationVisitsFilesData | undefined
+    >(undefined);
+
     const handleShowMore = (key: string) => {
         if (key === "gnss") {
             setShowGnssFiles(true);
@@ -202,6 +237,11 @@ const StationVisitDetailModal = ({
         comments: "",
         date: "",
     });
+
+    // En edicion la fecha del form manda al instante; una planned persistida
+    // sigue bloqueando hasta que el PUT la actualice (el backend rechaza igual)
+    const plannedBlocked =
+        !!visit?.planned || (edit && isFutureDate(formState["date"]));
 
     const getVisitById = async () => {
         try {
@@ -431,6 +471,7 @@ const StationVisitDetailModal = ({
 
             rest.comments = updatedRichText;
             rest.date = formState["date"];
+            rest.planned = isFutureDate(formState["date"]);
 
             delete rest.log_sheet_actual_file;
             delete rest.log_sheet_filename;
@@ -702,6 +743,8 @@ const StationVisitDetailModal = ({
     };
 
     const handleCloseModal = () => {
+        // cerrar con el PATCH en vuelo desincroniza el listado del padre
+        if (commentLoading) return;
         closeModal();
     };
 
@@ -715,6 +758,7 @@ const StationVisitDetailModal = ({
     useEffect(() => {
         getPeople();
         getAll();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visitId]);
 
     useEffect(() => {
@@ -727,6 +771,7 @@ const StationVisitDetailModal = ({
                     : (visit?.date ?? ""),
             },
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visit]);
 
     useEffect(() => {
@@ -759,6 +804,7 @@ const StationVisitDetailModal = ({
                 inputValue: richText,
             },
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const settings = {
@@ -767,6 +813,8 @@ const StationVisitDetailModal = ({
         speed: 500,
         slidesToShow: 1,
         slidesToScroll: 1,
+        prevArrow: <SlickArrow direction="prev" />,
+        nextArrow: <SlickArrow direction="next" />,
         appendDots: (dots: any) => (
             <div>
                 <ul className="slick-dots">{dots}</ul>
@@ -808,8 +856,12 @@ const StationVisitDetailModal = ({
                         ) : (
                             visit?.date
                         )}
+                        {visit?.planned && (
+                            <span className="badge badge-info badge-lg self-center ml-2">
+                                Planned
+                            </span>
+                        )}
                     </h1>
-
                     <button
                         className="flex items-center btn btn-ghost btn-circle"
                         onClick={() => setEdit(!edit)}
@@ -817,6 +869,20 @@ const StationVisitDetailModal = ({
                         <PencilSquareIcon title="edit" className="size-8" />
                     </button>
                 </div>
+                {edit && isFutureDate(formState["date"]) && (
+                    <div role="alert" className="alert alert-info py-2">
+                        <InformationCircleIcon className="size-6" />
+                        <span>
+                            The selected date is in the future: this visit will
+                            be saved as a <strong>planned</strong> visit.
+                            <br />
+                            <strong>
+                                Observation files cannot be uploaded
+                            </strong>{" "}
+                            until the visit takes place.
+                        </span>
+                    </div>
+                )}
                 <div className="grid grid-cols-2 grid-flow-dense">
                     <div className="card bg-base-200 grow shadow-xl mr-4">
                         <h2 className="card-title border-b-2 border-base-300 p-2">
@@ -912,41 +978,53 @@ const StationVisitDetailModal = ({
                                             </strong>
                                             {edit && (
                                                 <div className="justify-end flex space-x-2">
-                                                    <button
-                                                        className="btn btn-ghost btn-circle tooltip tooltip-bottom"
+                                                    <div
+                                                        className="tooltip tooltip-bottom"
                                                         data-tip="Create People"
-                                                        onClick={() => {
-                                                            setModals &&
+                                                    >
+                                                        <button
+                                                            className="btn btn-ghost btn-circle"
+                                                            onClick={() => {
+                                                                setModals &&
+                                                                    setModals({
+                                                                        show: true,
+                                                                        title: "EditPerson",
+                                                                        type: "add",
+                                                                    });
+                                                            }}
+                                                        >
+                                                            <UserPlusIcon
+                                                                strokeWidth={
+                                                                    1.5
+                                                                }
+                                                                stroke="currentColor"
+                                                                className="w-8 h-8"
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                    <div
+                                                        className="tooltip tooltip-bottom"
+                                                        data-tip="Add existing people"
+                                                    >
+                                                        <button
+                                                            className="btn btn-ghost btn-circle"
+                                                            onClick={() => {
                                                                 setModals({
                                                                     show: true,
-                                                                    title: "EditPerson",
+                                                                    title: "AddVisitPeople",
                                                                     type: "add",
                                                                 });
-                                                        }}
-                                                    >
-                                                        <UserPlusIcon
-                                                            strokeWidth={1.5}
-                                                            stroke="currentColor"
-                                                            className="w-8 h-8 justify-self-center"
-                                                        />
-                                                    </button>
-                                                    <button
-                                                        className="btn btn-ghost btn-circle tooltip tooltip-bottom"
-                                                        data-tip="Add existing people"
-                                                        onClick={() => {
-                                                            setModals({
-                                                                show: true,
-                                                                title: "AddVisitPeople",
-                                                                type: "add",
-                                                            });
-                                                        }}
-                                                    >
-                                                        <PlusCircleIcon
-                                                            strokeWidth={1.5}
-                                                            stroke="currentColor"
-                                                            className="w-8 h-10 justify-self-center"
-                                                        />
-                                                    </button>
+                                                            }}
+                                                        >
+                                                            <PlusCircleIcon
+                                                                strokeWidth={
+                                                                    1.5
+                                                                }
+                                                                stroke="currentColor"
+                                                                className="w-8 h-8"
+                                                            />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -1073,8 +1151,11 @@ const StationVisitDetailModal = ({
                                                                         : "N/A"}
                                                                 </h2>
                                                                 <button
-                                                                    className="btn-circle btn-ghost flex justify-center"
+                                                                    className="btn btn-circle btn-ghost"
                                                                     onClick={() => {
+                                                                        setFileType(
+                                                                            "logsheet",
+                                                                        );
                                                                         setModals(
                                                                             {
                                                                                 show: true,
@@ -1084,7 +1165,7 @@ const StationVisitDetailModal = ({
                                                                         );
                                                                     }}
                                                                 >
-                                                                    <BookOpenIcon className="size-6 self-center" />
+                                                                    <BookOpenIcon className="size-6" />
                                                                 </button>
                                                             </div>
                                                         </div>
@@ -1270,7 +1351,7 @@ const StationVisitDetailModal = ({
                                 alt={"defphoto"}
                             />
                         ) : images && images.length === 1 ? (
-                            <div className="w-full break-words relative text-ellipsis flex flex-col justify-center">
+                            <div className="w-full break-words relative text-ellipsis flex flex-col items-center justify-center">
                                 <div className="absolute z-10 w-full top-0">
                                     <button
                                         className="btn"
@@ -1290,32 +1371,40 @@ const StationVisitDetailModal = ({
                                         <TrashIcon className="size-6 text-red-600" />
                                     </button>
                                 </div>
-                                <img
-                                    className="cursor-zoom-in size-70 object-contain rounded justify-self-center"
-                                    src={`data:image/*;base64,${images[0].actual_image ?? ""}`}
-                                    alt={"photos"}
-                                    onMouseEnter={() =>
-                                        setBlurPhoto({
-                                            blur: true,
-                                            id: images[0].id,
-                                        })
-                                    }
-                                    onMouseLeave={() => setBlurPhoto(undefined)}
-                                    onClick={() => {
-                                        setPhoto({
-                                            id: images[0].id,
-                                            actual_image:
-                                                images[0].actual_image ?? "",
-                                            description: images[0].description,
-                                            name: images[0].name,
-                                        });
-                                        setModals({
-                                            show: true,
-                                            title: "ViewStationPhoto",
-                                            type: edit ? "none" : "edit",
-                                        });
-                                    }}
-                                />
+                                {images[0].actual_image ? (
+                                    <img
+                                        className="cursor-zoom-in size-70 object-contain rounded block mx-auto"
+                                        src={`data:image/*;base64,${images[0].actual_image}`}
+                                        alt={"photos"}
+                                        onMouseEnter={() =>
+                                            setBlurPhoto({
+                                                blur: true,
+                                                id: images[0].id,
+                                            })
+                                        }
+                                        onMouseLeave={() =>
+                                            setBlurPhoto(undefined)
+                                        }
+                                        onClick={() => {
+                                            setPhoto({
+                                                id: images[0].id,
+                                                actual_image:
+                                                    images[0].actual_image ??
+                                                    "",
+                                                description:
+                                                    images[0].description,
+                                                name: images[0].name,
+                                            });
+                                            setModals({
+                                                show: true,
+                                                title: "ViewStationPhoto",
+                                                type: edit ? "none" : "edit",
+                                            });
+                                        }}
+                                    />
+                                ) : (
+                                    <MissingPhoto className="w-full h-60 rounded" />
+                                )}
                                 {images[0].description ? (
                                     <div className="border-t-2 mt-2">
                                         <h3 className="mt-2">Description</h3>
@@ -1357,40 +1446,44 @@ const StationVisitDetailModal = ({
                                                             <TrashIcon className="size-6 text-red-600" />
                                                         </button>
                                                     </div>
-                                                    <img
-                                                        className="cursor-zoom-in size-70 object-contain rounded justify-self-center"
-                                                        src={`data:image/*;base64,${img.actual_image ?? ""}`}
-                                                        alt={"photos"}
-                                                        onMouseEnter={() =>
-                                                            setBlurPhoto({
-                                                                blur: true,
-                                                                id: img.id,
-                                                            })
-                                                        }
-                                                        onMouseLeave={() =>
-                                                            setBlurPhoto(
-                                                                undefined,
-                                                            )
-                                                        }
-                                                        onClick={() => {
-                                                            setPhoto({
-                                                                id: img.id,
-                                                                actual_image:
-                                                                    img.actual_image ??
-                                                                    "",
-                                                                description:
-                                                                    img.description,
-                                                                name: img.name,
-                                                            });
-                                                            setModals({
-                                                                show: true,
-                                                                title: "ViewStationPhoto",
-                                                                type: edit
-                                                                    ? "none"
-                                                                    : "edit",
-                                                            });
-                                                        }}
-                                                    />
+                                                    {img.actual_image ? (
+                                                        <img
+                                                            className="cursor-zoom-in size-70 object-contain rounded block mx-auto"
+                                                            src={`data:image/*;base64,${img.actual_image}`}
+                                                            alt={"photos"}
+                                                            onMouseEnter={() =>
+                                                                setBlurPhoto({
+                                                                    blur: true,
+                                                                    id: img.id,
+                                                                })
+                                                            }
+                                                            onMouseLeave={() =>
+                                                                setBlurPhoto(
+                                                                    undefined,
+                                                                )
+                                                            }
+                                                            onClick={() => {
+                                                                setPhoto({
+                                                                    id: img.id,
+                                                                    actual_image:
+                                                                        img.actual_image ??
+                                                                        "",
+                                                                    description:
+                                                                        img.description,
+                                                                    name: img.name,
+                                                                });
+                                                                setModals({
+                                                                    show: true,
+                                                                    title: "ViewStationPhoto",
+                                                                    type: edit
+                                                                        ? "none"
+                                                                        : "edit",
+                                                                });
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <MissingPhoto className="w-full h-60 rounded" />
+                                                    )}
                                                     {img.description && (
                                                         <div className="border-t-2 mt-2 break-words">
                                                             <h3 className="mt-2">
@@ -1454,7 +1547,7 @@ const StationVisitDetailModal = ({
                                     </button>
                                 </form>
                             )}
-                            {edit && (
+                            {edit && !plannedBlocked && (
                                 <button
                                     className="btn btn-ghost btn-circle ml-2"
                                     onClick={() => {
@@ -1617,7 +1710,9 @@ const StationVisitDetailModal = ({
                                         })
                                 ) : (
                                     <div className="text-center text-neutral text-2xl font-bold w-full rounded-md bg-neutral-content p-6">
-                                        There are no observation files
+                                        {plannedBlocked
+                                            ? "Observation files are not available for planned visits"
+                                            : "There are no observation files"}
                                     </div>
                                 )}
                             </div>
@@ -1767,7 +1862,36 @@ const StationVisitDetailModal = ({
                                                             <a
                                                                 className="btn-circle btn-ghost cursor-pointer flex justify-center w-4/12"
                                                                 onClick={async () => {
-                                                                    if (!edit) {
+                                                                    if (
+                                                                        !edit &&
+                                                                        isPreviewableFile(
+                                                                            f.filename,
+                                                                        )
+                                                                    ) {
+                                                                        const res =
+                                                                            await getVisitAttachedFileById(
+                                                                                f.id,
+                                                                            );
+                                                                        if (
+                                                                            res
+                                                                        ) {
+                                                                            setFileType(
+                                                                                "other",
+                                                                            );
+                                                                            setOtherFileToShow(
+                                                                                res,
+                                                                            );
+                                                                            setModals(
+                                                                                {
+                                                                                    show: true,
+                                                                                    title: "FileRender",
+                                                                                    type: "none",
+                                                                                },
+                                                                            );
+                                                                        }
+                                                                    } else if (
+                                                                        !edit
+                                                                    ) {
                                                                         const res =
                                                                             await getVisitAttachedFileById(
                                                                                 f.id,
@@ -1821,6 +1945,10 @@ const StationVisitDetailModal = ({
                                                                             d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
                                                                         />
                                                                     </svg>
+                                                                ) : isPreviewableFile(
+                                                                      f.filename,
+                                                                  ) ? (
+                                                                    <BookOpenIcon className="size-6 self-center" />
                                                                 ) : (
                                                                     <ArrowDownTrayIcon className="size-6 self-center" />
                                                                 )}
@@ -1944,12 +2072,22 @@ const StationVisitDetailModal = ({
             )}
 
             {modals && modals.title === "FileRender" && (
-                <RenderFileModal
-                    file={`data:application/pdf;base64,${visit?.log_sheet_actual_file}`}
-                    filename={visit?.log_sheet_filename}
-                    closeModal={() => undefined}
-                    setStateModal={setModals}
-                />
+                <Suspense fallback={null}>
+                    <RenderFileModal
+                        file={
+                            fileType === "other"
+                                ? otherFileToShow?.actual_file
+                                : visit?.log_sheet_actual_file
+                        }
+                        filename={
+                            fileType === "other"
+                                ? otherFileToShow?.filename
+                                : visit?.log_sheet_filename
+                        }
+                        closeModal={() => undefined}
+                        setStateModal={setModals}
+                    />
+                </Suspense>
             )}
 
             {modals && modals?.title === "ConfirmDelete" && (

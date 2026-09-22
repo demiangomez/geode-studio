@@ -14,7 +14,7 @@ import {
     postPeopleService,
 } from "@services";
 import { useAuth, useApi, useClickOutside, useFormReducer } from "@hooks";
-import { apiOkStatuses, showModal } from "@utils";
+import { apiOkStatuses, showModal, modalActions } from "@utils";
 import {
     Errors,
     ErrorResponse,
@@ -97,7 +97,11 @@ const StationPeopleModal = ({
     >(undefined);
 
     const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     const { formState, dispatch } = useFormReducer({
         id: "",
@@ -172,6 +176,7 @@ const StationPeopleModal = ({
                     msg: "Person added successfully",
                     scope: "form",
                 });
+                reFetch();
             }
         } catch (err) {
             console.error(err);
@@ -226,6 +231,7 @@ const StationPeopleModal = ({
                     msg: "Person edited successfully",
                     scope: "form",
                 });
+                reFetch();
             }
         } catch (err) {
             console.error(err);
@@ -248,6 +254,7 @@ const StationPeopleModal = ({
                     msg: res.msg,
                     scope: "action",
                 });
+                reFetch();
             } else {
                 setMsg({
                     status: res.statusCode,
@@ -265,7 +272,6 @@ const StationPeopleModal = ({
 
     const handleCloseModal = () => {
         setPerson?.(undefined);
-        reFetch();
     };
 
     const handleChange = (
@@ -337,6 +343,7 @@ const StationPeopleModal = ({
 
     useEffect(() => {
         getUsers();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const inputRef = useRef<HTMLInputElement>(null);
@@ -550,7 +557,6 @@ const StationPeopleModal = ({
                     })}
                 </div>
                 {msg?.scope !== "action" && <Alert msg={msg} />}
-
                 {loading && (
                     <div className="w-full text-center">
                         <span className="loading loading-spinner loading-lg self-center"></span>
@@ -559,7 +565,7 @@ const StationPeopleModal = ({
                 <div className="flex w-full justify-center space-x-4">
                     {modalType === "edit" && (
                         <button
-                            className="btn btn-error w-5/12"
+                            className={modalActions.destructive}
                             type="button"
                             disabled={isSuccess || loading}
                             onClick={() => {
@@ -576,7 +582,7 @@ const StationPeopleModal = ({
                     )}
                     <button
                         type="submit"
-                        className="btn btn-success w-5/12"
+                        className={modalActions.primary}
                         disabled={isSuccess || loading}
                     >
                         Submit

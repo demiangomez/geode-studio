@@ -12,6 +12,9 @@ interface TableCardProps {
             | undefined
         >
     >;
+    headerContent?: ReactNode;
+    /** Acciones propias de la tabla, a la izquierda de los botones de alta. */
+    headerActions?: ReactNode;
     children: ReactNode;
     secondAddButton?: boolean;
     secondAddButtonTitle?: string;
@@ -29,6 +32,8 @@ const TableCard = ({
     modalTitle,
     addButtonTitle,
     setModals,
+    headerContent,
+    headerActions,
     children,
     secondAddButton,
     secondAddButtonTitle,
@@ -38,13 +43,13 @@ const TableCard = ({
     showSearch = false,
     searchPlaceholder = "Search...",
 }: TableCardProps) => {
-    const widthStyle = size
-        ? {
-              width: title.includes("Station")
-                  ? Math.max(750, parseInt(size)) + "px"
-                  : size,
-          }
-        : {};
+    // size es un tope, no un ancho fijo: en pantallas mas angostas el card se
+    // encoge y la tabla scrollea adentro en vez de desbordar el body
+    const maxWidth = size
+        ? title.includes("Station")
+            ? Math.max(750, parseInt(size)) + "px"
+            : size
+        : undefined;
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (setFilters && filters) {
@@ -54,13 +59,17 @@ const TableCard = ({
 
     return (
         <div
-            className={`flex flex-col ${size ? "" : "w-fit"}`}
-            style={widthStyle}
+            className={`flex flex-col ${size ? "w-full" : "w-fit"}`}
+            style={{ maxWidth }}
         >
             <div className="card bg-base-200 p-4 space-y-2 h-full">
-                <div className="flex w-full justify-between flex-wrap gap-2">
-                    <h2 className="card-title">{title}</h2>
+                <div className="flex w-full justify-between items-center flex-wrap gap-2">
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <h2 className="card-title">{title}</h2>
+                        {headerContent}
+                    </div>
                     <div className="flex flex-row justify-end gap-3 items-center flex-wrap">
+                        {headerActions}
                         {showSearch && (
                             <div className="w-64">
                                 <input

@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 // CesiumJS global type declarations for ol-cesium integration
 declare global {
     interface Window {

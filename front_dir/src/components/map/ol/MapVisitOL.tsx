@@ -9,9 +9,10 @@ import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
 import MapBrowserEvent from "ol/MapBrowserEvent";
 
-import { Popup } from "@componentsReact";
+import Popup from "@components/map/Popup";
 
-import { useMapInit, useKmlLayer } from "@hooks";
+import { useMapInit } from "@hooks/ol/useMapInit";
+import { useKmlLayer } from "@hooks/ol/useKmlLayer";
 
 import {
     iconUrl,
@@ -24,6 +25,7 @@ import {
 import { StationData } from "@types";
 import type { Geometry } from "ol/geom";
 
+import "ol/ol.css";
 import "./MapOL.css";
 
 interface MapVisitOLProps {
@@ -105,7 +107,6 @@ const MapVisitOL: React.FC<MapVisitOLProps> = ({
             const layer = new VectorLayer({ source });
             markerLayerRef.current = layer;
             mapInstance.current!.addLayer(layer);
-
         };
 
         addMarker();
@@ -166,21 +167,23 @@ const MapVisitOL: React.FC<MapVisitOLProps> = ({
             if (feature) {
                 const station = feature.get("station");
                 if (station) {
-                    const coord = (feature.getGeometry() as Point)?.getCoordinates();
+                    const coord = (
+                        feature.getGeometry() as Point
+                    )?.getCoordinates();
                     const currentView = map.getView();
-                const resolution = currentView.getResolution() ?? 1;
-                const offsetY = 150 * resolution;
-                const offsetCenter: [number, number] = [
-                    coord[0],
-                    coord[1] + offsetY,
-                ];
-                const currentZoom = currentView.getZoom() ?? getLastZoom();
-                popupOverlay.current?.setPosition(coord);
-                currentView.animate({
-                    center: offsetCenter,
-                    zoom: currentZoom,
-                    duration: 300,
-                });
+                    const resolution = currentView.getResolution() ?? 1;
+                    const offsetY = 150 * resolution;
+                    const offsetCenter: [number, number] = [
+                        coord[0],
+                        coord[1] + offsetY,
+                    ];
+                    const currentZoom = currentView.getZoom() ?? getLastZoom();
+                    popupOverlay.current?.setPosition(coord);
+                    currentView.animate({
+                        center: offsetCenter,
+                        zoom: currentZoom,
+                        duration: 300,
+                    });
                 }
             } else {
                 popup.setPosition(undefined);
@@ -190,7 +193,7 @@ const MapVisitOL: React.FC<MapVisitOLProps> = ({
         return () => {
             map.un("click", listener);
         };
-    }, [mapInstance, popupOverlay])
+    }, [mapInstance, popupOverlay]);
 
     return (
         <div className="z-10 pt-6 flex justify-center">
@@ -209,7 +212,6 @@ const MapVisitOL: React.FC<MapVisitOLProps> = ({
                     fromMain={undefined}
                     station={station}
                 />
-
             </div>
         </div>
     );

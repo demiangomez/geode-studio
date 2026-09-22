@@ -37,7 +37,6 @@ const PeopleTable = () => {
 
     const [allPeople, setAllPeople] = useState<People[]>([]);
     const [filteredAllPeople, setFilteredAllPeople] = useState<People[]>([]);
-    const [, setPeoples] = useState<People[]>([]);
     const [filteredPeoples, setFilteredPeoples] = useState<People[]>([]);
     const [people, setPeople] = useState<People | undefined>(undefined);
 
@@ -50,22 +49,6 @@ const PeopleTable = () => {
     const [filters, setFilters] = useState<Record<string, string>>({
         search: "",
     });
-
-    const getPeople = async () => {
-        try {
-            setLoading(true);
-            const res = await getPeopleService<PeopleServiceData>(api, bParams);
-            setPeoples(res.data);
-            if (bParams.limit) {
-                setPages(Math.ceil(res.total_count / bParams.limit));
-            }
-            res.data && res.data?.length === 0 && handlePage(1);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const getAllPeople = async () => {
         try {
@@ -85,7 +68,6 @@ const PeopleTable = () => {
         const end = start + REGISTERS_PER_PAGE;
         const paginatedData = filteredData.slice(start, end);
 
-        setPeoples(paginatedData);
         setFilteredPeoples(paginatedData);
     };
 
@@ -94,11 +76,6 @@ const PeopleTable = () => {
 
         setActivePage(page);
         paginatePeople(page, filteredAllPeople);
-    };
-
-    const reFetch = () => {
-        getPeople();
-        getAllPeople();
     };
 
     useEffect(() => {
@@ -232,7 +209,7 @@ const PeopleTable = () => {
                     modalType={modals.type}
                     setStateModal={setModals}
                     setPerson={setPeople}
-                    reFetch={reFetch}
+                    reFetch={getAllPeople}
                 />
             )}
             {modals?.show &&
@@ -242,13 +219,13 @@ const PeopleTable = () => {
                     <MergePeopleModal
                         setStateModal={setModals}
                         handleCloseModal={() => setModals(undefined)}
+                        reFetch={getAllPeople}
                         body={allPeople as People[]}
                     />
                 )}
             {modals?.show && modals.title === "ViewPersonRelations" && (
                 <ViewPersonRelations
                     Person={people}
-                    reFetch={reFetch}
                     setStateModal={setModals}
                 />
             )}

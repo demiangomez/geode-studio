@@ -52,7 +52,7 @@ const StationStatusTable = () => {
         statusesTotal,
         statusesIsFetching,
         isLoading: loading,
-    } = useMetadata(api, {}, params);
+    } = useMetadata(api, { only: ["statuses"] }, params);
 
     const pages = useMemo(() => {
         if (statusesTotal && params.limit) {
@@ -62,7 +62,13 @@ const StationStatusTable = () => {
     }, [statusesTotal, params.limit]);
 
     useEffect(() => {
-        if (!loading && !statusesIsFetching && stationStatus && stationStatus.length === 0 && activePage > 1) {
+        if (
+            !loading &&
+            !statusesIsFetching &&
+            stationStatus &&
+            stationStatus.length === 0 &&
+            activePage > 1
+        ) {
             handlePage(activePage - 1);
         }
     }, [stationStatus, activePage, loading, statusesIsFetching]); // eslint-disable-line
@@ -90,14 +96,12 @@ const StationStatusTable = () => {
     const titles = ["Name", "Color"];
 
     const body = useMemo(() => {
-        return stationStatus
-            ?.sort((a, b) => a.name.localeCompare(b.name))
-            .map((st) =>
-                Object.values({
-                    name: st.name,
-                    color_name: st.color,
-                }),
-            );
+        return stationStatus?.map((st) =>
+            Object.values({
+                name: st.name,
+                color_name: st.color,
+            }),
+        );
     }, [stationStatus]);
 
     const reFetch = () => {

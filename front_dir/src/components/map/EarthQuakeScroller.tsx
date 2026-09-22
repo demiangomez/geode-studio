@@ -231,6 +231,7 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
     useEffect(() => {
         return () => {
             if (toastTimerRef.current) {
+                // eslint-disable-next-line react-hooks/exhaustive-deps
                 window.clearTimeout(toastTimerRef.current);
             }
         };
@@ -259,10 +260,10 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                     selectedEarthquakes.map((eq) =>
                         eq.api_id === earthquakeChosen.api_id
                             ? {
-                                ...eq,
-                                ui_toggle_mask: mask,
-                                ui_toggle_vector: vector,
-                            }
+                                  ...eq,
+                                  ui_toggle_mask: mask,
+                                  ui_toggle_vector: vector,
+                              }
                             : eq,
                     ),
                 );
@@ -280,6 +281,7 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
         } catch (err) {
             console.error("Failed to restore earthquakeChosen toggles", err);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [earthquakeChosen]);
 
     return (
@@ -346,12 +348,12 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                     if (
                                                         !nextMode &&
                                                         selectedEarthquakes.length >
-                                                        1
+                                                            1
                                                     ) {
                                                         const lastOne =
                                                             selectedEarthquakes[
-                                                            selectedEarthquakes.length -
-                                                            1
+                                                                selectedEarthquakes.length -
+                                                                    1
                                                             ];
                                                         setSelectedEarthquakes([
                                                             lastOne,
@@ -489,18 +491,20 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                 const eqData =
                                     earthquakeAffectedStations
                                         ?.individual_data?.[
-                                    earthquake.api_id.toString()
+                                        earthquake.api_id.toString()
                                     ];
                                 const disableDisplacements =
                                     eqData?.coseismic_displacements &&
                                     eqData?.coseismic_displacements.length ===
-                                    0;
+                                        0;
 
                                 return (
                                     <div
                                         key={
-                                            earthquake.api_id +
-                                            forceSyncMapScroller
+                                            earthquake.api_id ===
+                                            earthquakeChosen?.api_id
+                                                ? `${earthquake.api_id}-${forceSyncMapScroller}`
+                                                : earthquake.api_id
                                         }
                                         onClick={(e) => {
                                             e.stopPropagation();
@@ -511,8 +515,8 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                             handleEarthquakeState(
                                                 earthquake,
                                                 e.ctrlKey ||
-                                                e.metaKey ||
-                                                multiSelectMode,
+                                                    e.metaKey ||
+                                                    multiSelectMode,
                                             );
                                         }}
                                         className={
@@ -688,12 +692,22 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                                         >
                                                                             <ArrowDownTrayIcon className="size-6" />
                                                                         </button>
-                                                                        < span className='mt-0 p-0 self-center' onClick={(e) => e.stopPropagation()}>
+                                                                        <span
+                                                                            className="mt-0 p-0 self-center"
+                                                                            onClick={(
+                                                                                e,
+                                                                            ) =>
+                                                                                e.stopPropagation()
+                                                                            }
+                                                                        >
                                                                             <CopyButton
-                                                                                text={eqData?.csv_including_postseismic ?? ""}
+                                                                                text={
+                                                                                    eqData?.csv_including_postseismic ??
+                                                                                    ""
+                                                                                }
                                                                                 iconClassName="size-6"
                                                                             />
-                                                                        </span >
+                                                                        </span>
                                                                     </div>
                                                                 </div>
                                                             ) : (
@@ -716,12 +730,22 @@ const EarthQuakeScroller: React.FC<EarthQuakeScrollerProps> = ({
                                                                         >
                                                                             <ArrowDownTrayIcon className="size-6" />
                                                                         </button>
-                                                                        < span className='mt-0 p-0 self-center' onClick={(e) => e.stopPropagation()}>
+                                                                        <span
+                                                                            className="mt-0 p-0 self-center"
+                                                                            onClick={(
+                                                                                e,
+                                                                            ) =>
+                                                                                e.stopPropagation()
+                                                                            }
+                                                                        >
                                                                             <CopyButton
-                                                                                text={eqData?.csv_without_postseismic ?? ""}
+                                                                                text={
+                                                                                    eqData?.csv_without_postseismic ??
+                                                                                    ""
+                                                                                }
                                                                                 iconClassName="size-6"
                                                                             />
-                                                                        </span >
+                                                                        </span>
                                                                     </div>
                                                                 </div>
                                                             )}

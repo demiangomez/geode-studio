@@ -187,10 +187,12 @@ const UserSettingsForm = ({ userData, getData }: Props) => {
                 payload: initialValue,
             });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userData]);
 
     useEffect(() => {
         getRoles();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -202,6 +204,7 @@ const UserSettingsForm = ({ userData, getData }: Props) => {
                 inputValue: image,
             },
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [image]);
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {

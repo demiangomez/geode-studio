@@ -127,7 +127,10 @@ const TimeSeriesConfigModal = ({
                     } else {
                         setMsg({
                             status: res.statusCode,
-                            msg: res.message ?? res.msg ?? "Jump row activated successfully",
+                            msg:
+                                res.message ??
+                                res.msg ??
+                                "Jump row activated successfully",
                         });
                     }
                 } catch (e) {
@@ -333,7 +336,12 @@ const TimeSeriesConfigModal = ({
             ].includes(k),
     );
 
-    const renderField = (key: string, label: string, index: number, disabled = false) => {
+    const renderField = (
+        key: string,
+        label: string,
+        index: number,
+        disabled = false,
+    ) => {
         const errorBadge = msg?.errors?.errors?.find(
             (error) => error.attr === key,
         );
@@ -390,8 +398,8 @@ const TimeSeriesConfigModal = ({
                     {type?.type === "edit"
                         ? "Edit"
                         : type?.type === "activate"
-                            ? "Activate"
-                            : "Add"}
+                          ? "Activate"
+                          : "Add"}
                 </h3>
             </div>
             <form className="form-control space-y-4" onSubmit={handleSubmit}>
@@ -404,8 +412,18 @@ const TimeSeriesConfigModal = ({
                                 <div className="grow min-w-0">
                                     {doyCheck || isEditJump ? (
                                         <div className="grid grid-cols-2 gap-2">
-                                            {renderField("Year", "YEAR", 0, isEditJump)}
-                                            {renderField("DOY", "DOY", 1, isEditJump)}
+                                            {renderField(
+                                                "Year",
+                                                "YEAR",
+                                                0,
+                                                isEditJump,
+                                            )}
+                                            {renderField(
+                                                "DOY",
+                                                "DOY",
+                                                1,
+                                                isEditJump,
+                                            )}
                                         </div>
                                     ) : (
                                         <GregorianDatePicker
@@ -452,12 +470,13 @@ const TimeSeriesConfigModal = ({
                     {/* simple field texts */}
                     {simpleFieldKeys.length > 0 && (
                         <div
-                            className={`grid gap-2 ${simpleFieldKeys.length >= 3
-                                ? "grid-cols-3"
-                                : simpleFieldKeys.length === 2
-                                    ? "grid-cols-2"
-                                    : "grid-cols-1"
-                                }`}
+                            className={`grid gap-2 ${
+                                simpleFieldKeys.length >= 3
+                                    ? "grid-cols-3"
+                                    : simpleFieldKeys.length === 2
+                                      ? "grid-cols-2"
+                                      : "grid-cols-1"
+                            }`}
                         >
                             {simpleFieldKeys.map((key, idx) =>
                                 renderField(
@@ -507,153 +526,159 @@ const TimeSeriesConfigModal = ({
                     {((type?.table === "periodic" &&
                         "frequence" in formState) ||
                         (type?.table === "jumps" && getType() >= 1)) && (
-                            <div className="space-y-4 flex flex-col items-center justify-center">
-                                <div className="flex items-center justify-center gap-2 w-full">
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        placeholder={
-                                            type?.table === "periodic"
-                                                ? "Enter frequency value"
-                                                : "Enter relaxation value"
-                                        }
-                                        className="input input-bordered grow text-left"
-                                        id="frequencyInput"
-                                    />
-                                    <button
-                                        type="button"
-                                        className="btn"
-                                        onClick={() => {
-                                            const input = document.getElementById(
-                                                "frequencyInput",
-                                            ) as HTMLInputElement;
-                                            const value = parseFloat(input.value);
-                                            if (!isNaN(value)) {
-                                                if (type?.table === "periodic") {
-                                                    const currentFrequences =
-                                                        Array.isArray(
-                                                            formState.frequence,
-                                                        )
-                                                            ? formState.frequence
-                                                            : [];
-                                                    dispatch({
-                                                        type: "change_value",
-                                                        payload: {
-                                                            inputName: "frequence",
-                                                            inputValue: [
-                                                                ...currentFrequences,
-                                                                value,
-                                                            ],
-                                                        },
-                                                    });
-                                                    input.value = "";
-                                                } else if (type?.table === "jumps") {
-                                                    const currentFrequences =
-                                                        Array.isArray(
-                                                            formState.relaxation,
-                                                        )
-                                                            ? formState.relaxation
-                                                            : [];
-                                                    dispatch({
-                                                        type: "change_value",
-                                                        payload: {
-                                                            inputName: "relaxation",
-                                                            inputValue: [
-                                                                ...currentFrequences,
-                                                                value,
-                                                            ],
-                                                        },
-                                                    });
-                                                    input.value = "";
-                                                }
+                        <div className="space-y-4 flex flex-col items-center justify-center">
+                            <div className="flex items-center justify-center gap-2 w-full">
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    placeholder={
+                                        type?.table === "periodic"
+                                            ? "Enter frequency value"
+                                            : "Enter relaxation value"
+                                    }
+                                    className="input input-bordered grow text-left"
+                                    id="frequencyInput"
+                                />
+                                <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => {
+                                        const input = document.getElementById(
+                                            "frequencyInput",
+                                        ) as HTMLInputElement;
+                                        const value = parseFloat(input.value);
+                                        if (!isNaN(value)) {
+                                            if (type?.table === "periodic") {
+                                                const currentFrequences =
+                                                    Array.isArray(
+                                                        formState.frequence,
+                                                    )
+                                                        ? formState.frequence
+                                                        : [];
+                                                dispatch({
+                                                    type: "change_value",
+                                                    payload: {
+                                                        inputName: "frequence",
+                                                        inputValue: [
+                                                            ...currentFrequences,
+                                                            value,
+                                                        ],
+                                                    },
+                                                });
+                                                input.value = "";
+                                            } else if (
+                                                type?.table === "jumps"
+                                            ) {
+                                                const currentFrequences =
+                                                    Array.isArray(
+                                                        formState.relaxation,
+                                                    )
+                                                        ? formState.relaxation
+                                                        : [];
+                                                dispatch({
+                                                    type: "change_value",
+                                                    payload: {
+                                                        inputName: "relaxation",
+                                                        inputValue: [
+                                                            ...currentFrequences,
+                                                            value,
+                                                        ],
+                                                    },
+                                                });
+                                                input.value = "";
                                             }
-                                        }}
-                                    >
-                                        {type?.table === "periodic"
-                                            ? "Add Frequency"
-                                            : "Add Relaxation Years"}
-                                    </button>
-                                </div>
-                                <div className="max-h-44 flex flex-wrap gap-3 justify-start items-center overflow-y-auto w-full p-2">
-                                    {Array.isArray(formState.relaxation) && (
-                                        <label className="font-bold text-lg">
-                                            Years:
-                                        </label>
-                                    )}
-                                    {Array.isArray(formState.frequence) &&
-                                        formState.frequence.map(
-                                            (freq: number, i: number) => (
-                                                <div
-                                                    key={i}
-                                                    className="flex flex-row justify-between items-center badge badge-primary gap-2 p-4"
-                                                >
-                                                    {freq}
-                                                    <button
-                                                        type="button"
-                                                        className="btn btn-xs btn-ghost"
-                                                        onClick={() => {
-                                                            const newFrequences =
-                                                                formState.frequence.filter(
-                                                                    (
-                                                                        _: number,
-                                                                        index: number,
-                                                                    ) => index !== i,
-                                                                );
-                                                            dispatch({
-                                                                type: "change_value",
-                                                                payload: {
-                                                                    inputName:
-                                                                        "frequence",
-                                                                    inputValue:
-                                                                        newFrequences,
-                                                                },
-                                                            });
-                                                        }}
-                                                    >
-                                                        ✕
-                                                    </button>
-                                                </div>
-                                            ),
-                                        )}
-                                    {Array.isArray(formState.relaxation) &&
-                                        formState.relaxation.map(
-                                            (freq: number, i: number) => (
-                                                <div
-                                                    key={i}
-                                                    className="flex flex-row justify-between items-center badge badge-primary gap-2 m-1 p-4"
-                                                >
-                                                    {freq}
-                                                    <button
-                                                        type="button"
-                                                        className="btn btn-xs btn-ghost"
-                                                        onClick={() => {
-                                                            const newFrequences =
-                                                                formState.relaxation.filter(
-                                                                    (
-                                                                        _: number,
-                                                                        index: number,
-                                                                    ) => index !== i,
-                                                                );
-                                                            dispatch({
-                                                                type: "change_value",
-                                                                payload: {
-                                                                    inputName:
-                                                                        "relaxation",
-                                                                    inputValue:
-                                                                        newFrequences,
-                                                                },
-                                                            });
-                                                        }}
-                                                    >
-                                                        ✕
-                                                    </button>
-                                                </div>
-                                            ),
-                                        )}
-                                </div>
+                                        }
+                                    }}
+                                >
+                                    {type?.table === "periodic"
+                                        ? "Add Frequency"
+                                        : "Add Relaxation Years"}
+                                </button>
                             </div>
-                        )}
+                            <div className="max-h-44 flex flex-wrap gap-3 justify-start items-center overflow-y-auto w-full p-2">
+                                {Array.isArray(formState.relaxation) && (
+                                    <label className="font-bold text-lg">
+                                        Years:
+                                    </label>
+                                )}
+                                {Array.isArray(formState.frequence) &&
+                                    formState.frequence.map(
+                                        (freq: number, i: number) => (
+                                            <div
+                                                key={i}
+                                                className="flex flex-row justify-between items-center badge badge-primary gap-2 p-4"
+                                            >
+                                                {freq}
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-xs btn-ghost"
+                                                    onClick={() => {
+                                                        const newFrequences =
+                                                            formState.frequence.filter(
+                                                                (
+                                                                    _: number,
+                                                                    index: number,
+                                                                ) =>
+                                                                    index !== i,
+                                                            );
+                                                        dispatch({
+                                                            type: "change_value",
+                                                            payload: {
+                                                                inputName:
+                                                                    "frequence",
+                                                                inputValue:
+                                                                    newFrequences,
+                                                            },
+                                                        });
+                                                    }}
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ),
+                                    )}
+                                {Array.isArray(formState.relaxation) &&
+                                    formState.relaxation.map(
+                                        (freq: number, i: number) => (
+                                            <div
+                                                key={i}
+                                                className="flex flex-row justify-between items-center badge badge-primary gap-2 m-1 p-4"
+                                            >
+                                                {freq}
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-xs btn-ghost"
+                                                    onClick={() => {
+                                                        const newFrequences =
+                                                            formState.relaxation.filter(
+                                                                (
+                                                                    _: number,
+                                                                    index: number,
+                                                                ) =>
+                                                                    index !== i,
+                                                            );
+                                                        dispatch({
+                                                            type: "change_value",
+                                                            payload: {
+                                                                inputName:
+                                                                    "relaxation",
+                                                                inputValue:
+                                                                    newFrequences,
+                                                            },
+                                                        });
+                                                    }}
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ),
+                                    )}
+                            </div>
+                        </div>
+                    )}
                 </div>
+
+                {msg && <Alert msg={msg} />}
 
                 <button
                     className="btn btn-success self-center w-3/12"
@@ -665,9 +690,6 @@ const TimeSeriesConfigModal = ({
                     )}{" "}
                     Save{" "}
                 </button>
-                {
-                    msg && <Alert msg={msg} />
-                }
             </form>
         </Modal>
     );

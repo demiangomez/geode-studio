@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import Popup from "@components/map/Popup";
 import VisitsScroller from "@components/map/VisitsScroller";
 
@@ -12,14 +12,10 @@ import VectorSource from "ol/source/Vector";
 
 import { getNearbyStations } from "@services";
 
-import {
-    useApi,
-    useAuth,
-    useMapInit,
-    useMultiKmlLayer,
-    useKmlLayer,
-    useClusterLayer,
-} from "@hooks";
+import { useApi, useAuth } from "@hooks";
+import { useMapInit } from "@hooks/ol/useMapInit";
+import { useKmlLayer, useMultiKmlLayer } from "@hooks/ol/useKmlLayer";
+import { useClusterLayer } from "@hooks/ol/useClusterLayer";
 
 import {
     iconUrl,
@@ -30,6 +26,7 @@ import {
     getLastZoom,
 } from "@olUtils";
 
+import "ol/ol.css";
 import "./MapOL.css";
 
 import type { Geometry } from "ol/geom";
@@ -58,15 +55,6 @@ interface VisitScrollerProps {
 
 interface MapStationOLProps {
     visitScrollerProps: VisitScrollerProps;
-    base64Data:
-        | {
-              visits: StationVisitsData[];
-              stationMeta: StationMetadataServiceData;
-              changeKml: VisitsStates[];
-              changeMeta: boolean;
-          }
-        | string
-        | undefined;
     station: StationData | undefined;
 }
 
@@ -125,9 +113,9 @@ const NearbyStationsControl: React.FC<{
 
 const MapStationOL: React.FC<MapStationOLProps> = ({
     visitScrollerProps,
-    base64Data,
     station,
 }) => {
+    const { visits, changeKml, changeMeta, stationMeta } = visitScrollerProps;
     const { token, logout, clusteringDistance } = useAuth();
     const api = useApi(token, logout);
 
@@ -188,25 +176,15 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
     });
 
     // KML hooks
-    const { loadMultipleKml, clearAllKml } = useMultiKmlLayer({
-        mapInstance,
-    });
+    const { loadMultipleKml } = useMultiKmlLayer({ mapInstance });
     const { loadKml: loadSingleKml, clearKml: clearSingleKml } = useKmlLayer({
         mapInstance,
     });
 
-    const getColor = useCallback(
-        (visit: StationVisitsData) => {
-            const found = visitScrollerProps.changeKml.find(
-                (v) => v.visitId === visit.id,
-            );
-            return found?.color || "black";
-        },
-        [visitScrollerProps.changeKml],
-    );
-
     // station types and statuses
-    const { statuses, types } = useMetadata(api);
+    const { statuses, types } = useMetadata(api, {
+        only: ["types", "statuses"],
+    });
 
     // ---- Main station marker ----
     useEffect(() => {
@@ -375,48 +353,34 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isMapReady, handleClusterHover]);
 
-    // ---- Load KMLs from visits & metadata ----
+    // ---- Visit KMLs ----
     useEffect(() => {
-        if (!isMapReady || !base64Data) {
-            clearAllKml();
-            clearSingleKml();
-            return;
-        }
+        if (!isMapReady) return;
 
-        if (typeof base64Data === "string") {
-            clearAllKml();
-            loadSingleKml(base64Data, { fitView: false, hidePoints: true });
-            return;
-        }
-
-        // Multi-KML from visits
-        const kmlEntries: {
-            id: string | number;
-            base64Data: string;
-            color: string;
-        }[] = [];
-
-        for (const visit of base64Data.visits) {
-            if (!visit?.navigation_actual_file) continue;
-            const kmlState = base64Data.changeKml.find(
-                (k) => k.visitId === visit.id && k.checked,
-            );
-            if (!kmlState) continue;
-            kmlEntries.push({
-                id: visit.id,
-                base64Data: visit.navigation_actual_file,
-                color: getColor(visit),
-            });
-        }
+        const kmlEntries = visits.flatMap((visit) => {
+            if (!visit?.navigation_actual_file) return [];
+            const state = changeKml.find((k) => k.visitId === visit.id);
+            if (!state?.checked) return [];
+            return [
+                {
+                    id: visit.id,
+                    base64Data: visit.navigation_actual_file,
+                    color: state.color,
+                },
+            ];
+        });
 
         loadMultipleKml(kmlEntries);
+    }, [isMapReady, visits, changeKml, loadMultipleKml]);
 
-        // Metadata KML
-        if (
-            base64Data.stationMeta?.navigation_actual_file &&
-            base64Data.changeMeta
-        ) {
-            loadSingleKml(base64Data.stationMeta.navigation_actual_file, {
+    // ---- Metadata (default) KML ----
+    const metaKml = stationMeta?.navigation_actual_file;
+
+    useEffect(() => {
+        if (!isMapReady) return;
+
+        if (metaKml && changeMeta) {
+            loadSingleKml(metaKml, {
                 fitView: false,
                 defaultColor: "black",
                 hidePoints: true,
@@ -424,15 +388,7 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
         } else {
             clearSingleKml();
         }
-    }, [
-        isMapReady,
-        base64Data,
-        getColor,
-        loadMultipleKml,
-        loadSingleKml,
-        clearAllKml,
-        clearSingleKml,
-    ]);
+    }, [isMapReady, metaKml, changeMeta, loadSingleKml, clearSingleKml]);
 
     // ---- Fetch nearby stations ----
     useEffect(() => {
@@ -481,6 +437,7 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
             setSelectedPopupStation(null);
             popupOverlay.current?.setPosition(undefined);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [nearbyStations, selectedPopupStation, station]);
 
     // ---- Render nearby station markers (dual layer: individual + cluster) ----
@@ -687,10 +644,10 @@ const MapStationOL: React.FC<MapStationOLProps> = ({
                 >
                     <VisitsScroller
                         showScroller={showScroller}
-                        visits={visitScrollerProps.visits}
-                        changeKml={visitScrollerProps.changeKml}
-                        changeMeta={visitScrollerProps.changeMeta}
-                        stationMeta={visitScrollerProps.stationMeta}
+                        visits={visits}
+                        changeKml={changeKml}
+                        changeMeta={changeMeta}
+                        stationMeta={stationMeta}
                         setChangeKml={visitScrollerProps.setChangeKml}
                         setChangeMeta={visitScrollerProps.setChangeMeta}
                         setShowScroller={setShowScroller}

@@ -9,6 +9,18 @@ import {
 } from "@types";
 import { MapLayerState, MapProjectionState } from "@hooks";
 
+// Lee y parsea un valor persistido; si no existe o el JSON está corrupto, devuelve undefined
+const readStoredJSON = (key: string) => {
+    const stored = localStorage.getItem(key);
+    if (!stored) return undefined;
+    try {
+        return JSON.parse(stored);
+    } catch {
+        console.error(`Failed to parse "${key}" from storage`);
+        return undefined;
+    }
+};
+
 interface MapStore {
     // Map states
     mapState: boolean;
@@ -156,7 +168,7 @@ export const useMapStore = create<MapStore>()((set) => ({
             localStorage.setItem("mapState", next.toString());
             return { mapState: next };
         }),
-    mapLayerState: { topo: false, satellite: false },
+    mapLayerState: { topo: false, satellite: false, tectonicPlates: false },
     setMapLayerState: (state) =>
         set((prev) => ({
             mapLayerState:
@@ -234,32 +246,25 @@ export const useMapStore = create<MapStore>()((set) => ({
             params: typeof params === "function" ? params(prev.params) : params,
         })),
     earthQuakeParams: (() => {
-        const stored = localStorage.getItem("earthQuakeFilters");
-        if (stored) {
-            try {
-                const parsed = JSON.parse(stored);
-                return {
-                    date_start: parsed.date_start
-                        ? parsed.date_start
-                        : undefined,
-                    date_end: parsed.date_end ? parsed.date_end : undefined,
-                    max_magnitude: parsed.max_magnitude
-                        ? parseFloat(parsed.max_magnitude)
-                        : undefined,
-                    min_magnitude: parsed.min_magnitude
-                        ? parseFloat(parsed.min_magnitude)
-                        : undefined,
-                    id: parsed.id ? parsed.id : undefined,
-                    max_depth: parsed.max_depth
-                        ? parseFloat(parsed.max_depth)
-                        : undefined,
-                    min_depth: parsed.min_depth
-                        ? parseFloat(parsed.min_depth)
-                        : undefined,
-                };
-            } catch (e) {}
-        }
-        return undefined;
+        const parsed = readStoredJSON("earthQuakeFilters");
+        if (!parsed) return undefined;
+        return {
+            date_start: parsed.date_start ? parsed.date_start : undefined,
+            date_end: parsed.date_end ? parsed.date_end : undefined,
+            max_magnitude: parsed.max_magnitude
+                ? parseFloat(parsed.max_magnitude)
+                : undefined,
+            min_magnitude: parsed.min_magnitude
+                ? parseFloat(parsed.min_magnitude)
+                : undefined,
+            id: parsed.id ? parsed.id : undefined,
+            max_depth: parsed.max_depth
+                ? parseFloat(parsed.max_depth)
+                : undefined,
+            min_depth: parsed.min_depth
+                ? parseFloat(parsed.min_depth)
+                : undefined,
+        };
     })(),
     setEarthQuakeParams: (params) =>
         set((prev) => ({
@@ -286,28 +291,20 @@ export const useMapStore = create<MapStore>()((set) => ({
             filters:
                 typeof filters === "function" ? filters(prev.filters) : filters,
         })),
-    earthquakeFilterFormState: (() => {
-        const stored = localStorage.getItem("earthQuakeFilters");
-        if (stored) {
-            try {
-                return JSON.parse(stored);
-            } catch (e) {}
-        }
-        return {
-            date_start: undefined,
-            date_end: undefined,
-            max_magnitude: "",
-            min_magnitude: "",
-            id: "",
-            max_depth: "",
-            min_depth: "",
-            min_latitude: "",
-            max_latitude: "",
-            min_longitude: "",
-            max_longitude: "",
-            polygon_coordinates: [[]],
-        };
-    })(),
+    earthquakeFilterFormState: readStoredJSON("earthQuakeFilters") ?? {
+        date_start: undefined,
+        date_end: undefined,
+        max_magnitude: "",
+        min_magnitude: "",
+        id: "",
+        max_depth: "",
+        min_depth: "",
+        min_latitude: "",
+        max_latitude: "",
+        min_longitude: "",
+        max_longitude: "",
+        polygon_coordinates: [[]],
+    },
     setEarthquakeFilterFormState: (state) =>
         set((prev) => {
             const next =
@@ -317,15 +314,7 @@ export const useMapStore = create<MapStore>()((set) => ({
             localStorage.setItem("earthQuakeFilters", JSON.stringify(next));
             return { earthquakeFilterFormState: next };
         }),
-    chosenEarthquake: (() => {
-        const stored = localStorage.getItem("earthquakeChosen");
-        if (stored) {
-            try {
-                return JSON.parse(stored);
-            } catch (e) {}
-        }
-        return undefined;
-    })(),
+    chosenEarthquake: readStoredJSON("earthquakeChosen"),
     setChosenEarthquake: (eq) =>
         set((prev) => {
             const next =
@@ -337,15 +326,7 @@ export const useMapStore = create<MapStore>()((set) => ({
             }
             return { chosenEarthquake: next };
         }),
-    selectedEarthquakes: (() => {
-        const stored = localStorage.getItem("selectedEarthquakes");
-        if (stored) {
-            try {
-                return JSON.parse(stored);
-            } catch (e) {}
-        }
-        return [];
-    })(),
+    selectedEarthquakes: readStoredJSON("selectedEarthquakes") ?? [],
     setSelectedEarthquakes: (eqs) =>
         set((prev) => {
             const next =
@@ -372,23 +353,13 @@ export const useMapStore = create<MapStore>()((set) => ({
                     ? isPopulated(prev.isPopulated)
                     : isPopulated,
         })),
-    temporalFilter: (() => {
-        const stored = localStorage.getItem("temporalFilter");
-        if (stored) {
-            try {
-                return JSON.parse(stored);
-            } catch (e) {
-                console.error("Failed to parse temporalFilter from storage", e);
-            }
-        }
-        return {
-            enabled: false,
-            dateStart: null,
-            dateEnd: null,
-            hiddenPoints: false,
-            exactDate: false,
-        };
-    })(),
+    temporalFilter: readStoredJSON("temporalFilter") ?? {
+        enabled: false,
+        dateStart: null,
+        dateEnd: null,
+        hiddenPoints: false,
+        exactDate: false,
+    },
     setTemporalFilter: (filter) =>
         set((prev) => {
             const next =

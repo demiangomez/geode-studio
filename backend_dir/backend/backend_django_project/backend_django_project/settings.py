@@ -108,6 +108,8 @@ INSTALLED_APPS = [
 
 
 CORS_ALLOW_ALL_ORIGINS = True
+# let the front read the filename of the rinex download
+CORS_EXPOSE_HEADERS = ['Content-Disposition']
 
 AUTH_USER_MODEL = "api.User"
 

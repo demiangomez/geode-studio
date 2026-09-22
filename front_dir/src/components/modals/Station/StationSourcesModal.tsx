@@ -19,7 +19,7 @@ import {
 
 import { useClickOutside, useFormReducer } from "@hooks";
 
-import { showModal } from "@utils";
+import { showModal, modalActions } from "@utils";
 
 import { SOURCES_STATIONS_STATE } from "@utils/reducerFormStates";
 
@@ -76,7 +76,11 @@ const StationSourcesModel = ({
     >({ show: false, type: "" });
 
     const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     const errorBadge = msg?.errors?.errors?.map((e) => e.attr);
 
@@ -88,13 +92,6 @@ const StationSourcesModel = ({
         "default_path",
         "default_format",
     ];
-
-    const handleCancel = () => {
-        handleClose();
-        dispatch({
-            type: "clear",
-        });
-    };
 
     const postSourcesStation = async () => {
         try {
@@ -267,6 +264,7 @@ const StationSourcesModel = ({
                 },
             });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sourceStation]);
 
     useEffect(() => {
@@ -474,38 +472,36 @@ const StationSourcesModel = ({
                         </div>
                     ))}
                 </div>
-                <div className="flex flex-row justify-center items-center gap-2">
-                    <div>
+                <Alert msg={msg} />
+                <div className={modalActions.container}>
+                    {type === "edit" && (
                         <button
-                            className="btn btn-success btn-md w-[100px]"
-                            onClick={handleSubmit}
-                            disabled={loading || success}
-                        >
-                            {loading && <Spinner size="md" />}
-                            <span className="font-bold">
-                                {type === "edit" ? "Update" : "Add"}
-                            </span>
-                        </button>
-                    </div>
-                    <button
-                        className="btn btn-error btn-md w-[100px]"
-                        onClick={() => {
-                            if (type === "edit") {
+                            type="button"
+                            className={modalActions.destructive}
+                            onClick={() =>
                                 setDeleteModals({
                                     show: true,
                                     title: "ConfirmDelete",
                                     type: "edit",
-                                });
-                            } else {
-                                handleCancel();
+                                })
                             }
-                        }}
+                            disabled={loading || success}
+                        >
+                            Remove
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        className={modalActions.primary}
+                        onClick={handleSubmit}
                         disabled={loading || success}
                     >
-                        {type === "edit" ? "Remove" : "Cancel"}
+                        {loading && <Spinner size="md" />}
+                        <span className="font-bold">
+                            {type === "edit" ? "Update" : "Add"}
+                        </span>
                     </button>
                 </div>
-                <Alert msg={msg} />
             </div>
             {deleteModals?.show && deleteModals?.type === "edit" && (
                 <ConfirmDeleteModal

@@ -14,6 +14,7 @@ export interface GetParams {
     visit_api_id?: string;
     api_id?: string;
     only_metadata?: boolean;
+    only_empty_network?: boolean;
     doy?: string;
     event_type?: string;
     event_date_since?: string;
@@ -53,6 +54,8 @@ export interface GetParams {
     interval?: string | number;
     offset?: number;
     limit?: number;
+    project?: string;
+    name?: string;
     monument_id?: number;
     campaign?: number;
     original_quality?: boolean;
@@ -158,6 +161,7 @@ export interface StationTimeSeriesServiceData {
     etm_params: TimeSeriesParamsData;
     time_series: string;
     download_filename: string;
+    debug_output: string;
 }
 
 export interface StationCoordinatesData {
@@ -172,7 +176,7 @@ export interface BulkDownloadStation {
     station_code: string;
 }
 
-export interface BulkDownloadResult {
+export interface FileDownloadResult {
     blob?: Blob;
     filename?: string;
     statusCode: number;
@@ -211,6 +215,15 @@ export interface ExtendedErrors extends Errors {
 export interface Errors {
     errors: [{ code: string; detail: string; attr: string }];
     type: string;
+    // Solo GET api/time-series: log del ETM si alcanzó a correr antes de fallar
+    debug_output?: string;
+}
+
+// Mensaje del <Alert> de modales y paneles: status HTTP, titulo y errores del API
+export interface AlertMsg {
+    status: number;
+    msg: string;
+    errors?: Errors;
 }
 
 export interface FileErrors {
@@ -404,6 +417,36 @@ export interface CountriesServiceData {
     count: number;
     total_count: number;
     data: CountriesData[];
+    statusCode: number;
+}
+
+export interface TectonicPlateProperties {
+    LAYER: string;
+    Code: string;
+    PlateName: string;
+}
+
+export interface TectonicPlateFeature {
+    type: "Feature";
+    properties: TectonicPlateProperties;
+    geometry: {
+        type: string;
+        coordinates: unknown;
+    };
+}
+
+export interface TectonicPlatesServiceData {
+    type: "FeatureCollection";
+    features: TectonicPlateFeature[];
+}
+
+export interface TectonicPlateName {
+    code: string;
+    name: string;
+}
+
+export interface TectonicPlateNamesServiceData {
+    plates: TectonicPlateName[];
     statusCode: number;
 }
 
@@ -605,6 +648,7 @@ export interface StationVisitsData {
     navigation_actual_file: string | null;
     navigation_filename: string;
     people: string[{ id: number; name: string }];
+    planned: boolean;
     station: number;
     station_network_code: string;
     station_station_code: string;
@@ -612,6 +656,26 @@ export interface StationVisitsData {
     observation_file_count: number;
     visit_image_count: number;
     other_file_count: number;
+}
+
+export interface VisitTransferOutcome {
+    visit: number;
+    date: string;
+}
+
+export interface VisitTransferRejection extends VisitTransferOutcome {
+    error: string;
+}
+
+export interface VisitTransferBody {
+    visits: number[];
+    destination_station: number;
+}
+
+export interface VisitTransferServiceData {
+    transferred: VisitTransferOutcome[];
+    rejected: VisitTransferRejection[];
+    statusCode: number;
 }
 
 export interface StationPostVisitData {
@@ -653,6 +717,13 @@ export interface StationImagesData {
     name: string;
     id: number;
     station: number;
+}
+
+export interface Photo {
+    id: number;
+    actual_image: string;
+    description: string;
+    name: string;
 }
 
 export interface StationTypeServiceData {
@@ -730,17 +801,17 @@ export interface People {
 export type PeopleSelectedData =
     | undefined
     | [
-        number,
-        string,
-        string,
-        string,
-        string,
-        string,
-        number | string,
-        string,
-        string,
-        string,
-    ];
+          number,
+          string,
+          string,
+          string,
+          string,
+          string,
+          number | string,
+          string,
+          string,
+          string,
+      ];
 
 export interface EndpointCluster {
     [key: string]: [
@@ -823,6 +894,13 @@ export interface GapData {
     station_meta: number;
 }
 
+/**
+ * Los campos opcionales son los que `only_metadata=true` NO devuelve. Los
+ * consumidores de listas (mapa y selectores de estacion) piden esa forma
+ * reducida; el detalle de una estacion (`useStation`, `Station.tsx`) pide la
+ * completa. Marcarlos opcionales hace que TS avise si una vista de lista
+ * intenta leerlos.
+ */
 export interface StationData {
     api_id?: number;
     visitDetail?: any;
@@ -831,23 +909,24 @@ export interface StationData {
     station_name: string;
     date_start: number;
     date_end: number;
-    auto_x: number;
-    auto_y: number;
-    auto_z: number;
-    harpos_coeff_otl: string;
+    auto_x?: number;
+    auto_y?: number;
+    auto_z?: number;
+    harpos_coeff_otl?: string;
     has_gaps: boolean;
     has_stationinfo: boolean;
     lat: number;
     lon: number;
-    height: number;
-    max_dist: number;
-    dome: string;
+    height?: number;
+    max_dist?: number;
+    dome?: string;
     country_code: string;
-    marker: number;
+    marker?: number;
     gaps: GapData[];
     mainParams?: GetParams;
     status: string;
     type: string | null;
+    plate?: string | null;
 }
 
 export interface StationInfoData {
@@ -952,6 +1031,24 @@ export interface SourcesServerData {
     protocol: string;
     server_id: number;
     username: string;
+    metadata_source_id: number | null;
+}
+
+export interface SourcesMetadataServiceData {
+    count: number;
+    data: SourcesMetadataData[];
+    statusCode: number;
+    total_count: number;
+}
+
+export interface SourcesMetadataData {
+    id: number;
+    protocol: string;
+    fqdn: string;
+    username: string | null;
+    password: string | null;
+    path: string | null;
+    format: string | null;
 }
 
 export interface SourcesFormatServiceData {
@@ -981,6 +1078,180 @@ export interface SourcesStationsData {
     path: string | null;
     server_id: number;
     format: string;
+}
+
+export type ProcessingEngine = "gamit" | "pages";
+export type ReferenceFrameEngine = ProcessingEngine;
+
+export interface ReferenceFrameData {
+    api_id: number;
+    frame_name: string;
+    engine: ReferenceFrameEngine;
+    project: string;
+    fixed_plate: string | null;
+    constraints_id: string | null;
+    position_wrms: number | null;
+    velocity_wrms: number | null;
+    periodic_wrms: number[] | null;
+    euler_pole: number[] | null;
+    euler_pole_stations: string[] | null;
+    first_epoch: string | null;
+    last_epoch: string | null;
+    created: string;
+    modified: string;
+    /** Filas de `stacks` con este frame_name (calculado por el backend). */
+    stacks_count: number;
+}
+
+export interface ReferenceFramesServiceData {
+    count: number;
+    data: ReferenceFrameData[];
+    statusCode: number;
+    total_count: number;
+}
+
+export type GamitNetworkType = "regional" | "global";
+export type GamitExperimentType = "baseline" | "relax" | "orbit";
+export type GamitOverconstAction = "inflate" | "relax" | "remove" | "delete";
+export type GnssSystem = "G" | "R" | "E" | "C";
+
+export interface ProcessingProjectBase {
+    api_id: number;
+    project: string;
+    station_list: string[] | null;
+}
+
+export interface GamitProjectData extends ProcessingProjectBase {
+    network_type: GamitNetworkType;
+    cluster_size: number;
+    ties: number;
+    process_defaults: string | null;
+    sestbl: string | null;
+    solutions_dir: string | null;
+    experiment_type: GamitExperimentType;
+    experiment_name: string | null;
+    org: string | null;
+    noftp: boolean;
+    eop_type: string;
+    systems: GnssSystem[] | null;
+    overconst_action: GamitOverconstAction | null;
+    sigma_floor_h: string;
+    sigma_floor_v: string;
+}
+
+export interface ProcessingProjectsServiceData<
+    T extends ProcessingProjectBase = ProcessingProjectBase,
+> {
+    count: number;
+    data: T[];
+    statusCode: number;
+    total_count: number;
+}
+
+export interface ProcessingStationListParams {
+    station_type?: number;
+    country_code?: string[];
+    lat?: number;
+    lon?: number;
+    distance_km?: number;
+    polygon?: { lat: number; lon: number }[];
+}
+
+export interface ProcessingStationListData {
+    count: number;
+    station_list: string[];
+    stations: StationData[];
+    statusCode: number;
+}
+
+// Campaign planner (api/campaign-planner, api/campaign-plans). Solo se guardan los
+// parametros: el plan se regenera con POST /api/campaign-planner cada vez.
+export type CampaignNewSite =
+    | string
+    | { name?: string; lat: number; lon: number }
+    | { name?: string; city: string };
+
+export interface CampaignPlanParams {
+    start_city: string;
+    end_city: string;
+    start_date: string;
+    stations: string[];
+    new_sites: CampaignNewSite[];
+    time_on_site_minutes: number;
+    station_time_overrides: Record<string, number>;
+    fuel_cost_per_km: number;
+    lodging_cost_per_night: number;
+    per_diem_cost_per_day: number;
+    num_participants: number;
+    day_start: string;
+    hard_stop: string;
+}
+
+export interface CampaignPlanData extends CampaignPlanParams {
+    id: number;
+    name: string;
+}
+
+export interface CampaignPlansServiceData {
+    count: number;
+    total_count: number;
+    data: CampaignPlanData[];
+    statusCode: number;
+}
+
+export interface CampaignPlanStop {
+    type: "origin" | "station" | "new_site" | "intermediate" | "destination";
+    name: string;
+    code: string | null;
+    lat: number | null;
+    lon: number | null;
+    arrival: string | null;
+    departure: string | null;
+    leg_km: number;
+    leg_drive_minutes: number;
+    leg_fuel_cost: number;
+    time_on_site_minutes?: number;
+    warning: string | null;
+    // [lon, lat] como GeoJSON
+    geometry: [number, number][];
+}
+
+export interface CampaignPlanDay {
+    day_number: number;
+    date: string;
+    stops: CampaignPlanStop[];
+    day_total_km: number;
+    day_total_drive_minutes: number;
+    day_total_fuel_cost: number;
+}
+
+export interface CampaignPlanSummary {
+    total_km: number;
+    total_drive_minutes: number;
+    total_fuel_cost: number;
+    total_lodging_cost: number;
+    total_per_diem_cost: number;
+    total_days: number;
+    total_stations: number;
+    num_participants: number;
+}
+
+export interface CampaignPlanResult {
+    days: CampaignPlanDay[];
+    summary: CampaignPlanSummary;
+}
+
+export interface CampaignPlannerData {
+    html: string;
+    plan: CampaignPlanResult;
+    statusCode: number;
+}
+
+export interface GeocodeCityData {
+    name: string;
+    lat: number;
+    lon: number;
+    statusCode: number;
 }
 
 export interface Filter {

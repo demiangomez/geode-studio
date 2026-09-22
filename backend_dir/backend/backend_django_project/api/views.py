@@ -30,11 +30,13 @@ import base64
 from django.forms.models import model_to_dict
 from django.core.cache import caches
 import time
-from .tasks import update_gaps_status
+from .tasks import update_gaps_status, update_planned_visits_status
 from django.core.files.storage import default_storage
 from geode import dbConnection, pyDate, pyETM
 from geode import Utils as pyUtils
 from geode.metadata.station_info import StationInfo
+from geode.campaign_planner.planner import CampaignPlannerError
+from geode.campaign_planner.services import geocode_city
 from geode.etm.core.etm_config import EtmConfig
 from geode.etm.data.etm_params import EtmParams
 from geode.etm.core.etm_engine import EtmEngine
@@ -46,6 +48,9 @@ from io import BytesIO
 import json
 from django.db.models import Count
 from django.db.models import Prefetch
+from django.db.models import Subquery, OuterRef, IntegerField
+from django.db.models.functions import Coalesce
+from django.db.utils import IntegrityError
 
 
 def response_is_paginated(response_data):
@@ -289,6 +294,26 @@ class StationList(CustomListCreateAPIView):
     filter_backends = [DjangoFilterBackend]
     filterset_class = filters.StationFilter
 
+    def get_serializer_class(self):
+        # lightweight variant for the main map and station selectors; POST keeps
+        # the full serializer
+        if self.request is not None and self.request.method == 'GET' and self.request.query_params.get(
+                'only_metadata', 'false').lower() == 'true':
+            return serializers.StationOnlyMetadataSerializer
+        return serializers.StationSerializer
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='only_metadata', type=OpenApiTypes.BOOL, required=False,
+                             description="If true, returns a lightweight representation per station (~86% smaller): "
+                             "'api_id', 'network_code', 'station_code', 'station_name', 'country_code', 'lat', 'lon', 'height', "
+                             "'date_start', 'date_end', plus the station meta fields ('status', 'type', 'has_gaps', "
+                             "'has_stationinfo', 'gaps') that every response of this endpoint already includes.")
+        ])
+    def get(self, request, *args, **kwargs):
+        # drf-spectacular only reads @extend_schema from the HTTP method of generic views ('get'/'post'), not from 'list'/'create'
+        return super().get(request, *args, **kwargs)
+
     def list(request, *args, **kwargs):
         """If the response status is 200, add some fields of the related stationmeta object"""
 
@@ -301,8 +326,8 @@ class StationList(CustomListCreateAPIView):
         return response
 
     @extend_schema(description="Must pass either Geodetic Coordinates (fields 'lat', 'lon', and 'height') or ECEF ('auto_x', 'auto_y' and 'auto_z'). If both types of coordinates are passed then ECEF coordinates will be overried by the Geodesic translation. When creating a station, 'harpos_coeff_otl' can only be set as a string")
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
 
 class StationDetail(generics.RetrieveUpdateDestroyAPIView):
@@ -553,6 +578,20 @@ class TimeSeries(CustomListAPIView):
         else:
             return station.network_code.network_code, station.station_code
 
+    @extend_schema(
+        description="Runs the ETM of the station for the given solution (+stack unless PPP) and "
+                    "returns the time series as a plot (json=false) or as the ETM JSON dump (json=true).",
+        responses={200: OpenApiResponse(
+            description="Object with time_series (plot or ETM JSON), etm_params (current ETM "
+                        "configuration), download_filename and debug_output (console debug output "
+                        "of the ETM run, as text with one line per log record prefixed by its level, "
+                        "so the user can inspect it for problems). If the ETM fails, the 400 error "
+                        "response also carries debug_output as a top-level key next to type and "
+                        "errors, closed by an ' -- ERROR: ...' line with the error itself.")}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
     def list(self, request, *args, **kwargs):
         network_code, station_code = self._get_station(
             kwargs.get("station_api_id"))
@@ -560,6 +599,9 @@ class TimeSeries(CustomListAPIView):
         params = self._check_params(request)
 
         cnn = dbConnection.Cnn(settings.CONFIG_FILE_ABSOLUTE_PATH)
+        # console debug output of the ETM run, returned to the front so the user can inspect it
+        debug_output = utils.EtmDebugOutputCapture()
+        debug_output.start()
         try:
             solution_type = utils.get_solution_type(params["solution"])
             if solution_type == SolutionType.PPP:
@@ -586,7 +628,7 @@ class TimeSeries(CustomListAPIView):
 
             if params["json"]:
                 response = etm.save_etm(
-                    dump_model=not params["no_model"], dump_functions=True, dump_observations=True)
+                    dump_model=True, dump_raw_results=True, dump_functions=True, dump_observations=True)
             else:
                 config.plotting_config = PlotOutputConfig(
                     file_io=BytesIO(), format='png', plot_time_window=params["dates"],
@@ -605,15 +647,21 @@ class TimeSeries(CustomListAPIView):
                     jump["type"] = description_to_type.get(jump["type"])
 
         except Exception as e:
-            raise exceptions.CustomValidationErrorExceptionHandler(
-                e.detail if hasattr(e, 'detail') else str(e))
+            detail = e.detail if hasattr(e, 'detail') else str(e)
+            # geode doesn't log the exception, so close the output with it: the last line
+            # tells where and why the ETM run stopped
+            raise exceptions.EtmErrorExceptionHandler(
+                detail, debug_output.get_output() + ' -- ERROR: ' + str(detail) + '\n')
+        finally:
+            debug_output.stop()
 
         # download_filename = build_filename() = "<net>.<stn>_<stack>" (e.g. arg.csps_igs14); the
         # front uses it to name the downloaded ETM file (it appends the extension: .json / .png).
         # named download_filename (not filename) to avoid colliding with the geode-internal
         # solution_options.filename nested inside time_series.
         return Response(data={"time_series": response, "etm_params": etm_config,
-                              "download_filename": config.build_filename()}, status=status.HTTP_200_OK)
+                              "download_filename": config.build_filename(),
+                              "debug_output": debug_output.get_output()}, status=status.HTTP_200_OK)
 
 
 class BulkDownloadTimeSeries(APIView):
@@ -1421,6 +1469,116 @@ class CampaignDetail(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = serializers.CampaignSerializer
 
 
+CAMPAIGN_PLANS_WRITE_DESCRIPTION = (
+    "Parameters of a campaign plan, the config of geode's campaign planner: only the parameters are saved (no relation "
+    "with campaigns), the plan is generated again from them with POST /api/campaign-planner. 'stations' is a list of "
+    "geode station specs: NetworkCode.StationCode codes of existing stations (matched case-insensitively and replaced by "
+    "the exact codes of the db; unknown codes are rejected), and also country codes, filters, wildcards and '-spec' "
+    "removals as in the CLI (passed as is, resolved by geode). 'new_sites' is a list of planned sites not in the db, each \"lat,lon\", \"City, Country\" "
+    "(geocoded), {\"name\", \"lat\", \"lon\"} or {\"name\", \"city\"}, and 'station_time_overrides' {station code or new "
+    "site name: minutes} to override 'time_on_site_minutes' for those stops. At least one station or new site is "
+    "required. 'day_start' / 'hard_stop' are HH:MM ('hard_stop' must be later), 'start_date' YYYY-MM-DD. Costs are per "
+    "person ('lodging_cost_per_night', 'per_diem_cost_per_day', multiplied by 'num_participants') or per km "
+    "('fuel_cost_per_km'); 0 omits that cost from the plan.")
+
+
+class CampaignPlansList(CustomListCreateAPIView):
+    queryset = models.CampaignPlans.objects.all()
+    serializer_class = serializers.CampaignPlanSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = filters.CampaignPlansFilter
+
+    @extend_schema(description="Saved campaign plans (table campaign_plans). Search by name with 'name' (case-insensitive, contains).")
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(description=CAMPAIGN_PLANS_WRITE_DESCRIPTION)
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+
+class CampaignPlansDetail(generics.RetrieveUpdateDestroyAPIView):
+    queryset = models.CampaignPlans.objects.all()
+    serializer_class = serializers.CampaignPlanSerializer
+
+    @extend_schema(description=CAMPAIGN_PLANS_WRITE_DESCRIPTION)
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+
+    @extend_schema(description=CAMPAIGN_PLANS_WRITE_DESCRIPTION)
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
+
+
+class CampaignPlanner(APIView):
+    """Runs geode's campaign planner (geode.campaign_planner.planner.plan_campaign) with
+    the given parameters, like its CLI (CampaignPlanner.py). Nothing is saved: the
+    parameters are saved with POST /api/campaign-plans and this is run again to display
+    a saved plan."""
+
+    serializer_class = serializers.CampaignPlannerSerializer
+
+    @extend_schema(
+        request=serializers.CampaignPlannerSerializer,
+        responses={200: OpenApiResponse(
+            description="{'html': self-contained html of the plan (header, summary, map, day by day tables, cost summary; "
+            "print-ready: open it in a new window and print to PDF), 'plan': the plan as data, {'days': [{'day_number', 'date', "
+            "'stops': [{'type': origin/station/new_site/intermediate/destination, 'name', 'code', 'lat', 'lon', 'arrival', "
+            "'departure', 'leg_km', 'leg_drive_minutes', 'leg_fuel_cost', 'warning', 'geometry': [[lon, lat], ...]}, ...], "
+            "'day_total_km', 'day_total_drive_minutes', 'day_total_fuel_cost'}, ...], 'summary': {'total_km', "
+            "'total_drive_minutes', 'total_fuel_cost', 'total_lodging_cost', 'total_per_diem_cost', 'total_days', "
+            "'total_stations', 'num_participants'}}")},
+        description="Generates a campaign plan with geode's campaign planner: the stops (stations of the db and new sites) "
+        "are ordered from 'start_city' (nearest neighbour), the driving legs are routed with OSRM and scheduled between "
+        "'day_start' and 'hard_stop' each day from 'start_date', spending 'time_on_site_minutes' at each stop, and the "
+        "costs are computed. Cities are geocoded with Nominatim (be specific, e.g. \"La Plata, Buenos Aires, Argentina\"). "
+        "Takes seconds (public OSRM and Nominatim calls per stop). Nothing is saved. Errors of the planner (unknown "
+        "stations, city not found, no route) are returned as 400 with the planner's message. "
+        + CAMPAIGN_PLANS_WRITE_DESCRIPTION)
+    def post(self, request, format=None):
+        serializer = serializers.CampaignPlannerSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = utils.CampaignPlannerUtils.plan_campaign(
+                serializer.validated_data)
+        except CampaignPlannerError as e:
+            raise exceptions.CustomValidationErrorExceptionHandler(str(e))
+        except Exception as e:
+            raise exceptions.CustomServerErrorExceptionHandler(e)
+
+        return Response(data={"html": result["html"], "plan": result["plan"]}, status=status.HTTP_200_OK)
+
+
+class CampaignPlannerGeocode(APIView):
+    """Geocodes a city with the planner's geocoder (Nominatim), to show it on the map
+    before generating the plan: same point the planner will use for that city."""
+
+    serializer_class = serializers.DummySerializer
+
+    @extend_schema(
+        parameters=[OpenApiParameter("q", OpenApiTypes.STR, required=True,
+                                     description="city or address to geocode, e.g. \"La Plata, Buenos Aires, Argentina\"")],
+        responses={200: OpenApiResponse(description="{'name': q, 'lat', 'lon'}")},
+        description="Geocodes a city or address with the campaign planner's geocoder (Nominatim), to show it on the map "
+        "before generating the plan: the point is the same the planner will use for 'start_city', 'end_city' or a new "
+        "site given by city. 400 with Nominatim's message if not found.")
+    def get(self, request, format=None):
+        q = request.query_params.get("q", "").strip()
+
+        if q == "":
+            raise exceptions.CustomValidationErrorExceptionHandler("'q' is required")
+
+        try:
+            location = geocode_city(q)
+        except ValueError as e:
+            raise exceptions.CustomValidationErrorExceptionHandler(str(e))
+        except Exception as e:
+            raise exceptions.CustomServerErrorExceptionHandler(e)
+
+        return Response(data=location, status=status.HTTP_200_OK)
+
+
 class VisitList(CustomListCreateAPIView):
     serializer_class = serializers.VisitSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1527,6 +1685,70 @@ class VisitDetail(generics.RetrieveUpdateDestroyAPIView):
     @extend_schema(description="In order to delete log_sheet_file, send 'log_sheet_file_delete' as true. The same applies with 'navigation_file_delete' for the navigation_file.")
     def patch(self, request, *args, **kwargs):
         return self.update(request, *args, **kwargs)
+
+
+class VisitsTransfer(APIView):
+    serializer_class = serializers.VisitsTransferRequestSerializer
+
+    @extend_schema(
+        request=serializers.VisitsTransferRequestSerializer,
+        responses={200: OpenApiResponse(
+            description="{'transferred': [{'visit', 'date'}], 'rejected': [{'visit', 'date', 'error'}]}. "
+                        "200 if at least one visit was transferred, 400 if none was.")},
+        description="Transfers one or many visits to another station, moving every file of the visit "
+                    "(log sheet, navigation file, images, attached and observation files) to the "
+                    "destination station's paths. A visit whose date collides with an existing visit "
+                    "of the destination station is rejected with an explicit error, without affecting "
+                    "the other visits of the request.")
+    def post(self, request, format=None):
+        serializer = serializers.VisitsTransferRequestSerializer(
+            data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            destination_station = models.Stations.objects.get(
+                api_id=serializer.validated_data["destination_station"])
+        except models.Stations.DoesNotExist:
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                "Destination station does not exist.")
+
+        transferred = []
+        rejected = []
+
+        for visit_id in serializer.validated_data["visits"]:
+            try:
+                visit = models.Visits.objects.get(id=visit_id)
+            except models.Visits.DoesNotExist:
+                rejected.append({"visit": visit_id, "date": None,
+                                 "error": "Visit does not exist."})
+                continue
+
+            if visit.station_id == destination_station.api_id:
+                rejected.append({"visit": visit_id, "date": visit.date,
+                                 "error": "Visit is already assigned to the destination station."})
+                continue
+
+            try:
+                utils.VisitUtils.transfer_visit(visit, destination_station)
+            except IntegrityError:
+                # station_date_unique: the date collision check is guaranteed by the db
+                rejected.append({"visit": visit_id, "date": visit.date,
+                                 "error": f"There is already a visit for station "
+                                 f"{destination_station.network_code.network_code}.{destination_station.station_code} "
+                                 f"on {visit.date}."})
+                continue
+            except Exception as e:
+                # unexpected failure (I/O, permissions, etc.): like in
+                # EtmBulkUtils.write_bulk_zip, report it per visit instead of
+                # aborting the rest of the batch
+                rejected.append({"visit": visit_id, "date": visit.date,
+                                 "error": f"Unexpected error while transferring the visit: {e}"})
+                continue
+
+            transferred.append({"visit": visit_id, "date": visit.date})
+
+        return Response({"transferred": transferred, "rejected": rejected},
+                        status=status.HTTP_200_OK if len(transferred) > 0 else status.HTTP_400_BAD_REQUEST)
 
 
 class VisitAttachedFilesList(CustomListCreateAPIView):
@@ -1844,6 +2066,90 @@ class GamitHtcList(CustomListCreateAPIView):
 class GamitHtcDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = models.GamitHtc.objects.all()
     serializer_class = serializers.GamitHtcSerializer
+
+
+GAMIT_PROJECTS_WRITE_DESCRIPTION = (
+    "'process_defaults' and 'sestbl' (contents of the GAMIT process.defaults and sestbl. files) can be sent as text or, "
+    "as multipart, loaded from a file with 'process_defaults_by_file' / 'sestbl_by_file': the file contents replace the "
+    "text field. 'station_list' is the list of NetworkCode.StationCode codes of existing stations to process (matched "
+    "case-insensitively, stored deduplicated with the exact codes of the db; build it with POST /api/processing-station-list). 'systems' is a list with any of "
+    "'G' (GPS), 'R' (GLONASS), 'E' (Galileo), 'C' (BeiDou). 'network_type' (regional/global), 'experiment_type' "
+    "(baseline/relax/orbit) and 'overconst_action' (inflate/relax/remove/delete or null) are validated with a readable, "
+    "per-field message before the db CHECK constraints. Empty values are stored as null, like the rows geode "
+    "created: [] for 'systems' / 'station_list' and '' for 'process_defaults', 'sestbl', 'solutions_dir', "
+    "'experiment_name', 'org' and 'overconst_action'. Renaming 'project' cascades in the db to gamit_soln, "
+    "gamit_soln_excl, gamit_subnets, gamit_stats and gamit_antenna_residuals.")
+
+
+class GamitProjectsList(CustomListCreateAPIView):
+    queryset = models.GamitProjects.objects.all()
+    serializer_class = serializers.GamitProjectsSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = filters.GamitProjectsFilter
+
+    @extend_schema(description="GAMIT projects (table gamit_projects). Search by project name with 'project' (case-insensitive, contains).")
+    def get(self, request, *args, **kwargs):
+        # drf-spectacular only reads @extend_schema from the HTTP method of generic views ('get'/'post'), not from 'list'/'create'
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(description=GAMIT_PROJECTS_WRITE_DESCRIPTION)
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+
+class GamitProjectsDetail(generics.RetrieveUpdateDestroyAPIView):
+    queryset = models.GamitProjects.objects.all()
+    serializer_class = serializers.GamitProjectsSerializer
+
+    @extend_schema(description=GAMIT_PROJECTS_WRITE_DESCRIPTION)
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+
+    @extend_schema(description=GAMIT_PROJECTS_WRITE_DESCRIPTION)
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
+
+    @extend_schema(description="Deleting a project also deletes, by db cascade, all its rows in gamit_soln, gamit_soln_excl, "
+                   "gamit_subnets, gamit_stats and gamit_antenna_residuals (the GAMIT solutions of the project). "
+                   "reference_frames rows built from it are not deleted.")
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
+
+
+class ProcessingStationList(APIView):
+    """Resolves the stations matching the given filters to a processing station list
+    (NetworkCode.StationCode codes) for gamit_projects.station_list. Engine-agnostic:
+    the same list applies to future per-engine projects tables (e.g. pages_projects)."""
+
+    serializer_class = serializers.ProcessingStationListSerializer
+
+    @extend_schema(
+        request=serializers.ProcessingStationListSerializer,
+        responses={200: OpenApiResponse(
+            description="{'count', 'station_list': ['NetworkCode.StationCode', ...] (ready for gamit_projects.station_list), "
+            "'stations': the matching stations to show on a map, same representation as GET /api/stations?only_metadata=true}")},
+        description="Resolves stations to a processing station list. Filters are combined with AND and at least one is "
+        "required: 'station_type' (id), 'country_code' (list of ISO3 codes), a location ('lat', 'lon' and 'distance_km': "
+        "great-circle radius around the point) and/or 'polygon' (list of {'lat', 'lon'} vertices, 3 or more, the closing "
+        "vertex is optional; stations on the boundary are included); or 'all': true for every station (geode's 'all' "
+        "keyword; any other filter given still applies). POST is used only because the polygon does not fit "
+        "in a query string: nothing is created. Stations of the placeholder networks ('?' prefix) are never included; "
+        "stations without coordinates only match by type/country.")
+    def post(self, request, format=None):
+        serializer = serializers.ProcessingStationListSerializer(
+            data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        stations = utils.ProcessingStationListUtils.get_stations(
+            serializer.validated_data)
+
+        stations = serializers.StationOnlyMetadataSerializer(
+            stations, many=True).data
+        utils.StationUtils.get_station_meta_info(stations)
+
+        return Response(data={"count": len(stations),
+                              "station_list": [station["network_code"] + "." + station["station_code"] for station in stations],
+                              "stations": stations}, status=status.HTTP_200_OK)
 
 
 class GamitSolnList(CustomListCreateAPIView):
@@ -2176,6 +2482,33 @@ class GetPreviousStationInfoFromRinex(APIView):
         return Response(data={"previous_station_info_api_id": previous_station_info.api_id}, status=status.HTTP_200_OK)
 
 
+class DownloadRinex(APIView):
+    serializer_class = serializers.DummySerializer
+
+    def get_queryset(self, pk):
+        try:
+            return models.Rinex.objects.get(api_id=pk)
+        except models.Rinex.DoesNotExist:
+            raise Http404
+
+    @extend_schema(
+        responses={200: OpenApiResponse(
+            description="The CRINEZ file (Hatanaka compressed RINEX) of the record as stored in "
+                        "the archive, sent as an attachment (filename in Content-Disposition).")},
+        description="Download the RINEX file of a rinex record from the archive.")
+    def get(self, request, pk, format=None):
+        rinex = self.get_queryset(pk)
+
+        try:
+            file_path = utils.RinexUtils.get_rinex_file(rinex)
+        except Exception as e:
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                e.detail if hasattr(e, 'detail') else str(e))
+
+        return FileResponse(open(file_path, 'rb'), as_attachment=True,
+                            filename=os.path.basename(file_path))
+
+
 class RinexSourcesInfoList(CustomListCreateAPIView):
     queryset = models.RinexSourcesInfo.objects.all()
     serializer_class = serializers.RinexSourcesInfoSerializer
@@ -2265,6 +2598,34 @@ class SourcesFormatsList(CustomListCreateAPIView):
 class SourcesFormatsDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = models.SourcesFormats.objects.all()
     serializer_class = serializers.SourcesFormatsSerializer
+
+
+class SourcesMetadataList(CustomListCreateAPIView):
+    queryset = models.SourcesMetadata.objects.all()
+    serializer_class = serializers.SourcesMetadataSerializer
+
+
+class SourcesMetadataDetail(generics.RetrieveUpdateDestroyAPIView):
+    queryset = models.SourcesMetadata.objects.all()
+    serializer_class = serializers.SourcesMetadataSerializer
+
+
+class ReferenceFramesList(CustomListAPIView):
+    queryset = models.ReferenceFrames.objects.annotate(
+        stacks_count=Coalesce(
+            Subquery(
+                models.Stacks.objects.filter(name=OuterRef('frame_name'))
+                .order_by().values('name').annotate(count=Count('*')).values('count'),
+                output_field=IntegerField(),
+            ), 0
+        )
+    )
+    serializer_class = serializers.ReferenceFramesSerializer
+
+
+class ReferenceFramesDetail(generics.RetrieveAPIView):
+    queryset = models.ReferenceFrames.objects.all()
+    serializer_class = serializers.ReferenceFramesSerializer
 
 
 class SourcesServersList(CustomListCreateAPIView):
@@ -2979,6 +3340,19 @@ class DeleteUpdateGapsStatusBlock(APIView):
         return Response(status=status.HTTP_201_CREATED)
 
 
+class UpdatePlannedVisitsStatus(APIView):
+    serializer_class = serializers.DummySerializer
+
+    @extend_schema(description="Marks planned visits as done ('planned' = false) once their date has been reached. The task runs at most once per hour, extra requests get a 429 response.")
+    def post(self, request, format=None):
+
+        if caches['default'].add('update_planned_visits_status_lock', 'locked'):
+            update_planned_visits_status.delay()
+            return Response(status=status.HTTP_201_CREATED)
+        else:
+            return Response(status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+
 class DistinctAntennaCodes(CustomListAPIView):
     queryset = models.Antennas.objects.values('antenna_code').distinct()
     serializer_class = serializers.DistinctAntennaCodeSerializer
@@ -3002,6 +3376,36 @@ class DistinctStackNames(APIView):
         except models.Stations.DoesNotExist:
             raise Http404
         else:
-            stack_names = models.Stacks.objects.filter(
-                station_code=station.station_code, network_code=station.network_code.network_code).values_list('name', flat=True).distinct()
-            return Response({"stack_names": stack_names})
+            station_stack_names = models.Stacks.objects.filter(
+                station_code=station.station_code, network_code=station.network_code.network_code
+            ).values_list('name', flat=True).distinct()
+
+            frame_names = models.ReferenceFrames.objects.filter(
+                engine='gamit', frame_name__in=station_stack_names
+            ).values_list('frame_name', flat=True)
+
+            return Response({"stack_names": list(frame_names)})
+
+
+class TectonicPlates(APIView):
+    serializer_class = serializers.DummySerializer
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='only_names', type=OpenApiTypes.BOOL, required=False,
+                             description="If true, returns {'plates': [{'code', 'name'}]} instead of the GeoJSON: just the plates' 2-letter codes and full names, deduplicated and sorted by name")
+        ],
+        responses={200: OpenApiResponse(description="GeoJSON FeatureCollection with the PB2002 tectonic plates, as shipped with geode. Every feature has 'Code' (2 letters) and 'PlateName' on its properties, and a Polygon or MultiPolygon geometry. If 'only_names' is true, {'plates': [{'code', 'name'}]} instead")})
+    def get(self, request, format=None):
+        only_names = request.query_params.get(
+            'only_names', 'false').lower() == 'true'
+
+        try:
+            if only_names:
+                data = {'plates': utils.TectonicPlatesUtils.get_plates_names()}
+            else:
+                data = utils.TectonicPlatesUtils.get_plates_geojson()
+        except Exception as e:
+            raise exceptions.CustomServerErrorExceptionHandler(e)
+
+        return Response(data=data, status=status.HTTP_200_OK)

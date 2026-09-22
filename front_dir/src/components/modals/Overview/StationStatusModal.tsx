@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     Alert,
     ConfirmDeleteModal,
@@ -11,7 +11,7 @@ import {
     postStationStatusService,
 } from "@services";
 import { useApi, useAuth, useFormReducer } from "@hooks";
-import { apiOkStatuses, showModal } from "@utils";
+import { apiOkStatuses, showModal, modalActions } from "@utils";
 import {
     Errors,
     ErrorResponse,
@@ -76,14 +76,26 @@ const StationStatusModal = ({
         color: 1,
     });
 
+    // la fila de la tabla trae el nombre del color en `color`; el PATCH necesita el id
     useEffect(() => {
-        if (StationStatus) {
-            dispatch({
-                type: "set",
-                payload: StationStatus,
-            });
-        }
-    }, [StationStatus]); // eslint-disable-line
+        if (!StationStatus) return;
+        const colorName =
+            typeof StationStatus.color === "number"
+                ? StationStatus.color_name
+                : String(StationStatus.color);
+        const colorId =
+            typeof StationStatus.color === "number"
+                ? StationStatus.color
+                : colores.find((c) => c.color === colorName)?.id;
+        dispatch({
+            type: "set",
+            payload: {
+                ...StationStatus,
+                color: colorId ?? StationStatus.color,
+                color_name: colorName,
+            },
+        });
+    }, [StationStatus, colores]); // eslint-disable-line
 
     const postStatus = async () => {
         try {
@@ -208,27 +220,17 @@ const StationStatusModal = ({
         showColorModal?.show && showModal(showColorModal.title);
     }, [showColorModal]);
 
-    useEffect(() => {
-        if (modalType === "edit") {
-            changeColorIdToString(formState.color);
-        }
-    }, [formState]);
-
-    const [colorName, setColorName] = useState<string>("");
-
-    const changeColorIdToString = (pickedColor: number) => {
-        const color = colores.find((color) => color.id === pickedColor);
-        if (color) {
-            const finalColor = color.color
-                .replace("-icon", "")
-                .replace("-", " ")
-                .replace(
-                    color.color.charAt(0),
-                    color.color.charAt(0).toUpperCase(),
-                );
-            setColorName(finalColor);
-        }
-    };
+    const colorName = useMemo(() => {
+        const color = colores.find((c) => c.id === formState.color);
+        if (!color) return "";
+        return color.color
+            .replace("-icon", "")
+            .replace("-", " ")
+            .replace(
+                color.color.charAt(0),
+                color.color.charAt(0).toUpperCase(),
+            );
+    }, [colores, formState.color]);
 
     return (
         <Modal
@@ -295,14 +297,10 @@ const StationStatusModal = ({
                                             {key === "color" && (
                                                 <>
                                                     <input
-                                                        type="text "
+                                                        type="text"
                                                         name={key}
                                                         value={colorName}
-                                                        onChange={(e) => {
-                                                            handleChange(
-                                                                e.target,
-                                                            );
-                                                        }}
+                                                        readOnly
                                                         className="grow "
                                                         autoComplete="off"
                                                     />
@@ -360,7 +358,7 @@ const StationStatusModal = ({
                 <div className="flex w-full justify-center space-x-4">
                     {modalType === "edit" && (
                         <button
-                            className="btn btn-error w-5/12"
+                            className={modalActions.destructive}
                             type="button"
                             disabled={isSuccess || loading}
                             onClick={() => {
@@ -377,7 +375,7 @@ const StationStatusModal = ({
                     )}
                     <button
                         type="submit"
-                        className="btn btn-success w-5/12"
+                        className={modalActions.primary}
                         disabled={isSuccess || loading}
                     >
                         Submit
@@ -406,7 +404,6 @@ const StationStatusModal = ({
                         });
                     }}
                     colores={colores}
-                    changeColorIdToString={changeColorIdToString}
                     formstate={formState}
                     type={showColorModal.type}
                 />

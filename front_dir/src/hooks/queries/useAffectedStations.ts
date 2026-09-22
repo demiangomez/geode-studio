@@ -1,21 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { QueryFunctionContext } from "@tanstack/react-query";
 import { AxiosInstance } from "axios";
 import { getAffectedStationsService } from "@services";
-import { StationsAffectedServiceData } from "@types";
+import { ErrorResponse, StationsAffectedServiceData } from "@types";
+import { unwrapApiResponse } from "@utils";
 
-export const useAffectedStations = (
+export const affectedStationsQueryOptions = (
     api: AxiosInstance,
-    earthquakeId?: number
-) => {
-    return useQuery({
-        queryKey: ["affectedStations", earthquakeId],
-        queryFn: ({ signal }) =>
-            getAffectedStationsService<StationsAffectedServiceData>(
-                api,
-                earthquakeId,
-                { signal }
-            ),
-        enabled: !!earthquakeId,
-        staleTime: 5 * 60 * 1000,
-    });
-};
+    earthquakeId?: number,
+) => ({
+    queryKey: ["affectedStations", earthquakeId],
+    queryFn: async ({ signal }: QueryFunctionContext) =>
+        unwrapApiResponse(
+            await getAffectedStationsService<
+                StationsAffectedServiceData | ErrorResponse
+            >(api, earthquakeId, { signal }),
+        ),
+    enabled: !!earthquakeId,
+    staleTime: 5 * 60 * 1000,
+});

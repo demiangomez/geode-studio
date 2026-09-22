@@ -59,7 +59,10 @@ const MainScroller = ({ altData, fromMain }: MainScrollerProps) => {
         statuses: stationStatus,
         types: stationType,
         isLoading: loading,
-    } = useMetadata(api, { enabled: !mapState });
+    } = useMetadata(api, {
+        enabled: !mapState,
+        only: ["types", "statuses"],
+    });
 
     const hasFilters = () => {
         return (
@@ -93,24 +96,30 @@ const MainScroller = ({ altData, fromMain }: MainScrollerProps) => {
         layer: keyof MapLayerState,
         checked: boolean,
     ) => {
-        // Mutual exclusion: activating one deactivates the other
+        // tectonicPlates is an overlay: independent from the topo/satellite
+        // mutual exclusion below (activating one base layer deactivates the other)
         const newState: MapLayerState =
-            layer === "topo"
-                ? {
-                      topo: checked,
-                      satellite: checked ? false : mapLayerState.satellite,
-                  }
-                : {
-                      topo: checked ? false : mapLayerState.topo,
-                      satellite: checked,
-                  };
+            layer === "tectonicPlates"
+                ? { ...mapLayerState, tectonicPlates: checked }
+                : layer === "topo"
+                  ? {
+                        ...mapLayerState,
+                        topo: checked,
+                        satellite: checked ? false : mapLayerState.satellite,
+                    }
+                  : {
+                        ...mapLayerState,
+                        topo: checked ? false : mapLayerState.topo,
+                        satellite: checked,
+                    };
 
-        // Batch both keys in a single localStorage write to avoid stale closure
+        // Batch all keys in a single localStorage write to avoid stale closure
         setMapFilters(
             JSON.stringify({
                 ...JSON.parse(mapFilters ?? "{}"),
                 topoMapState: newState.topo.toString(),
                 satelliteMapState: newState.satellite.toString(),
+                tectonicPlatesMapState: newState.tectonicPlates.toString(),
             }),
         );
         setMapLayerState(newState);
@@ -135,6 +144,7 @@ const MainScroller = ({ altData, fromMain }: MainScrollerProps) => {
             setMapLayerState({
                 topo: f.topoMapState ?? false,
                 satellite: f.satelliteMapState ?? false,
+                tectonicPlates: f.tectonicPlatesMapState ?? false,
             });
             setMapProjectionState({
                 globe: f.GlobeProjectionMapState ?? false,
@@ -170,6 +180,7 @@ const MainScroller = ({ altData, fromMain }: MainScrollerProps) => {
                 statusOption: f.stationStatus ?? [],
             }));
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mapFilters]);
 
     //------------------------------------------------Return----------------------------------------------
@@ -280,6 +291,29 @@ const MainScroller = ({ altData, fromMain }: MainScrollerProps) => {
                                                     onChange={(e) => {
                                                         handleLayerToggle(
                                                             "satellite",
+                                                            e.target.checked,
+                                                        );
+                                                    }}
+                                                />
+                                            </label>
+                                        </div>
+                                    </li>
+                                    {/* 4. Tectonic plates layer */}
+                                    <li>
+                                        <div className="form-control p-0">
+                                            <label className="label cursor-pointer truncate w-[248px]">
+                                                <span className="font-bold mr-4">
+                                                    Tectonic Plates
+                                                </span>
+                                                <input
+                                                    type="checkbox"
+                                                    className="checkbox checkbox-sm"
+                                                    checked={
+                                                        mapLayerState.tectonicPlates
+                                                    }
+                                                    onChange={(e) => {
+                                                        handleLayerToggle(
+                                                            "tectonicPlates",
                                                             e.target.checked,
                                                         );
                                                     }}

@@ -391,6 +391,7 @@ const StationAddFileModal = ({
                 });
             }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [globalDescription]);
 
     const getInputTitle = (key: string) => {
@@ -483,6 +484,7 @@ const StationAddFileModal = ({
                 });
             }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [files, fileResults, hasErrorMessage, hasSuccessMessage]);
 
     return (

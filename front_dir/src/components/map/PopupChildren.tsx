@@ -5,6 +5,7 @@ import { useAuth, useApi } from "@hooks";
 import { getRinexService, getStationMetaService } from "@services";
 
 import {
+    ErrorResponse,
     GetParams,
     RinexData,
     RinexServiceData,
@@ -12,7 +13,12 @@ import {
     StationMetadataServiceData,
 } from "@types";
 
-import { formattedDates, generateErrorMessages, woTz } from "@utils";
+import {
+    formattedDates,
+    generateErrorMessages,
+    isApiErrorResponse,
+    woTz,
+} from "@utils";
 import axios from "axios";
 
 interface PopupChildrenProps {
@@ -74,7 +80,9 @@ const PopupChildren = ({
     const getRinex = async (signal: AbortSignal) => {
         try {
             setLoading(true);
-            const firstRes = await getRinexService<RinexServiceData>(
+            const firstRes = await getRinexService<
+                RinexServiceData | ErrorResponse
+            >(
                 api,
                 {
                     network_code: station?.network_code,
@@ -84,8 +92,16 @@ const PopupChildren = ({
                 },
                 signal,
             );
+            if (isApiErrorResponse(firstRes)) return;
             const totalRecords = firstRes.total_count;
-            const lastRes = await getRinexService<RinexServiceData>(
+            if (!totalRecords) {
+                setFirstRinex(undefined);
+                setLastRinex(undefined);
+                return;
+            }
+            const lastRes = await getRinexService<
+                RinexServiceData | ErrorResponse
+            >(
                 api,
                 {
                     network_code: station?.network_code,
@@ -95,8 +111,10 @@ const PopupChildren = ({
                 },
                 signal,
             );
-            setFirstRinex(firstRes?.data?.[0]);
-            setLastRinex(lastRes?.data?.[0]);
+            setFirstRinex(firstRes.data?.[0]);
+            setLastRinex(
+                isApiErrorResponse(lastRes) ? undefined : lastRes.data?.[0],
+            );
         } catch (err) {
             if (!axios.isCancel(err)) {
                 console.error("Error fetching rinex: ", err);
@@ -108,12 +126,10 @@ const PopupChildren = ({
 
     const getStationMeta = async (signal: AbortSignal) => {
         try {
-            const res = await getStationMetaService<StationMetadataServiceData>(
-                api,
-                Number(station?.api_id),
-                signal,
-            );
-            if (res) {
+            const res = await getStationMetaService<
+                StationMetadataServiceData | ErrorResponse
+            >(api, Number(station?.api_id), signal);
+            if (res && !isApiErrorResponse(res)) {
                 setStationMetaByMain(res);
             }
         } catch (err) {
@@ -153,6 +169,7 @@ const PopupChildren = ({
                 abortController.abort();
             };
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fromMain]);
 
     const campsToShow = ["rinex_count", "distinct_visit_years", "station_name"];
@@ -215,24 +232,9 @@ const PopupChildren = ({
                                                       .replace(/^\w/, (c) =>
                                                           c.toUpperCase(),
                                                       )}
-                                                  :{" "}
+                                                  :
                                               </strong>
-                                              <div
-                                                  className={
-                                                      Array.isArray(
-                                                          stationMetaByMain?.[
-                                                              key as keyof StationMetadataServiceData
-                                                          ],
-                                                      ) &&
-                                                      (
-                                                          stationMetaByMain?.[
-                                                              key as keyof StationMetadataServiceData
-                                                          ] as string[]
-                                                      ).length > 1
-                                                          ? ""
-                                                          : "ml-1"
-                                                  }
-                                              >
+                                              <div className={"ml-1"}>
                                                   {getDistinctVisitYears(key)}
                                               </div>
                                           </span>

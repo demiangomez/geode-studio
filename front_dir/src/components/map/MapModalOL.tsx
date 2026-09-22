@@ -9,7 +9,7 @@ import React, {
 import { fromLonLat, toLonLat } from "ol/proj";
 import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
-import type Polygon from "ol/geom/Polygon";
+import Polygon from "ol/geom/Polygon";
 import { Draw, Modify } from "ol/interaction";
 import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
@@ -19,23 +19,28 @@ import type { Geometry } from "ol/geom";
 import type { DrawEvent } from "ol/interaction/Draw";
 import type { ModifyEvent } from "ol/interaction/Modify";
 
-import { MapSkeleton, Modal, MapStationCreate } from "@componentsReact";
+import { MapSkeleton, Modal } from "@componentsReact";
+import MapStationCreate from "@components/map/StationCreateMapOL";
+import StationTooltip from "@components/map/StationTooltip";
 
-import { useAuth, useApi, useMapInit } from "@hooks";
+import { useAuth, useApi } from "@hooks";
+import { useMapInit } from "@hooks/ol/useMapInit";
 
-import { getLastCenterLonLat, getLastZoom } from "@olUtils";
+import { getLastCenterLonLat, getLastZoom, pinIconUrl } from "@olUtils";
 
 import { METADATA_STATE } from "@utils/reducerFormStates";
 
-import { TrashIcon } from "@heroicons/react/24/outline";
-import { useMetadata, useStations } from "@hooks/queries";
+export interface MapSelection {
+    marker?: { lat: number; lng: number; radiusKm: number };
+    polygon?: { lat: number; lng: number }[];
+}
 
-// Simple small red pin marker
-const MARKER_PIN_SVG = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
-        <path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5c-1.4 0-2.5-1.1-2.5-2.5S10.6 6.5 12 6.5s2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5z" fill="#e53935" stroke="#fff" stroke-width="1"/>
-    </svg>`,
-)}`;
+import { TrashIcon } from "@heroicons/react/24/outline";
+import { useMetadata, useStationCatalog } from "@hooks/queries";
+
+import "ol/ol.css";
+
+const MARKER_PIN_SVG = pinIconUrl("#e53935");
 
 interface MapModalProps {
     setShowMapModal: React.Dispatch<
@@ -44,9 +49,15 @@ interface MapModalProps {
             | undefined
         >
     >;
-    handleDrawPolygon: (e: any) => void;
+    handleDrawPolygon?: (e: any) => void;
     markerType: "marker" | "polygon";
     formState?: typeof METADATA_STATE;
+    title?: string;
+    /** Con onSave la seleccion se confirma solo al apretar Save (tacho o cierre = cancelar). */
+    onSave?: (selection: MapSelection | null) => void;
+    initialSelection?: MapSelection;
+    /** Modo polygon: catalogo entero con su icono; con poligono, las de afuera en gris. */
+    showStations?: boolean;
 }
 
 const MapModal = ({
@@ -54,6 +65,10 @@ const MapModal = ({
     handleDrawPolygon,
     markerType,
     formState,
+    title = "Select Coordinates",
+    onSave,
+    initialSelection,
+    showStations = false,
 }: MapModalProps) => {
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
@@ -70,9 +85,14 @@ const MapModal = ({
         lat: number;
         lng: number;
     } | null>(null);
-    const [rangeValue, setRangeValue] = useState(40);
+    const [rangeValue, setRangeValue] = useState(
+        initialSelection?.marker?.radiusKm ?? 40,
+    );
     const [isDragging, setIsDragging] = useState(false);
     const [isDrawingInProgress, setIsDrawingInProgress] = useState(false);
+    const [currentPolygon, setCurrentPolygon] = useState<
+        { lat: number; lng: number }[] | null
+    >(null);
 
     // Compute initial center from formState or the last navigated position
     const initialCenter = useMemo<[number, number]>(() => {
@@ -82,7 +102,17 @@ const MapModal = ({
                 parseFloat(formState.station.lat),
             ];
         }
+        const marker = initialSelection?.marker;
+        if (marker) return [marker.lng, marker.lat];
+        const ring = initialSelection?.polygon;
+        if (ring?.length) {
+            return [
+                ring.reduce((acc, p) => acc + p.lng, 0) / ring.length,
+                ring.reduce((acc, p) => acc + p.lat, 0) / ring.length,
+            ];
+        }
         return getLastCenterLonLat() ?? [0, 0];
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const initialZoom = useMemo(() => getLastZoom(4), []);
@@ -115,6 +145,23 @@ const MapModal = ({
         setCurrentMarker(null);
     };
 
+    // Lo que hay dibujado al momento de Save: null si el usuario lo borro
+    const readSelection = (): MapSelection | null => {
+        const features = drawSourceRef.current.getFeatures();
+        const feature = features[features.length - 1];
+        const geometry = feature?.getGeometry();
+        if (!geometry) return null;
+        if (markerType === "marker") {
+            const [lng, lat] = toLonLat((geometry as Point).getCoordinates());
+            return { marker: { lat, lng, radiusKm: rangeValue } };
+        }
+        const ring = (geometry as Polygon).getCoordinates()[0].map((c) => {
+            const [lng, lat] = toLonLat(c);
+            return { lat, lng };
+        });
+        return { polygon: ring.slice(0, -1) };
+    };
+
     // Delete all drawn features and reset state
     const handleDelete = useCallback(() => {
         // Clear drawn features
@@ -132,6 +179,7 @@ const MapModal = ({
         // Reset local state
         setIsMarkerSelected(false);
         setCurrentMarker(null);
+        setCurrentPolygon(null);
 
         // Re-enable draw interaction after state settles
         setTimeout(() => {
@@ -217,6 +265,10 @@ const MapModal = ({
         });
 
         draw.on("drawstart", () => {
+            if (markerType === "polygon") {
+                drawSourceRef.current.clear();
+                setCurrentPolygon(null);
+            }
             setIsDrawingInProgress(true);
         });
 
@@ -228,7 +280,7 @@ const MapModal = ({
                 ).getCoordinates();
                 const [lon, lat] = toLonLat(coords);
 
-                handleDrawPolygonRef.current({
+                handleDrawPolygonRef.current?.({
                     layer: {
                         getLatLng: () => ({ lat, lng: lon }),
                         _latlng: { lat, lng: lon },
@@ -248,11 +300,12 @@ const MapModal = ({
                     return { lat, lng: lon };
                 });
 
-                handleDrawPolygonRef.current({
+                handleDrawPolygonRef.current?.({
                     layer: {
                         getLatLngs: () => [latLngs],
                     },
                 });
+                setCurrentPolygon(latLngs.slice(0, -1));
                 setIsMarkerSelected(true); // Show delete button for polygon too
             }
         });
@@ -286,7 +339,7 @@ const MapModal = ({
                     ).getCoordinates();
                     const [lon, lat] = toLonLat(coords);
 
-                    handleDrawPolygonRef.current({
+                    handleDrawPolygonRef.current?.({
                         layer: {
                             getLatLng: () => ({ lat, lng: lon }),
                             _latlng: { lat, lng: lon },
@@ -302,14 +355,20 @@ const MapModal = ({
             map.addInteraction(modify);
         }
 
-        // --- Pre-populate marker from formState ---
+        // --- Pre-populate marker from formState / initialSelection ---
         if (
             markerType === "marker" &&
-            formState?.station?.lat &&
-            formState?.station?.lon
+            ((formState?.station?.lat && formState?.station?.lon) ||
+                initialSelection?.marker)
         ) {
-            const lat = parseFloat(formState.station.lat);
-            const lon = parseFloat(formState.station.lon);
+            const lat = parseFloat(
+                formState?.station?.lat ||
+                    String(initialSelection?.marker?.lat),
+            );
+            const lon = parseFloat(
+                formState?.station?.lon ||
+                    String(initialSelection?.marker?.lng),
+            );
 
             if (!isNaN(lat) && !isNaN(lon)) {
                 const feature = new Feature({
@@ -322,12 +381,24 @@ const MapModal = ({
             }
         }
 
+        const ring = initialSelection?.polygon;
+        if (markerType === "polygon" && ring && ring.length >= 3) {
+            const coords = ring.map((p) => fromLonLat([p.lng, p.lat]));
+            coords.push(coords[0]);
+            drawSourceRef.current.addFeature(
+                new Feature({ geometry: new Polygon([coords]) }),
+            );
+            setCurrentPolygon(ring);
+            setIsMarkerSelected(true);
+        }
+
         return () => {
             map.removeInteraction(draw);
             if (modifyInteractionRef.current) {
                 map.removeInteraction(modifyInteractionRef.current);
             }
             map.removeLayer(drawLayer);
+            // eslint-disable-next-line react-hooks/exhaustive-deps
             drawSourceRef.current.clear();
         };
         // Init only once when map is ready
@@ -366,6 +437,7 @@ const MapModal = ({
         return () => {
             map.un("pointermove", handlePointerMove);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isMapReady, isDragging]);
 
     useEffect(() => {
@@ -374,6 +446,7 @@ const MapModal = ({
                 ? "grabbing"
                 : "";
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isDragging]);
 
     useEffect(() => {
@@ -423,17 +496,18 @@ const MapModal = ({
         }, 100);
 
         return () => clearInterval(intervalId);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isMapReady]);
 
     // Fetch stations data (marker mode only)
 
-    const { data: stations, isLoading: loadingMap } = useStations(
-        api,
-        {},
-        { enabled: markerType === "marker" },
-    );
+    const drawStations = markerType === "marker" || showStations;
+    const { data: stations, isLoading: loadingMap } = useStationCatalog(api, {
+        enabled: drawStations,
+    });
     const { statuses, types } = useMetadata(api, {
-        enabled: markerType === "marker",
+        enabled: drawStations,
+        only: ["types", "statuses"],
     });
 
     // -------------------------------------------------------
@@ -456,6 +530,7 @@ const MapModal = ({
                 });
             }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [formState, isMapReady]);
 
     return (
@@ -467,18 +542,17 @@ const MapModal = ({
             setModalState={setShowMapModal}
         >
             <div className="flex flex-col justify-center items-center gap-y-4">
-                <h1 className="text-2xl font-bold text-gray-800">
-                    Select Coordinates
-                </h1>
+                <h1 className="text-2xl font-bold text-gray-800">{title}</h1>
 
                 <div className="relative w-full">
                     {markerType === "polygon" && isDrawingInProgress && (
                         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[999] bg-white/90 px-3 py-1 rounded-full border border-black-400 shadow-sm text-xs font-semibold text-blue-600 animate-pulse">
-                            Click to add points, Double Click to Finish
+                            Click to add points, Double Click to Finish · a new
+                            polygon replaces the previous one
                         </div>
                     )}
 
-                    {loadingMap && markerType === "marker" && (
+                    {loadingMap && drawStations && (
                         <div className="absolute inset-0 z-[1000] bg-base-100">
                             <MapSkeleton styles={{ height: "100%" }} />
                         </div>
@@ -515,9 +589,10 @@ const MapModal = ({
 
                     <div ref={mapRef} className="h-[60vh]" />
 
-                    {markerType === "marker" &&
-                        isMarkerSelected &&
-                        isMapReady && (
+                    {isMapReady &&
+                        (markerType === "marker"
+                            ? isMarkerSelected
+                            : showStations) && (
                             <MapStationCreate
                                 mapInstance={mapInstance}
                                 stations={stations?.data}
@@ -525,26 +600,13 @@ const MapModal = ({
                                 statuses={statuses ?? []}
                                 rangeValue={rangeValue}
                                 currentMarker={currentMarker}
+                                showAll={markerType === "polygon"}
+                                polygon={currentPolygon ?? undefined}
                                 tooltipRef={stationTooltipRef}
                             />
                         )}
 
-                    <div
-                        ref={stationTooltipRef}
-                        style={{
-                            display: "none",
-                            position: "absolute",
-                            background: "white",
-                            padding: "4px 8px",
-                            borderRadius: "4px",
-                            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                            fontSize: "14px",
-                            fontWeight: "bold",
-                            whiteSpace: "nowrap",
-                            pointerEvents: "none",
-                            zIndex: 2000,
-                        }}
-                    />
+                    <StationTooltip ref={stationTooltipRef} />
                 </div>
 
                 <button
@@ -566,6 +628,7 @@ const MapModal = ({
 
                         // Short delay to let finishDrawing callbacks execute
                         setTimeout(() => {
+                            onSave?.(readSelection());
                             handleCloseModal();
                             setShowMapModal({
                                 show: false,

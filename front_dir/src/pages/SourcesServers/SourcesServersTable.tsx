@@ -1,3 +1,7 @@
+import { useMemo, useState } from "react";
+
+import { AxiosInstance } from "axios";
+
 import {
     SourcesServersMergeModal,
     SourcesServersTableModal,
@@ -5,15 +9,16 @@ import {
     Table,
     TableCard,
 } from "@componentsReact";
-import { getSourcesStationsByServerIdService } from "@services";
+
+import { useSourcesStationsByServer } from "@hooks/queries";
+
 import {
     SourcesFormatData,
+    SourcesMetadataData,
     SourcesServerData,
-    SourcesStationsData,
-    SourcesStationsServiceData,
 } from "@types";
-import { AxiosInstance } from "axios";
-import { useEffect, useState } from "react";
+
+import { metadataSourceLabel } from "./sourcesCatalog";
 
 interface SourcesServersPageProps {
     setModals: React.Dispatch<
@@ -28,6 +33,7 @@ interface SourcesServersPageProps {
     >;
     sourcesServers: SourcesServerData[] | undefined;
     sourcesFormats: SourcesFormatData[] | undefined;
+    sourcesMetadata: SourcesMetadataData[] | undefined;
     modals:
         | {
               show: boolean;
@@ -40,11 +46,22 @@ interface SourcesServersPageProps {
     loading: boolean;
 }
 
+const TITLES = [
+    "protocol",
+    "fqdn",
+    "username",
+    "password",
+    "path",
+    "format",
+    "metadata",
+];
+
 const SourcesServersPage = ({
     setModals,
     sourcesServers,
     modals,
     sourcesFormats,
+    sourcesMetadata,
     api,
     refetch,
     loading,
@@ -53,77 +70,39 @@ const SourcesServersPage = ({
         SourcesServerData | undefined
     >(undefined);
 
-    const [viewLoading, setViewLoading] = useState<boolean>(false);
+    const viewingStations =
+        !!modals?.show && modals.title === "Sources Stations";
 
-    const [data, setData] = useState<string[][]>([]);
+    const { data: sourcesStations, isFetching: viewLoading } =
+        useSourcesStationsByServer(api, sourceServer?.server_id, {
+            enabled: viewingStations && !!sourceServer,
+        });
 
-    const [sourcesStations, setSourcesStations] = useState<
-        SourcesStationsData[] | undefined
-    >(undefined);
-
-    const titles: string[] =
-        data.length > 0
-            ? ["protocol", "fqdn", "username", "password", "path", "format"]
-            : [];
+    const data = useMemo(() => {
+        const metadataById = new Map(
+            (sourcesMetadata ?? []).map((m) => [m.id, m]),
+        );
+        return (sourcesServers ?? []).map((sourceServer) => {
+            const metadata =
+                sourceServer.metadata_source_id != null
+                    ? metadataById.get(sourceServer.metadata_source_id)
+                    : undefined;
+            return [
+                sourceServer.protocol,
+                sourceServer.fqdn,
+                sourceServer.username ?? "",
+                sourceServer.password,
+                sourceServer.path ?? "",
+                sourceServer.format,
+                metadata ? metadataSourceLabel(metadata) : "",
+            ];
+        });
+    }, [sourcesServers, sourcesMetadata]);
 
     const handleCloseModal = () => {
         setModals(undefined);
         setSourceServer(undefined);
     };
-
-    useEffect(() => {
-        if (sourcesServers && sourcesServers.length > 0) {
-            const body: string[][] = [];
-            sourcesServers.forEach((sourceServer: SourcesServerData) => {
-                body.push([
-                    sourceServer.protocol,
-                    sourceServer.fqdn,
-                    sourceServer.username ?? "",
-                    sourceServer.password,
-                    sourceServer.path ?? "",
-                    sourceServer.format,
-                ]);
-            });
-            setData(body);
-        }
-    }, [sourcesServers]);
-
-    const onViewClickFunction = () => {
-        setModals({
-            show: true,
-            title: "Sources Stations",
-            type: "edit",
-        });
-    };
-
-    const getSourcesStationsByServerId = async () => {
-        try {
-            setViewLoading(true);
-            const res =
-                await getSourcesStationsByServerIdService<SourcesStationsServiceData>(
-                    api,
-                    sourceServer?.server_id as number,
-                );
-            if (res && res.statusCode === 200) {
-                setSourcesStations(res.data);
-            }
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setViewLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        if (
-            modals &&
-            modals.show &&
-            modals.title === "Sources Stations" &&
-            sourceServer
-        ) {
-            getSourcesStationsByServerId();
-        }
-    }, [sourceServer]);
 
     return (
         <TableCard
@@ -133,13 +112,13 @@ const SourcesServersPage = ({
             setModals={setModals}
             addButton={true}
             modalTitle="Sources Servers"
-            secondAddButton={true}
+            secondAddButton={(sourcesServers?.length ?? 0) > 1}
             secondAddButtonTitle="Transfer Stations"
             secondModalTitle="Merge Source Server"
         >
             <Table
                 table="servers"
-                titles={titles}
+                titles={data.length > 0 ? TITLES : []}
                 body={data.length > 0 ? data : undefined}
                 loading={loading}
                 onClickFunction={() =>
@@ -153,7 +132,13 @@ const SourcesServersPage = ({
                 state={sourcesServers}
                 setState={setSourceServer}
                 viewRegister={true}
-                onViewClickFunction={onViewClickFunction}
+                onViewClickFunction={() =>
+                    setModals({
+                        show: true,
+                        title: "Sources Stations",
+                        type: "edit",
+                    })
+                }
                 dataFetchUrl="api/sources-servers"
             />
             {modals && modals.show && modals.title === "Sources Servers" && (
@@ -162,6 +147,7 @@ const SourcesServersPage = ({
                     type={modals?.type}
                     refetch={refetch}
                     sourcesFormats={sourcesFormats}
+                    sourcesMetadata={sourcesMetadata}
                     sourceServer={sourceServer}
                     api={api}
                 />
@@ -169,22 +155,17 @@ const SourcesServersPage = ({
             {modals?.show && modals.title === "Merge Source Server" && (
                 <SourcesServersMergeModal
                     sourcesServers={sourcesServers}
-                    handleCloseModal={() => {
-                        setModals(undefined);
-                        setSourceServer(undefined);
-                    }}
+                    handleCloseModal={handleCloseModal}
                     refetch={refetch}
                     api={api}
                 />
             )}
-            {modals?.show && modals.title === "Sources Stations" && (
+            {viewingStations && (
                 <SourcesStationsTableModal
-                    handleCloseModal={() => {
-                        setModals(undefined);
-                        setSourceServer(undefined);
-                    }}
+                    handleCloseModal={handleCloseModal}
                     loading={viewLoading}
                     sourcesStations={sourcesStations}
+                    serverName={sourceServer?.fqdn}
                 />
             )}
         </TableCard>

@@ -9,9 +9,11 @@ import {
 } from "@services";
 import {
     AdjustmentOptionsServiceData,
+    ErrorResponse,
     ModeObsTypesServiceData,
     SolutionTypesServiceData,
 } from "@types";
+import { unwrapApiResponse } from "@utils";
 
 const staticOptions = {
     staleTime: 24 * 60 * 60 * 1000,
@@ -21,7 +23,12 @@ const staticOptions = {
 export const useSolutionTypes = (api: AxiosInstance) => {
     const query = useQuery({
         queryKey: ["timeSeriesConfig", "solutionTypes"],
-        queryFn: () => getSolutionTypesService<SolutionTypesServiceData>(api),
+        queryFn: async () =>
+            unwrapApiResponse(
+                await getSolutionTypesService<
+                    SolutionTypesServiceData | ErrorResponse
+                >(api),
+            ),
         ...staticOptions,
     });
 
@@ -36,8 +43,12 @@ export const useSolutionTypes = (api: AxiosInstance) => {
 export const useAdjustmentOptions = (api: AxiosInstance) => {
     const query = useQuery({
         queryKey: ["timeSeriesConfig", "adjustmentOptions"],
-        queryFn: () =>
-            getAdjustmentOptionsService<AdjustmentOptionsServiceData>(api),
+        queryFn: async () =>
+            unwrapApiResponse(
+                await getAdjustmentOptionsService<
+                    AdjustmentOptionsServiceData | ErrorResponse
+                >(api),
+            ),
         ...staticOptions,
     });
 
@@ -50,7 +61,12 @@ export const useAdjustmentOptions = (api: AxiosInstance) => {
 export const useModeObsTypes = (api: AxiosInstance) => {
     const query = useQuery({
         queryKey: ["timeSeriesConfig", "modeObsTypes"],
-        queryFn: () => getModeObsTypesService<ModeObsTypesServiceData>(api),
+        queryFn: async () =>
+            unwrapApiResponse(
+                await getModeObsTypesService<
+                    ModeObsTypesServiceData | ErrorResponse
+                >(api),
+            ),
         ...staticOptions,
     });
 

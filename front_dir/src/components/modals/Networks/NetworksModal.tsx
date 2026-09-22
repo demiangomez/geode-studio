@@ -2,8 +2,13 @@ import { useEffect, useState } from "react";
 import { Alert, Modal } from "@componentsReact";
 import { postNetworkService, putNetworkService } from "@services";
 import { useApi, useAuth, useFormReducer } from "@hooks";
-import { apiOkStatuses } from "@utils";
-import { Errors, ErrorResponse, ExtendedNetworkData, NetworkData } from "@types";
+import { apiOkStatuses, modalActions } from "@utils";
+import {
+    Errors,
+    ErrorResponse,
+    ExtendedNetworkData,
+    NetworkData,
+} from "@types";
 
 interface NetworksModalProps {
     network: NetworkData | undefined;
@@ -15,9 +20,7 @@ interface NetworksModalProps {
             | undefined
         >
     >;
-    setNetwork: React.Dispatch<
-        React.SetStateAction<NetworkData | undefined>
-    >;
+    setNetwork: React.Dispatch<React.SetStateAction<NetworkData | undefined>>;
 }
 
 const NetworksModal = ({
@@ -32,8 +35,7 @@ const NetworksModal = ({
 
     const [loading, setLoading] = useState<boolean>(false);
     const [msg, setMsg] = useState<
-        | { status: number; msg: string; errors?: Errors }
-        | undefined
+        { status: number; msg: string; errors?: Errors } | undefined
     >(undefined);
 
     const isSuccess = apiOkStatuses.includes(Number(msg?.status));
@@ -82,14 +84,12 @@ const NetworksModal = ({
     const patchNetwork = async () => {
         try {
             setLoading(true);
-            const res = await putNetworkService<ExtendedNetworkData | ErrorResponse>(
-                api,
-                Number(network?.api_id),
-                {
-                    network_code: formState.network_code,
-                    network_name: formState.network_name,
-                },
-            );
+            const res = await putNetworkService<
+                ExtendedNetworkData | ErrorResponse
+            >(api, Number(network?.api_id), {
+                network_code: formState.network_code,
+                network_name: formState.network_name,
+            });
             if ("status" in res) {
                 setMsg({
                     status: res.statusCode,
@@ -168,9 +168,7 @@ const NetworksModal = ({
                             >
                                 <div className="label">
                                     <span className="font-bold">
-                                        {key
-                                            .toUpperCase()
-                                            .replace(/_/g, " ")}
+                                        {key.toUpperCase().replace(/_/g, " ")}
                                     </span>
                                 </div>
                                 <input
@@ -206,7 +204,7 @@ const NetworksModal = ({
                 <div className="flex w-full justify-center">
                     <button
                         type="submit"
-                        className="btn btn-success w-5/12"
+                        className={modalActions.primary}
                         disabled={isSuccess || loading}
                     >
                         Save

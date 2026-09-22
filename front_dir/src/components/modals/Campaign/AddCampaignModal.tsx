@@ -75,7 +75,11 @@ const AddCampaignModal = ({
     >({ show: false, type: "" });
 
     const openMenuRef = useRef<HTMLDivElement>(null);
-    useClickOutside(openMenuRef, () => setShowMenu(undefined), !!showMenu?.show);
+    useClickOutside(
+        openMenuRef,
+        () => setShowMenu(undefined),
+        !!showMenu?.show,
+    );
 
     const [modals, setModals] = useState<
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
@@ -281,6 +285,7 @@ const AddCampaignModal = ({
                 setPeopleSelected(selectedPeople);
             }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [campaign, people]);
 
     // Limpiar filtro cuando se cierre el menú

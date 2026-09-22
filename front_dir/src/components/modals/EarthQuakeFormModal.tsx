@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Modal, MapModal } from "@componentsReact";
+import { Modal } from "@componentsReact";
+import MapModal from "@components/map/MapModalOL";
 import { showModal, findLimits } from "@utils";
 import { EarthQuakeFormState } from "@types";
 

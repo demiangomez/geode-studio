@@ -1,7 +1,8 @@
 import Message from "@components/Message";
 
-import { useApi, useAuth } from "@hooks";
-import { useServerHealth } from "@hooks/queries";
+import useApi from "@hooks/useApi";
+import { useAuth } from "@hooks/useAuth";
+import { useServerHealth } from "@hooks/queries/useServerHealth";
 
 const ServerStatusToast = () => {
     const { token, logout } = useAuth();

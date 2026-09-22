@@ -68,6 +68,7 @@ const VisitsScroller = ({
                 setChangeKml(newChangeKml);
             }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [showScroller]);
 
     //--------------------------------------------------------Return--------------------------------------------------------

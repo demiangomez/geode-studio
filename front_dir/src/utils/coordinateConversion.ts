@@ -1,6 +1,10 @@
 // Conversión WGS84: ECEF (XYZ) ↔ LLA (lat/lon/alt)
 
-export function lla2ecef(llaArr: number[]): { x: number; y: number; z: number } {
+export function lla2ecef(llaArr: number[]): {
+    x: number;
+    y: number;
+    z: number;
+} {
     const [lat, lon, alt] = llaArr;
 
     const rad_lat = (lat * Math.PI) / 180;
@@ -25,7 +29,11 @@ export function lla2ecef(llaArr: number[]): { x: number; y: number; z: number } 
     };
 }
 
-export function ecef2lla(ecefArr: number[]): { lat: number; lon: number; alt: number } {
+export function ecef2lla(ecefArr: number[]): {
+    lat: number;
+    lon: number;
+    alt: number;
+} {
     const [x, y, z] = ecefArr;
 
     // Parámetros WGS84

@@ -12,9 +12,18 @@ interface Props {
             | undefined
         >
     >;
+    showNetworkStation?: boolean;
 }
 
-const EventsDetail = ({ event, setStateModal }: Props) => {
+const EventsDetail = ({
+    event,
+    setStateModal,
+    showNetworkStation = false,
+}: Props) => {
+    const keysToIgnore = showNetworkStation
+        ? ["event_id"]
+        : ["event_id", "network_code", "station_code"];
+
     const handleDescription = (value: string) => {
         if (value.includes("comments")) {
             const comments = value.match(/"comments":"(.*?)"/);
@@ -23,8 +32,7 @@ const EventsDetail = ({ event, setStateModal }: Props) => {
             }
         }
         return value;
-    }
-
+    };
 
     return (
         <Modal
@@ -37,14 +45,8 @@ const EventsDetail = ({ event, setStateModal }: Props) => {
             <div className="grid grid-cols-3 grid-flow-dense">
                 {event &&
                     Object.entries(event).map(([key, value]) => {
-                        const keysToIgnore = [
-                            "event_id",
-                            "network_code",
-                            "station_code",
-                        ];
-
                         if (keysToIgnore.includes(key)) return null;
-                        if(key === "description"){
+                        if (key === "description") {
                             const newValue = handleDescription(value);
                             return (
                                 <div

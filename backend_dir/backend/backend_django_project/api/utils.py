@@ -1,4 +1,5 @@
 import datetime
+import decimal
 from . import models
 from . import exceptions
 import numpy
@@ -15,31 +16,37 @@ from rest_framework.renderers import JSONRenderer
 import gzip
 import json
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 import re
 import base64
-from io import BytesIO
+from io import BytesIO, StringIO
 from PIL import Image, ImageOps
 import grp
 import os
 from lxml import etree
 import zipfile
-from geode import pyOkada, dbConnection, pyDate
+import shapely.geometry
+from geode import pyOkada, dbConnection, pyDate, pyArchiveStruct, pyRinexName
 from geode import Utils as pyUtils
 from geode.etm.core.etm_config import EtmConfig
 from geode.etm.core.etm_engine import EtmEngine
+from geode.etm.core.logging_config import setup_etm_logging
 from geode.etm.core.data_classes import SolutionOptions
 from geode.etm.core.type_declarations import SolutionType
 from geode.etm.data.etm_params import EtmParams
 from geode.reports.station_report import station_from_db, build_report
+from geode.campaign_planner.planner import plan_campaign
+from importlib.resources import files
 import tempfile
 import dateutil.parser
 from django.http import Http404
 import matplotlib.pyplot as plt
 import time
+import threading
 
 
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 
 logger = logging.getLogger('django')
 
@@ -681,6 +688,40 @@ class StationReportGenerator:
             return build_report(station_report)
 
 
+class CampaignPlannerUtils:
+
+    @staticmethod
+    def get_config(params):
+        """plan_campaign config from the validated parameters (the fields of a
+        CampaignPlans row, same keys as geode's DEFAULT_CONFIG): dates and times as the
+        strings geode expects, decimals as floats"""
+        config = {}
+
+        for key, value in params.items():
+            if isinstance(value, datetime.date):
+                value = value.strftime('%Y-%m-%d')
+            elif isinstance(value, datetime.time):
+                value = value.strftime('%H:%M')
+            elif isinstance(value, decimal.Decimal):
+                value = float(value)
+
+            config[key] = value
+
+        return config
+
+    @staticmethod
+    def plan_campaign(params):
+        """Runs geode's campaign planner with the backend's db connection; returns
+        {'plan', 'html'}, raises CampaignPlannerError with a readable message on any
+        planner error (unknown stations, city not found, no route)"""
+        cnn = dbConnection.Cnn(settings.CONFIG_FILE_ABSOLUTE_PATH)
+
+        try:
+            return plan_campaign(CampaignPlannerUtils.get_config(params), cnn=cnn)
+        finally:
+            cnn.close()
+
+
 class NearbyStations:
     @staticmethod
     def get_nearby_stations(station, distance_km):
@@ -703,6 +744,79 @@ class NearbyStations:
         ).exclude(api_id=station.api_id)
 
         return nearby_stations
+
+
+class ProcessingStationListUtils:
+    @staticmethod
+    def get_stations(filters):
+        """Stations matching ALL the given filters (validated data of
+        ProcessingStationListSerializer), ordered by network and station code.
+        Stations of the placeholder networks ('?' prefix, unknown network) are never
+        included; stations without coordinates only match by type/country."""
+
+        stations = models.Stations.objects.select_related('network_code').exclude(
+            network_code__network_code__startswith='?').order_by('network_code__network_code', 'station_code')
+
+        if 'station_type' in filters:
+            stations = stations.filter(
+                stationmeta__station_type=filters['station_type'])
+
+        if 'country_code' in filters:
+            stations = stations.filter(
+                country_code__in=filters['country_code'])
+
+        if 'distance_km' in filters:
+            lat, lon, distance_km = filters['lat'], filters['lon'], filters['distance_km']
+
+            # coarse bounding box in the db (same approximation as NearbyStations),
+            # exact great-circle distance below
+            delta_lat = distance_km / 111
+            delta_lon = min(180, distance_km / (111 * max(math.cos(math.radians(lat)), 1e-9)))
+            lon_min, lon_max = lon - delta_lon, lon + delta_lon
+
+            # a box crossing the antimeridian (e.g. Fiji at 178 and Wallis and Futuna
+            # at -178) wraps around: match both sides
+            if lon_max > 180:
+                lon_filter = Q(lon__gte=lon_min) | Q(lon__lte=lon_max - 360)
+            elif lon_min < -180:
+                lon_filter = Q(lon__lte=lon_max) | Q(lon__gte=lon_min + 360)
+            else:
+                lon_filter = Q(lon__range=(lon_min, lon_max))
+
+            stations = stations.filter(
+                lon_filter, lat__range=(lat - delta_lat, lat + delta_lat))
+
+        if 'polygon' in filters:
+            polygon = shapely.geometry.Polygon(
+                [(point['lon'], point['lat']) for point in filters['polygon']])
+
+            min_lon, min_lat, max_lon, max_lat = polygon.bounds
+
+            stations = stations.filter(lat__range=(min_lat, max_lat),
+                                       lon__range=(min_lon, max_lon))
+
+        stations = list(stations)
+
+        if 'distance_km' in filters:
+            stations = [station for station in stations if ProcessingStationListUtils.great_circle_distance_km(
+                filters['lat'], filters['lon'], float(station.lat), float(station.lon)) <= filters['distance_km']]
+
+        if 'polygon' in filters:
+            # covers: stations on the polygon boundary count as inside
+            stations = [station for station in stations if polygon.covers(
+                shapely.geometry.Point(float(station.lon), float(station.lat)))]
+
+        return stations
+
+    @staticmethod
+    def great_circle_distance_km(lat1, lon1, lat2, lon2):
+        """Haversine distance on a 6371 km sphere"""
+        lat1, lon1, lat2, lon2 = map(math.radians, (lat1, lon1, lat2, lon2))
+
+        a = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * \
+            math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
+
+        return 2 * 6371 * math.asin(math.sqrt(a))
 
 
 class EarthquakeUtils:
@@ -923,6 +1037,145 @@ class EtmBulkUtils:
             zip_file.writestr("manifest.json", json.dumps(manifest, indent=2))
 
         return manifest
+
+
+class EtmDebugOutputCapture:
+    """Captures the console debug output of an ETM run so it can be returned to the front.
+
+    geode's ETM logs through the 'geode.etm' logger (the one setup_etm_logging streams to the
+    console, i.e. what PlotETM.py -v debug prints). start() before building the EtmConfig/EtmEngine
+    and stop() once the adjustment/plot is done (see views.TimeSeries.list).
+    """
+
+    def __init__(self):
+        self.logger = logging.getLogger('geode.etm')
+        self.stream = StringIO()
+        self.handler = logging.StreamHandler(self.stream)
+        # geode's debug console format (setup_etm_logging default format_string) plus the
+        # level, so WARNING/ERROR lines stand out when inspecting the output for problems
+        self.handler.setFormatter(logging.Formatter(' -- %(levelname)s %(name)s: %(message)s'))
+        # only records emitted by this request's thread, so concurrent ETM
+        # requests (runserver is multithreaded) don't get mixed together
+        thread_id = threading.get_ident()
+        self.handler.addFilter(lambda record: record.thread == thread_id)
+
+    def start(self):
+        # make sure geode's own console handler exists (EtmConfig/EtmEngine call this too) and
+        # pin it to its current effective level, so lowering the logger to DEBUG only feeds
+        # this capture and the server logs keep showing the same INFO lines as before
+        setup_etm_logging()
+        self.previous_levels = [(handler, handler.level) for handler in self.logger.handlers]
+        for handler, level in self.previous_levels:
+            handler.setLevel(level or self.logger.getEffectiveLevel())
+        self.previous_logger_level = self.logger.level
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.addHandler(self.handler)
+
+    def stop(self):
+        self.logger.removeHandler(self.handler)
+        self.logger.setLevel(self.previous_logger_level)
+        for handler, level in self.previous_levels:
+            handler.setLevel(level)
+
+    def get_output(self):
+        return self.stream.getvalue()
+
+
+class VisitUtils:
+    @staticmethod
+    def update_planned_visits_status():
+        """Marks planned visits as done ('planned' = false) once their date has been reached"""
+
+        records = list(models.Visits.objects.filter(
+            planned=True, date__lte=datetime.date.today()))
+
+        for record in records:
+            record.planned = False
+            record.save()
+
+        if len(records) > 0:
+            logger.info(
+                f' \'planned\' status updated. Total visits updated: {len(records)}')
+
+        # 'update_planned_visits_status_lock' is not deleted here on purpose: it expires
+        # with the cache TIMEOUT, so the task runs at most once per hour
+
+    @staticmethod
+    def transfer_visit(visit, destination_station):
+        """Reassigns the visit to destination_station and moves its files (log sheet,
+        navigation file, images, attached and observation files) to the new station's
+        upload_to paths. Files are copied first and django-cleanup deletes the originals
+        only after the transaction commits, so a rollback loses no file."""
+
+        copied_files = []
+
+        try:
+            with transaction.atomic():
+                # lock the row so two concurrent transfers of the same visit cannot
+                # read its file paths before either one has moved them
+                visit = models.Visits.objects.select_for_update().get(pk=visit.pk)
+                visit.station = destination_station
+                # station_date_unique raises IntegrityError here if the destination
+                # station already has a visit on that date, before any file is copied
+                visit.save()
+
+                VisitUtils._move_file_field(
+                    visit, 'log_sheet_file', models.visits_log_sheet_file_path, copied_files)
+                VisitUtils._move_file_field(
+                    visit, 'navigation_file', models.visits_navigation_file_path, copied_files)
+                visit.save()
+
+                related_files = [
+                    (models.VisitImages, 'image', models.visits_images_path),
+                    (models.VisitAttachedFiles, 'file',
+                     models.visits_attached_files_path),
+                    (models.VisitGNSSDataFiles, 'file',
+                     models.visits_gnss_data_files_path),
+                ]
+
+                for related_model, field_name, upload_to_path in related_files:
+                    for record in related_model.objects.filter(visit=visit):
+                        # point the cached relation to the already reassigned visit
+                        # so upload_to_path resolves to the destination station
+                        record.visit = visit
+                        VisitUtils._move_file_field(
+                            record, field_name, upload_to_path, copied_files)
+                        record.save()
+        except Exception:
+            # on rollback, remove the copies so no orphan files are left under the
+            # destination station. Keep going if one delete fails so the rest are
+            # not left orphaned, and always re-raise the original error
+            for path in copied_files:
+                try:
+                    default_storage.delete(path)
+                except Exception:
+                    logger.error(
+                        f"Could not delete orphan copy '{path}' after rollback")
+            raise
+
+    @staticmethod
+    def _move_file_field(record, field_name, upload_to_path, copied_files):
+        """Copies the field's file to the upload_to path of the (already reassigned)
+        record and updates the field. The original file is deleted by django-cleanup
+        after the transaction commits."""
+
+        field = getattr(record, field_name)
+
+        if not field or not field.name:
+            return
+
+        new_path = upload_to_path(record, os.path.basename(field.name))
+
+        # missing physical files are tolerated, like in VisitSerializer.get_log_sheet_actual_file;
+        # try/except instead of exists() + open() avoids the race between check and copy
+        try:
+            with field.open('rb') as file:
+                new_path = default_storage.save(new_path, file)
+        except FileNotFoundError:
+            return
+
+        field.name = new_path
+        copied_files.append(new_path)
 
 
 class StationMetaUtils:
@@ -1472,6 +1725,41 @@ class RinexUtils:
             return None
 
     @staticmethod
+    def get_rinex_file(rinex):
+        """
+        Absolute path of the CRINEZ of a rinex record in the archive (pyArchiveStruct.RinexStruct
+        .build_rinex_path, as get_rinex_file() of geode's ScanArchive.py). The archive file is
+        downloaded as is: no header normalization (that would need pyRinex.ReadRinex, which runs
+        the external crx2rnx / gfzrnx_lx programs).
+        """
+        cnn = dbConnection.Cnn(settings.CONFIG_FILE_ABSOLUTE_PATH)
+
+        # RinexStruct reads <path_cfg>/gnss_data.cfg: [archive] path is the archive root
+        archive = pyArchiveStruct.RinexStruct(
+            cnn, path_cfg=os.path.dirname(settings.CONFIG_FILE_ABSOLUTE_PATH))
+
+        # filename: there can be more than one file for the same station and day, so ask
+        # for this record's file instead of the "best" one of the day (rinex_proc)
+        rinex_path = archive.build_rinex_path(rinex.network_code, rinex.station_code,
+                                              int(rinex.observation_year), int(rinex.observation_doy),
+                                              filename=rinex.filename)
+
+        if rinex_path is not None:
+            rinex_path = os.path.join(archive.Config.archive_path, rinex_path)
+
+        if rinex_path is None or not os.path.isfile(rinex_path):
+            # the absolute path goes to the server log only (not to the client)
+            logger.warning('RINEX file not found in the archive: %s' % rinex_path)
+            crinez_filename = pyRinexName.RinexNameFormat(
+                rinex.filename).to_rinex_format(pyRinexName.TYPE_CRINEZ)
+            raise exceptions.CustomValidationErrorExceptionHandler(
+                'RINEX file not found in the archive for %s.%s %04d/%03d (%s)'
+                % (rinex.network_code, rinex.station_code, int(rinex.observation_year),
+                   int(rinex.observation_doy), crinez_filename))
+
+        return rinex_path
+
+    @staticmethod
     def get_rinex_with_status(rinex_list, filters):
         if len(rinex_list) > 0:
             station_info_from_station = list(RinexUtils._get_station_info_from_station(
@@ -1771,3 +2059,40 @@ class RinexUtils:
                 station_info_after_rinex.append(station_info)
 
         return station_info_before_rinex, station_info_containing_rinex, station_info_after_rinex
+
+
+class TectonicPlatesUtils:
+    CACHE_KEY = 'tectonic-plates-geojson'
+    GEOJSON_FILE = 'PB2002_plates.json'
+
+    @staticmethod
+    def get_plates_geojson():
+        """Returns the PB2002 tectonic plates GeoJSON shipped with geode.
+
+        Every feature carries 'Code' (2 letters) and 'PlateName' on its properties.
+        The file only changes when geode is upgraded (which restarts redis as well),
+        so it is cached without expiration.
+        """
+        cache = caches['default']
+
+        geojson = cache.get(TectonicPlatesUtils.CACHE_KEY)
+
+        if geojson is None:
+            geojson = json.loads(files('geode.elasticity.data').joinpath(
+                TectonicPlatesUtils.GEOJSON_FILE).read_text())
+            cache.set(TectonicPlatesUtils.CACHE_KEY, geojson, timeout=None)
+
+        return geojson
+
+    @staticmethod
+    def get_plates_names():
+        """Returns the plates as a [{'code', 'name'}] list sorted by name.
+
+        Deduplicated by code: plates crossing the antimeridian (KE, BR) appear
+        as two features in the GeoJSON.
+        """
+        plates = {feature['properties']['Code']: feature['properties']['PlateName']
+                  for feature in TectonicPlatesUtils.get_plates_geojson()['features']}
+
+        return [{'code': code, 'name': name}
+                for code, name in sorted(plates.items(), key=lambda plate: plate[1])]

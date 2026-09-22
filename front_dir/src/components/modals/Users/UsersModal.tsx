@@ -171,6 +171,7 @@ const EditUsersModal = ({
                         status: res.statusCode,
                         msg: "User added successfully",
                     });
+                    reFetch();
                 }
             }
         } catch (err) {
@@ -204,6 +205,7 @@ const EditUsersModal = ({
                         status: res.statusCode,
                         msg: "User deleted successfully",
                     });
+                    reFetch();
                 } else {
                     setMsg({
                         status: res.statusCode,
@@ -274,6 +276,7 @@ const EditUsersModal = ({
                         status: 200,
                         msg: "User updated successfully",
                     });
+                    reFetch();
                 }
             }
         } catch (err) {
@@ -315,7 +318,6 @@ const EditUsersModal = ({
                 if (tokenDeserialized?.user_id === User?.id) {
                     getUserPhoto();
                 }
-                reFetch();
             }}
             setModalState={setStateModal}
         >

@@ -1,15 +1,25 @@
-import { TimeSeriesConfigModal, ConfirmDeleteModal } from "components"
+import { TimeSeriesConfigModal, ConfirmDeleteModal } from "components";
 import {
-    resetTimeSeriesPeriodicService, resetTimeSeriesJumpsService, resetTimeSeriesPolynomialService
-    , postTimeSeriesPeriodicService, postTimeSeriesJumpService, deleteTimeSeriesJumpService, getJumpTypesService,
+    resetTimeSeriesPeriodicService,
+    resetTimeSeriesJumpsService,
+    resetTimeSeriesPolynomialService,
+    postTimeSeriesPeriodicService,
+    postTimeSeriesJumpService,
+    deleteTimeSeriesJumpService,
+    getJumpTypesService,
     setCopyParamsService,
 } from "@services";
 import { useAuth, useApi } from "@hooks";
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 import { ConfigJumpData, ConfigPolynomialData, Errors, JumpType } from "@types";
-import { PencilSquareIcon, XMarkIcon, ArrowPathIcon, PlusIcon, MinusIcon } from "@heroicons/react/24/outline";
+import {
+    PencilSquareIcon,
+    XMarkIcon,
+    ArrowPathIcon,
+    PlusIcon,
+    MinusIcon,
+} from "@heroicons/react/24/outline";
 import { showModal, apiOkStatuses } from "@utils";
-
 
 interface TimeSeriesParamsProps {
     stationId: number;
@@ -22,7 +32,16 @@ interface TimeSeriesParamsProps {
     onCopyParamsSynced: () => void;
 }
 
-const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicData, polynomialData, copyParams, onCopyParamsSynced }: TimeSeriesParamsProps) => {
+const TimeSeriesParams = ({
+    stationId,
+    refetch,
+    solution,
+    jumpsData,
+    periodicData,
+    polynomialData,
+    copyParams,
+    onCopyParamsSynced,
+}: TimeSeriesParamsProps) => {
     const { token, logout } = useAuth();
     const api = useApi(token, logout);
 
@@ -34,8 +53,6 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
 
     const [success, setSuccess] = useState(false);
 
-
-
     const [modals, setModals] = useState<
         | { show: boolean; title: string; type: "add" | "edit" | "none" }
         | undefined
@@ -44,10 +61,15 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
     const [data, setData] = useState<any>(undefined);
 
     const [jumpTypes, setJumpTypes] = useState<JumpType[]>([]);
-    const [modalType, setModalType] = useState<{ table: string, type: string } | undefined>(undefined);
-    const [valueToModify, setValueToModify] = useState<any | undefined>(undefined);
+    const [modalType, setModalType] = useState<
+        { table: string; type: string } | undefined
+    >(undefined);
+    const [valueToModify, setValueToModify] = useState<any | undefined>(
+        undefined,
+    );
 
-    const [copyParamsChecked, setCopyParamsChecked] = useState<boolean>(!!copyParams);
+    const [copyParamsChecked, setCopyParamsChecked] =
+        useState<boolean>(!!copyParams);
     const [pendingCopyParams, setPendingCopyParams] = useState<boolean>(false);
     const [copyParamsNeedsRefresh, setCopyParamsNeedsRefresh] = useState(false);
 
@@ -58,7 +80,12 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
     const confirmCopyParams = async () => {
         try {
             setLoadingConfirmModal(true);
-            const res = await setCopyParamsService<any>(api, stationId, solution, pendingCopyParams);
+            const res = await setCopyParamsService<any>(
+                api,
+                stationId,
+                solution,
+                pendingCopyParams,
+            );
             if (res && "status" in res) {
                 setMsg({
                     status: res.statusCode,
@@ -70,7 +97,10 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
                 // Conservamos el mensaje que devuelve el backend.
                 setMsg({
                     status: res.statusCode,
-                    msg: res.message ?? res.msg ?? "Copy parameters updated successfully.",
+                    msg:
+                        res.message ??
+                        res.msg ??
+                        "Copy parameters updated successfully.",
                 });
                 // El refresh real se difiere al cierre del modal (ver closeModal).
                 if (pendingCopyParams) setCopyParamsNeedsRefresh(true);
@@ -83,21 +113,26 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
     };
 
     const formatDate = (year: number, doy: number) => {
-        const date = new Date(year, 0, doy).toISOString().split('T')[0];
-        const doyFormatted = doy.toString().padStart(3, '0');
-        const finalDate = date + " (" + year + " " + doyFormatted + ")"
-        return finalDate
+        const date = new Date(year, 0, doy).toISOString().split("T")[0];
+        const doyFormatted = doy.toString().padStart(3, "0");
+        const finalDate = date + " (" + year + " " + doyFormatted + ")";
+        return finalDate;
     };
 
     const getRelaxation = (relaxations: number[]) => {
         const finalRelaxation = relaxations.join(", ");
-        return finalRelaxation
-    }
+        return finalRelaxation;
+    };
 
     const resetData = async () => {
         try {
             setLoadingConfirmModal(true);
-            const service = modalType?.table === "polynomial" ? resetTimeSeriesPolynomialService : modalType?.table === "periodic" ? resetTimeSeriesPeriodicService : resetTimeSeriesJumpsService;
+            const service =
+                modalType?.table === "polynomial"
+                    ? resetTimeSeriesPolynomialService
+                    : modalType?.table === "periodic"
+                      ? resetTimeSeriesPeriodicService
+                      : resetTimeSeriesJumpsService;
             const res = await service<any>(api, stationId, solution);
             if ("status" in res) {
                 setMsg({
@@ -111,29 +146,36 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
                     msg: "Row has been reset successfully",
                 });
             }
-        }
-        catch (e) {
+        } catch (e) {
             console.error(e);
-        }
-        finally {
+        } finally {
             setLoadingConfirmModal(false);
         }
-    }
-
+    };
 
     const deactivateRow = async () => {
         if (valueToModify) {
             if (modalType?.table === "jumps") {
-                const type = valueToModify.type < 10 ? 0 : valueToModify.type >= 10 ? 1 : 2;
+                const type =
+                    valueToModify.type < 10
+                        ? 0
+                        : valueToModify.type >= 10
+                          ? 1
+                          : 2;
                 const params = {
                     Year: valueToModify.Year,
                     DOY: valueToModify.DOY,
                     action: "-",
                     jump_type: type,
-                }
+                };
                 try {
                     setLoadingConfirmModal(true);
-                    const res = await postTimeSeriesJumpService<any>(api, stationId, solution, params);
+                    const res = await postTimeSeriesJumpService<any>(
+                        api,
+                        stationId,
+                        solution,
+                        params,
+                    );
                     if ("status" in res) {
                         setMsg({
                             status: res.statusCode,
@@ -146,40 +188,38 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
                             msg: "Row has been deactivated successfully",
                         });
                     }
-                }
-                catch (e) {
+                } catch (e) {
                     console.error(e);
-                }
-                finally {
+                } finally {
                     setLoadingConfirmModal(false);
                 }
             }
         }
-    }
+    };
 
     const getJumpTypes = async () => {
         try {
-            const res = await getJumpTypesService<{ jump_types: JumpType[] }>(api);
+            const res = await getJumpTypesService<{ jump_types: JumpType[] }>(
+                api,
+            );
             setJumpTypes(res.jump_types);
-        }
-        catch (e) {
+        } catch (e) {
             console.error(e);
         }
-    }
+    };
 
     const chosenRowColor = (action: string) => {
         if (action === "-") {
-            return "bg-gray-200"
+            return "bg-gray-200";
         }
         if (action === "+") {
-            return "bg-green-200"
+            return "bg-green-200";
         }
         if (action === "A") {
-            return "bg-green-400"
+            return "bg-green-400";
         }
-        return
-    }
-
+        return;
+    };
 
     const deleteRow = async () => {
         if (valueToModify) {
@@ -187,10 +227,15 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
                 const params = {
                     Year: valueToModify.Year,
                     DOY: valueToModify.DOY,
-                }
+                };
                 try {
                     setLoadingConfirmModal(true);
-                    const res = await deleteTimeSeriesJumpService<any>(api, stationId, solution, params);
+                    const res = await deleteTimeSeriesJumpService<any>(
+                        api,
+                        stationId,
+                        solution,
+                        params,
+                    );
                     if ("status" in res) {
                         setMsg({
                             status: res.statusCode,
@@ -203,21 +248,28 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
                             msg: "Row has been deleted successfully",
                         });
                     }
-                }
-                catch (e) {
+                } catch (e) {
                     console.error(e);
-                }
-                finally {
+                } finally {
                     setLoadingConfirmModal(false);
                 }
             }
             if (modalType?.table === "periodic") {
                 const valueKey = Object.keys(valueToModify)[0];
-                const newPeriodicData = Object.keys(periodicData).filter((key) => key !== valueKey);
-                const params = { frequencies: newPeriodicData.map(key => Number(key)) };
+                const newPeriodicData = Object.keys(periodicData).filter(
+                    (key) => key !== valueKey,
+                );
+                const params = {
+                    frequencies: newPeriodicData.map((key) => Number(key)),
+                };
                 try {
                     setLoadingConfirmModal(true);
-                    const res = await postTimeSeriesPeriodicService<any>(api, stationId, solution, params);
+                    const res = await postTimeSeriesPeriodicService<any>(
+                        api,
+                        stationId,
+                        solution,
+                        params,
+                    );
                     if ("status" in res) {
                         setMsg({
                             status: res.statusCode,
@@ -230,32 +282,41 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
                             msg: "Row has been deleted successfully",
                         });
                     }
-                }
-                catch (e) {
+                } catch (e) {
                     console.error(e);
-                }
-                finally {
+                } finally {
                     setLoadingConfirmModal(false);
                 }
             }
         }
-    }
+    };
 
     useEffect(() => {
         getJumpTypes();
-    }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (modalType) {
             if (modalType.type === "add") {
-                setModals({ show: true, title: "TimeSeriesConfigModal", type: "add" });
+                setModals({
+                    show: true,
+                    title: "TimeSeriesConfigModal",
+                    type: "add",
+                });
             }
             if (modalType.type === "activate") {
-                setModals({ show: true, title: "TimeSeriesConfigModal", type: "none" });
+                setModals({
+                    show: true,
+                    title: "TimeSeriesConfigModal",
+                    type: "none",
+                });
             }
             if (modalType.type === "edit") {
-                setModals({ show: true, title: "TimeSeriesConfigModal", type: "edit" });
+                setModals({
+                    show: true,
+                    title: "TimeSeriesConfigModal",
+                    type: "edit",
+                });
             }
             if (modalType.type === "delete") {
                 setModals({ show: true, title: "ConfirmDelete", type: "none" });
@@ -269,7 +330,6 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
             if (modalType.type === "copy_sync") {
                 setModals({ show: true, title: "ConfirmDelete", type: "none" });
             }
-
         }
     }, [modalType]);
 
@@ -277,9 +337,7 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
         modals?.show && showModal(modals.title);
     }, [modals]);
 
-
     return (
-
         <div className="p-4 space-y-8 flex flex-col bg-white">
             <label className="flex items-center justify-between gap-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 cursor-pointer hover:bg-gray-100 transition-colors">
                 <div className="flex items-center gap-2">
@@ -296,19 +354,26 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
                         // No cambiamos el checked todavía: el modal de
                         // confirmación gatea el cambio (aceptar/rechazar).
                         setPendingCopyParams(e.target.checked);
-                        setModalType({ table: "trajectory", type: "copy_sync" });
+                        setModalType({
+                            table: "trajectory",
+                            type: "copy_sync",
+                        });
                     }}
                 />
             </label>
-            {polynomialData !== undefined ?
+            {polynomialData !== undefined ? (
                 <div className="w-full flex flex-row justify-between items-start gap-4">
                     <div className="flex flex-col justify-center items-center bg-gray-200 w-[40%] pb-2 pt-2">
                         <div className="bg-gray-200 pb-2">
-                            <label htmlFor="" className="font-bold">Polynomial terms</label>
+                            <label htmlFor="" className="font-bold">
+                                Polynomial terms
+                            </label>
                         </div>
 
                         <div>
-                            <label htmlFor="" className="font-bold">Conventional epoch</label>
+                            <label htmlFor="" className="font-bold">
+                                Conventional epoch
+                            </label>
                         </div>
                     </div>
                     <div className="flex flex-col justify-center items-center w-[40%] pb-2 pt-2 bg-gray-100">
@@ -316,91 +381,136 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
                             {polynomialData?.terms}
                         </div>
                         <div className=" text-center">
-                            <label htmlFor="">
-                                {polynomialData?.Year}
-                            </label>
+                            <label htmlFor="">{polynomialData?.Year}</label>
                         </div>
                     </div>
                     <div className="flex flex-col justify-center items-center w-[40%] pb-2 pt-2 bg-gray-100">
                         <div className=" text-center pb-2 flex flex-row justify-center items-center gap-3">
-                            <PencilSquareIcon className="size-6 hover:text-black cursor-pointer"
+                            <PencilSquareIcon
+                                className="size-6 hover:text-black cursor-pointer"
                                 onClick={() => {
-                                    setModalType({ table: "polynomial", type: "edit" })
+                                    setModalType({
+                                        table: "polynomial",
+                                        type: "edit",
+                                    });
                                     setValueToModify(polynomialData);
                                 }}
                             />
                             <ArrowPathIcon
                                 className="size-6 hover:text-black cursor-pointer"
                                 onClick={() => {
-                                    setModalType({ table: "polynomial", type: "reset" })
-                                    setValueToModify(polynomialData)
+                                    setModalType({
+                                        table: "polynomial",
+                                        type: "reset",
+                                    });
+                                    setValueToModify(polynomialData);
                                 }}
                             />
                         </div>
                         <div className=" text-center">
-                            <label htmlFor="">
-                                {polynomialData?.DOY}
-                            </label>
+                            <label htmlFor="">{polynomialData?.DOY}</label>
                         </div>
                     </div>
                 </div>
-                :
+            ) : (
                 <div className="w-full bg-gray-200 p-4 flex justify-center items-center">
-                    <h2 className="font-bold text-lg">The polynomial table is disabled</h2>
+                    <h2 className="font-bold text-lg">
+                        The polynomial table is disabled
+                    </h2>
                 </div>
-            }
+            )}
             <div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full border border-gray-300">
                         <thead>
                             <tr className="bg-gray-200">
-                                <th className="p-3 text-center border border-gray-300" colSpan={2}>Periodic components</th>
+                                <th
+                                    className="p-3 text-center border border-gray-300"
+                                    colSpan={2}
+                                >
+                                    Periodic components
+                                </th>
                                 <th className="p-3 text-center border border-gray-300">
                                     <div className="flex flex-row justify-center items-center gap-4">
                                         <PlusIcon
                                             className="size-6 hover:text-green-600 cursor-pointer"
                                             onClick={() => {
-                                                setModalType({ table: "periodic", type: "add" })
-                                                setData(Object.keys(periodicData).map((key) => parseFloat(key)))
+                                                setModalType({
+                                                    table: "periodic",
+                                                    type: "add",
+                                                });
+                                                setData(
+                                                    Object.keys(
+                                                        periodicData,
+                                                    ).map((key) =>
+                                                        parseFloat(key),
+                                                    ),
+                                                );
                                             }}
                                         />
                                         <ArrowPathIcon
                                             className="size-6 hover:text-black cursor-pointer"
-                                            onClick={() => { setModalType({ table: "periodic", type: "reset" }) }}
+                                            onClick={() => {
+                                                setModalType({
+                                                    table: "periodic",
+                                                    type: "reset",
+                                                });
+                                            }}
                                         />
                                     </div>
                                 </th>
                             </tr>
                             <tr>
-                                <th className="p-3 text-center border border-gray-300 w-16">Edit</th>
-                                <th className="p-3 text-center border border-gray-300">Values</th>
-                                <th className="p-3 text-center border border-gray-300">State</th>
+                                <th className="p-3 text-center border border-gray-300 w-16">
+                                    Edit
+                                </th>
+                                <th className="p-3 text-center border border-gray-300">
+                                    Values
+                                </th>
+                                <th className="p-3 text-center border border-gray-300">
+                                    State
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
                             {periodicData &&
-                                Object.entries(periodicData).map(([key, value]) => (
-                                    <tr key={key}>
-                                        <td className="p-3 text-center border border-gray-300">
-                                            <div className="flex justify-center items-center h-full">
-                                                <XMarkIcon className="size-6 hover:text-red-500 cursor-pointer"
-                                                    onClick={() => {
-                                                        setModalType({ table: "periodic", type: "delete" })
-                                                        setValueToModify({ [key]: value });
-                                                        setData(Object.keys(periodicData).map((key) => parseFloat(key)))
-                                                    }}
-                                                />
-                                            </div>
-                                        </td>
-                                        <td className="p-3 text-center border border-gray-300">
-                                            {key + " days"}
-                                        </td>
-                                        <td className="p-3 text-center border border-gray-300 text-xl font-bold">
-                                            {value as string}
-                                        </td>
-                                    </tr>
-                                ))
-                            }
+                                Object.entries(periodicData).map(
+                                    ([key, value]) => (
+                                        <tr key={key}>
+                                            <td className="p-3 text-center border border-gray-300">
+                                                <div className="flex justify-center items-center h-full">
+                                                    <XMarkIcon
+                                                        className="size-6 hover:text-red-500 cursor-pointer"
+                                                        onClick={() => {
+                                                            setModalType({
+                                                                table: "periodic",
+                                                                type: "delete",
+                                                            });
+                                                            setValueToModify({
+                                                                [key]: value,
+                                                            });
+                                                            setData(
+                                                                Object.keys(
+                                                                    periodicData,
+                                                                ).map((key) =>
+                                                                    parseFloat(
+                                                                        key,
+                                                                    ),
+                                                                ),
+                                                            );
+                                                        }}
+                                                    />
+                                                </div>
+                                            </td>
+                                            <td className="p-3 text-center border border-gray-300">
+                                                {key + " days"}
+                                            </td>
+                                            <td className="p-3 text-center border border-gray-300 text-xl font-bold">
+                                                {value as string}
+                                            </td>
+                                        </tr>
+                                    ),
+                                )}
                         </tbody>
                     </table>
                 </div>
@@ -411,78 +521,138 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
                     <table className="min-w-full bg-white border border-gray-300">
                         <thead>
                             <tr className="bg-gray-200">
-                                <th className="p-3 text-center border border-gray-300" colSpan={6}>Mechanical and geophysical offsets</th>
+                                <th
+                                    className="p-3 text-center border border-gray-300"
+                                    colSpan={6}
+                                >
+                                    Mechanical and geophysical offsets
+                                </th>
                                 <th className="p-3 text-center border border-gray-300">
                                     <div className="flex flex-row justify-center items-center gap-4">
-                                        <PlusIcon className="size-6 hover:text-green-600 cursor-pointer"
+                                        <PlusIcon
+                                            className="size-6 hover:text-green-600 cursor-pointer"
                                             onClick={() => {
-                                                setModalType({ table: "jumps", type: "add" })
+                                                setModalType({
+                                                    table: "jumps",
+                                                    type: "add",
+                                                });
                                                 setData(jumpsData);
                                             }}
                                         />
-                                        <ArrowPathIcon className="size-6 hover:text-black cursor-pointer"
-                                            onClick={() => { setModalType({ table: "jumps", type: "reset" }) }}
+                                        <ArrowPathIcon
+                                            className="size-6 hover:text-black cursor-pointer"
+                                            onClick={() => {
+                                                setModalType({
+                                                    table: "jumps",
+                                                    type: "reset",
+                                                });
+                                            }}
                                         />
                                     </div>
                                 </th>
                             </tr>
                             <tr className="bg-gray-100">
-                                <th className="p-3 text-center border border-gray-300">Edit</th>
-                                <th className="p-3 text-center w-64 border border-gray-300">Date</th>
-                                <th className="p-3 text-center w-24 border border-gray-300">FIT</th>
-                                <th className="p-3 text-center w-48 border border-gray-300">Type</th>
-                                <th className="p-3 text-center w-32 border border-gray-300">Relaxation</th>
-                                <th className="p-3 text-center w-32 border border-gray-300">Action</th>
-                                <th className="p-3 text-center border border-gray-300">Comments</th>
+                                <th className="p-3 text-center border border-gray-300">
+                                    Edit
+                                </th>
+                                <th className="p-3 text-center w-64 border border-gray-300">
+                                    Date
+                                </th>
+                                <th className="p-3 text-center w-24 border border-gray-300">
+                                    FIT
+                                </th>
+                                <th className="p-3 text-center w-48 border border-gray-300">
+                                    Type
+                                </th>
+                                <th className="p-3 text-center w-32 border border-gray-300">
+                                    Relaxation
+                                </th>
+                                <th className="p-3 text-center w-32 border border-gray-300">
+                                    Action
+                                </th>
+                                <th className="p-3 text-center border border-gray-300">
+                                    Comments
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
                             {jumpsData?.map((jumpData: ConfigJumpData, idx) => (
-                                <tr key={idx} className={chosenRowColor(jumpData.action)}>
-
+                                <tr
+                                    key={idx}
+                                    className={chosenRowColor(jumpData.action)}
+                                >
                                     <td className="p-3 text-center border border-gray-300 align-middle">
                                         <div className="flex justify-center gap-2">
-                                            {jumpData.action === "-" &&
-                                                <XMarkIcon className="size-6 hover:text-red-500 cursor-pointer"
+                                            {jumpData.action === "-" && (
+                                                <XMarkIcon
+                                                    className="size-6 hover:text-red-500 cursor-pointer"
                                                     onClick={() => {
-                                                        setModalType({ table: "jumps", type: "delete" });
-                                                        setValueToModify(jumpData);
+                                                        setModalType({
+                                                            table: "jumps",
+                                                            type: "delete",
+                                                        });
+                                                        setValueToModify(
+                                                            jumpData,
+                                                        );
                                                         setData(jumpsData);
                                                     }}
                                                 />
-                                            }
-                                            {(jumpData.action === "-" || jumpData.action === "+" || jumpData.action === "A") &&
-                                                <PencilSquareIcon className="size-6 hover:text-blue-500 cursor-pointer"
+                                            )}
+                                            {(jumpData.action === "-" ||
+                                                jumpData.action === "+" ||
+                                                jumpData.action === "A") && (
+                                                <PencilSquareIcon
+                                                    className="size-6 hover:text-blue-500 cursor-pointer"
                                                     onClick={() => {
-                                                        setModalType({ table: "jumps", type: "edit" });
-                                                        setValueToModify(jumpData);
+                                                        setModalType({
+                                                            table: "jumps",
+                                                            type: "edit",
+                                                        });
+                                                        setValueToModify(
+                                                            jumpData,
+                                                        );
                                                         setData(jumpsData);
                                                     }}
                                                 />
-                                            }
-                                            {(jumpData.action === "A" || jumpData.action === "+") &&
-                                                <MinusIcon className="size-6 hover:text-red-500 cursor-pointer"
+                                            )}
+                                            {(jumpData.action === "A" ||
+                                                jumpData.action === "+") && (
+                                                <MinusIcon
+                                                    className="size-6 hover:text-red-500 cursor-pointer"
                                                     onClick={() => {
-                                                        setModalType({ table: "jumps", type: "deactivate" });
-                                                        setValueToModify(jumpData);
+                                                        setModalType({
+                                                            table: "jumps",
+                                                            type: "deactivate",
+                                                        });
+                                                        setValueToModify(
+                                                            jumpData,
+                                                        );
                                                         setData(jumpsData);
                                                     }}
                                                 />
-                                            }
-                                            {jumpData.action === "-" &&
-                                                <PlusIcon className="size-6 hover:text-green-600 cursor-pointer"
+                                            )}
+                                            {jumpData.action === "-" && (
+                                                <PlusIcon
+                                                    className="size-6 hover:text-green-600 cursor-pointer"
                                                     onClick={() => {
-                                                        setModalType({ table: "jumps", type: "activate" });
-                                                        setValueToModify(jumpData);
+                                                        setModalType({
+                                                            table: "jumps",
+                                                            type: "activate",
+                                                        });
+                                                        setValueToModify(
+                                                            jumpData,
+                                                        );
                                                         setData(jumpsData);
                                                     }}
                                                 />
-                                            }
-
+                                            )}
                                         </div>
                                     </td>
                                     <td className="p-3 text-center border border-gray-300">
-                                        {formatDate(jumpData.Year, jumpData.DOY)}
+                                        {formatDate(
+                                            jumpData.Year,
+                                            jumpData.DOY,
+                                        )}
                                     </td>
                                     <td className="p-3 text-center border border-gray-300">
                                         {jumpData.fit ? "YES" : "NO"}
@@ -491,13 +661,27 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
                                         {jumpData.type_name}
                                     </td>
                                     <td className="p-3 text-center border border-gray-300">
-                                        {jumpData.relaxation && jumpData.relaxation.length > 0 ? getRelaxation(jumpData.relaxation) : "-"}
+                                        {jumpData.relaxation &&
+                                        jumpData.relaxation.length > 0
+                                            ? getRelaxation(jumpData.relaxation)
+                                            : "-"}
                                     </td>
                                     <td className="p-3 text-center border border-gray-300">
-                                        {jumpData.action ? jumpData.action : "-"}
+                                        {jumpData.action
+                                            ? jumpData.action
+                                            : "-"}
                                     </td>
-                                    <td className="p-3 text-center border border-gray-300" title={jumpData.metadata}>
-                                        <div dangerouslySetInnerHTML={{ __html: jumpData.metadata ? jumpData.metadata : "-" }} />
+                                    <td
+                                        className="p-3 text-center border border-gray-300"
+                                        title={jumpData.metadata}
+                                    >
+                                        <div
+                                            dangerouslySetInnerHTML={{
+                                                __html: jumpData.metadata
+                                                    ? jumpData.metadata
+                                                    : "-",
+                                            }}
+                                        />
                                     </td>
                                 </tr>
                             ))}
@@ -505,20 +689,29 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
                     </table>
                 </div>
             </div>
-            {
-                modals && modals?.title === "TimeSeriesConfigModal" &&
-                <TimeSeriesConfigModal type={modalType} valueToModify={valueToModify} data={data} stationId={stationId} refetch={refetch}
-                    success={success} setSuccess={setSuccess} jumpTypes={jumpTypes} solution={solution}
+            {modals && modals?.title === "TimeSeriesConfigModal" && (
+                <TimeSeriesConfigModal
+                    type={modalType}
+                    valueToModify={valueToModify}
+                    data={data}
+                    stationId={stationId}
+                    refetch={refetch}
+                    success={success}
+                    setSuccess={setSuccess}
+                    jumpTypes={jumpTypes}
+                    solution={solution}
                 />
-            }
-            {
-                modals && modals?.title === "ConfirmDelete" &&
+            )}
+            {modals && modals?.title === "ConfirmDelete" && (
                 <ConfirmDeleteModal
                     confirmRemove={
-                        modalType?.type === "reset" ? resetData :
-                            modalType?.type === "deactivate" ? deactivateRow :
-                                modalType?.type === "copy_sync" ? confirmCopyParams :
-                                    deleteRow
+                        modalType?.type === "reset"
+                            ? resetData
+                            : modalType?.type === "deactivate"
+                              ? deactivateRow
+                              : modalType?.type === "copy_sync"
+                                ? confirmCopyParams
+                                : deleteRow
                     }
                     closeModal={() => {
                         if (msg && apiOkStatuses.includes(msg.status)) {
@@ -531,21 +724,30 @@ const TimeSeriesParams = ({ stationId, refetch, solution, jumpsData, periodicDat
                                 refetch();
                             }
                         }
-                        setModals(undefined)
-                        setModalType(undefined)
-                        setMsg(undefined)
+                        setModals(undefined);
+                        setModalType(undefined);
+                        setMsg(undefined);
                     }}
                     loading={loadingConfirmModal}
                     type={modalType?.type}
                     msg={msg}
-                    variant={modalType?.type === "copy_sync" ? "warning" : "danger"}
-                    mainMsg={modalType?.type === "copy_sync" ? "Are you sure you want to synchronize the trajectory parameters for all solutions?" : undefined}
-                    alterMsg={modalType?.type === "copy_sync" ? "The parameters from the current solution will be copied to the others. Any changes in the trajectory parameters of other solutions will be lost." : undefined}
+                    variant={
+                        modalType?.type === "copy_sync" ? "warning" : "danger"
+                    }
+                    mainMsg={
+                        modalType?.type === "copy_sync"
+                            ? "Are you sure you want to synchronize the trajectory parameters for all solutions?"
+                            : undefined
+                    }
+                    alterMsg={
+                        modalType?.type === "copy_sync"
+                            ? "The parameters from the current solution will be copied to the others. Any changes in the trajectory parameters of other solutions will be lost."
+                            : undefined
+                    }
                 />
-            }
-
+            )}
         </div>
     );
-}
+};
 
 export default TimeSeriesParams;

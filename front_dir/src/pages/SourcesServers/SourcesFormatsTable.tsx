@@ -1,7 +1,8 @@
+import { useMemo, useState } from "react";
+
 import { SourcesFormatsTableModal, Table, TableCard } from "@components/index";
 import { SourcesFormatData } from "@types";
 import { AxiosInstance } from "axios";
-import { useEffect, useState } from "react";
 
 interface SourcesFormatsPageProps {
     setModals: React.Dispatch<
@@ -39,9 +40,20 @@ const SourcesFormatsPage = ({
         SourcesFormatData | undefined
     >(undefined);
 
-    const [data, setData] = useState<string[][]>([]);
+    // Copia antes de ordenar: `sourcesFormats` es data cacheada de TanStack, un
+    // sort in place mutaria la cache compartida.
+    const sorted = useMemo(
+        () =>
+            [...(sourcesFormats ?? [])].sort((a, b) =>
+                a.format.localeCompare(b.format),
+            ),
+        [sourcesFormats],
+    );
 
-    const titles: string[] = data.length > 0 ? ["format"] : [];
+    const data = useMemo(
+        () => sorted.map((sourceFormat) => [sourceFormat.format]),
+        [sorted],
+    );
 
     const handleEdit = () => {
         setModals({
@@ -50,17 +62,6 @@ const SourcesFormatsPage = ({
             type: "edit",
         });
     };
-    useEffect(() => {
-        if (sourcesFormats && sourcesFormats.length > 0) {
-            const body: string[][] = [];
-            sourcesFormats
-                .sort((a, b) => a.format.localeCompare(b.format))
-                .map((sourceFormat: SourcesFormatData) => {
-                    body.push([sourceFormat.format]);
-                });
-            setData(body);
-        }
-    }, [sourcesFormats]);
 
     return (
         <TableCard
@@ -73,12 +74,12 @@ const SourcesFormatsPage = ({
         >
             <Table
                 table="formats"
-                titles={titles}
+                titles={data.length > 0 ? ["format"] : []}
                 body={data.length > 0 ? data : undefined}
                 loading={loading}
                 onClickFunction={handleEdit}
                 deleteRegister={false}
-                state={sourcesFormats}
+                state={sorted}
                 setState={setSourceFormat}
                 dataFetchUrl="api/sources-formats"
             />

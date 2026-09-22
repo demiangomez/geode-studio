@@ -14,7 +14,7 @@ class RolePermission(permissions.BasePermission):
                 return True
             elif check_has_all_endpoints(request):
                 return True
-            elif user_is_update_gaps_status(request) and endpoint_is_related_to_gaps_status(request):
+            elif user_is_update_gaps_status(request) and (endpoint_is_related_to_gaps_status(request) or endpoint_is_related_to_planned_visits_status(request)):
                 return True
             else:
                 return check_has_endpoint(request)
@@ -28,6 +28,11 @@ def user_is_update_gaps_status(request):
 
 def endpoint_is_related_to_gaps_status(request):
     if (request.path == "/api/update-gaps-status" and request.method == "POST") or (request.path == "/api/delete-update-gaps-status-block" and request.method == "POST"):
+        return True
+
+
+def endpoint_is_related_to_planned_visits_status(request):
+    if request.path == "/api/update-planned-visits-status" and request.method == "POST":
         return True
 
 

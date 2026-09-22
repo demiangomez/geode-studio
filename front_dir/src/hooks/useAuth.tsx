@@ -1,6 +1,7 @@
 import {
     createContext,
     ReactNode,
+    useCallback,
     useContext,
     useEffect,
     useMemo,
@@ -105,7 +106,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
     };
 
-    const logout = () => {
+    // estable: es dependencia del useMemo de useApi
+    const logout = useCallback(() => {
         setToken(null);
         setRefreshToken(null);
         setRefresh(null);
@@ -119,7 +121,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
         // La navegación a /auth/login la maneja ProtectedRoute
         // al detectar token === null
-    };
+    }, [setToken, setRefreshToken, setRole, userDispatch]);
 
     const getRole = (role: string) => {
         setRole(role);
@@ -218,13 +220,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         return () => {
             clearInterval(interval);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
         if (token) {
-            getUserPhoto();
+            // getUserData ya trae la foto y hace setUserPhoto; llamar tambien a
+            // getUserPhoto() duplicaba el GET a users/{id}/photo en cada carga.
+            // La funcion sigue expuesta para refrescar tras subir una nueva
+            // (UsersModal).
             getUserData();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token]);
 
     const value = useMemo(
@@ -246,6 +253,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             setUserPhoto,
             getUserData,
         }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [token, refresh, role, userPhoto, user],
     );
 
@@ -254,6 +262,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) {

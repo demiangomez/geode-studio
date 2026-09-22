@@ -4,6 +4,7 @@ import { useMemo } from "react";
 
 import { getStackNamesService, getStationTimeSeriesService } from "@services";
 import { ErrorResponse, StationTimeSeriesServiceData } from "@types";
+import { unwrapApiResponse } from "@utils";
 
 const TS_PLOT_KEYS = [
     "solution",
@@ -72,8 +73,13 @@ export const buildTimeSeriesParams = (
 export const useStackNames = (api: AxiosInstance, stationId: number) => {
     const query = useQuery({
         queryKey: ["stackNames", stationId],
-        queryFn: () =>
-            getStackNamesService<{ stack_names: string[] }>(api, stationId),
+        queryFn: async () =>
+            unwrapApiResponse(
+                await getStackNamesService<
+                    | { stack_names: string[]; statusCode: number }
+                    | ErrorResponse
+                >(api, stationId),
+            ),
         enabled: !!stationId,
         staleTime: 24 * 60 * 60 * 1000,
         refetchOnWindowFocus: false,
@@ -92,10 +98,12 @@ export const useStationTimeSeries = (
 
     return useQuery({
         queryKey: ["stationTimeSeries", stationId, cleaned],
-        queryFn: () =>
-            getStationTimeSeriesService<
-                StationTimeSeriesServiceData | ErrorResponse
-            >(api, stationId, cleaned, false),
+        queryFn: async () =>
+            unwrapApiResponse(
+                await getStationTimeSeriesService<
+                    StationTimeSeriesServiceData | ErrorResponse
+                >(api, stationId, cleaned, false),
+            ),
         enabled: (options.enabled ?? true) && !!stationId,
         staleTime: 0,
         refetchOnWindowFocus: false,
