@@ -161,6 +161,8 @@ const AddStationManual = ({
             }
             params.network_code =
                 formState.stationMeta.network_code.toLowerCase();
+            params.station_code =
+                formState.stationMeta.station_code.toLowerCase();
             const res = await postCreateStationService<any>(api, params);
 
             if ("status" in res) {
